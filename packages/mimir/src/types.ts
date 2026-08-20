@@ -8,7 +8,9 @@
 import type { LatexIssue } from './latex-log.ts'
 import type { OutlineNode } from './outline.ts'
 import type { LatexEngineKind } from './tools/latex.ts'
+import type { ArxivEntry } from './tools/arxiv.ts'
 export type { OutlineNode } from './outline.ts'
+export type { ArxivEntry } from './tools/arxiv.ts'
 
 /** One independent-review verdict. */
 export type Verdict = 'PASS' | 'WARN' | 'FAIL'
@@ -191,6 +193,15 @@ export type ResearchSavePaperSourceResult = ResearchResult<{ readonly mtimeMs: n
 
 /** `listPapers` result: every remembered paper, most recently added first. */
 export type ResearchPapersResult = ResearchResult<{ readonly papers: readonly PaperRecord[] }>
+
+/** `searchArxiv` result: the parsed arXiv entries matching the query. */
+export type ResearchSearchArxivResult = ResearchResult<{ readonly results: readonly ArxivEntry[] }>
+
+/** `importPaper` result: false when the paper was already remembered. */
+export type ResearchImportPaperResult = ResearchResult<{ readonly imported: boolean }>
+
+/** `removePaper` result: the removed paper's arXiv id. */
+export type ResearchRemovePaperResult = ResearchResult<{ readonly arxivId: string }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>

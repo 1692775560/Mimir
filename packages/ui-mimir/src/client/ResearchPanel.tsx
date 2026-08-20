@@ -92,7 +92,7 @@ const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
 export function ResearchPanel({
   useStore, actions, useResearch,
   ensure, selectProject, compile, editSource, reloadSource,
-  ensurePapers, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensurePapers, searchArxiv, importPaper, removePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -104,6 +104,7 @@ export function ResearchPanel({
   const compileView = useResearch(view => view.compile)
   const source = useResearch(view => view.source)
   const papers = useResearch(view => view.papers)
+  const arxivSearch = useResearch(view => view.arxivSearch)
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
@@ -237,7 +238,17 @@ export function ResearchPanel({
             t={t}
           />
         )}
-        {activeTab === 'papers' && <PapersView papers={papers} ensurePapers={ensurePapers} t={t} />}
+        {activeTab === 'papers' && (
+          <PapersView
+            papers={papers}
+            arxivSearch={arxivSearch}
+            ensurePapers={ensurePapers}
+            searchArxiv={searchArxiv}
+            importPaper={importPaper}
+            removePaper={removePaper}
+            t={t}
+          />
+        )}
         {activeTab === 'experiments' && (
           <ExperimentsView
             experiments={experiments}

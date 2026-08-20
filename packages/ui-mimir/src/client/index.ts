@@ -104,6 +104,9 @@ export function apply(ctx: ClientContext): void {
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
+      searchArxiv: (query) => { controller.searchArxiv(query) },
+      importPaper: (entry) => controller.importPaper(entry),
+      removePaper: (arxivId) => controller.removePaper(arxivId),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
       loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
       uploadFigures: async (projectId, dir, files, onProgress) => {

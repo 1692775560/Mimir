@@ -72,6 +72,20 @@ async function fetchArxiv(url: string, signal: AbortSignal): Promise<string> {
   return response.text()
 }
 
+/**
+ * Run one arXiv full-text search and parse the feed. Shared by the
+ * `arxiv_search` tool and the panel's `searchArxiv` Remote method; the caller
+ * owns query validation and the abort/timeout signal.
+ * @param query - free-text query matched against all fields.
+ * @param maxResults - result cap forwarded to the API.
+ * @param signal - abort/timeout signal of the caller.
+ * @returns the parsed entries, `[]` for a resultless feed.
+ */
+export async function fetchArxivSearch(query: string, maxResults: number, signal: AbortSignal): Promise<ArxivEntry[]> {
+  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${maxResults}`
+  return parseArxivFeed(await fetchArxiv(url, signal))
+}
+
 /** JSON-schema properties of one {@link ArxivEntry} in tool output. */
 const ENTRY_PROPERTIES = {
   id: { type: 'string', required: true },
@@ -122,8 +136,7 @@ export function createArxivSearchTool(defaultMaxResults: number): ToolDefinition
       if (!Number.isSafeInteger(maxResults) || maxResults < 1) {
         throw new TypeError('max_results must be a positive integer')
       }
-      const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(args.query)}&start=0&max_results=${maxResults}`
-      return { results: parseArxivFeed(await fetchArxiv(url, exec.signal)) }
+      return { results: await fetchArxivSearch(args.query, maxResults, exec.signal) }
     },
   })
 }

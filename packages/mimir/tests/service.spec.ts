@@ -2,8 +2,10 @@
  * Behavior tests for the ResearchService Remote methods added with the
  * figures/servers workbench: deleteFigure path confinement, the server CRUD
  * upsert rules, and the two-stage checkServer probe (TCP, then best-effort
- * ssh GPU readout). Real memory-backed domain, real temp workspace, real
- * loopback sockets — no mocks.
+ * ssh GPU readout) — plus the literature-workbench round: searchArxiv input
+ * validation and stubbed-fetch outcomes, importPaper upsert idempotence, and
+ * removePaper. Real memory-backed domain, real temp workspace, real loopback
+ * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
@@ -11,13 +13,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
 import { ResearchService } from '../src/service.ts'
+import { parseArxivFeed } from '../src/tools/arxiv.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
 /** Boot a service over a memory-backed domain and a fresh temp workspace. */
@@ -218,4 +221,118 @@ describe('ResearchService.checkServer', () => {
       await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
     }
   }, 20_000)
+})
+
+const ARXIV_FEED = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2103.00020v2</id>
+    <title>EgoSync &amp; Friends: A Study</title>
+    <author><name>Doe, Jane</name></author>
+    <author><name>Roe, John</name></author>
+    <summary>  Multi
+   line &lt;abstract&gt; body. </summary>
+    <published>2021-03-01T00:00:00Z</published>
+  </entry>
+</feed>`
+
+const ARXIV_ENTRY = {
+  id: '2103.00020v2',
+  title: 'EgoSync & Friends: A Study',
+  authors: ['Doe, Jane', 'Roe, John'],
+  summary: 'Multi line <abstract> body.',
+  published: '2021-03-01T00:00:00Z',
+  url: 'https://arxiv.org/abs/2103.00020v2',
+}
+
+afterEach(() => { vi.unstubAllGlobals() })
+
+describe('parseArxivFeed', () => {
+  it('parses entries, unescapes entities, and derives abs urls', () => {
+    expect(parseArxivFeed(ARXIV_FEED)).toEqual([ARXIV_ENTRY])
+    expect(parseArxivFeed('<feed xmlns="http://www.w3.org/2005/Atom"></feed>')).toEqual([])
+  })
+})
+
+describe('ResearchService.searchArxiv', () => {
+  it('rejects an empty query and a bad maxResults as invalid-input', async () => {
+    const { service } = await harness()
+    await expect(service.searchArxiv({ query: '   ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.searchArxiv({ query: 'mesh', maxResults: 0 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.searchArxiv({ query: 'mesh', maxResults: 51 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.searchArxiv({ query: 'mesh', maxResults: 2.5 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+
+  it('returns parsed results from a stubbed arXiv feed', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', async (url: string) => {
+      requestedUrl = url
+      return new Response(ARXIV_FEED, { status: 200 })
+    })
+    const { service } = await harness()
+    const outcome = await service.searchArxiv({ query: 'egocentric whole body', maxResults: 5 })
+    expect(outcome).toEqual({ ok: true, value: { results: [ARXIV_ENTRY] } })
+    expect(requestedUrl).toContain('search_query=all:egocentric%20whole%20body')
+    expect(requestedUrl).toContain('max_results=5')
+  })
+
+  it('settles transport and HTTP failures as operation-failed', async () => {
+    const { service } = await harness()
+    vi.stubGlobal('fetch', async () => new Response('busy', { status: 500 }))
+    await expect(service.searchArxiv({ query: 'mesh' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('HTTP 500') } })
+    vi.stubGlobal('fetch', async () => { throw new Error('socket hangup') })
+    await expect(service.searchArxiv({ query: 'mesh' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: 'socket hangup' } })
+  })
+})
+
+describe('ResearchService.importPaper / removePaper', () => {
+  it('imports once and treats a re-import as a refresh preserving notes and addedAt', async () => {
+    const { domain, service } = await harness()
+    const existing = {
+      arxivId: ARXIV_ENTRY.id,
+      title: 'Old Title',
+      authors: ['Doe, Jane'],
+      summary: 'old',
+      url: 'https://arxiv.org/abs/2103.00020v2',
+      notes: 'keep me',
+      addedAt: '2026-01-01T00:00:00.000Z',
+    }
+    await domain.table('papers').put(existing.arxivId, existing)
+    const refresh = await service.importPaper({ entry: ARXIV_ENTRY })
+    expect(refresh).toEqual({ ok: true, value: { imported: false } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)).toMatchObject({
+      title: ARXIV_ENTRY.title,
+      notes: 'keep me',
+      addedAt: '2026-01-01T00:00:00.000Z',
+    })
+    const fresh = await service.importPaper({ entry: { ...ARXIV_ENTRY, id: '2608.00001v1' } })
+    expect(fresh).toEqual({ ok: true, value: { imported: true } })
+    const listed = await service.listPapers()
+    expect(listed.ok && listed.value.papers.length).toBe(2)
+  })
+
+  it('rejects an entry with an empty id or title as invalid-input', async () => {
+    const { service } = await harness()
+    await expect(service.importPaper({ entry: { ...ARXIV_ENTRY, id: '  ' } }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.importPaper({ entry: { ...ARXIV_ENTRY, title: '' } }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+
+  it('removes a remembered paper and reports paper-not-found on a repeat', async () => {
+    const { service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    await expect(service.removePaper({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toEqual({ ok: true, value: { arxivId: ARXIV_ENTRY.id } })
+    const listed = await service.listPapers()
+    expect(listed).toEqual({ ok: true, value: { papers: [] } })
+    await expect(service.removePaper({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+  })
 })

@@ -920,6 +920,71 @@
   line-height: 1.6;
 }
 
+.papersSearchBar {
+  display: flex;
+  gap: 8px;
+}
+
+.papersSearchBar .input {
+  flex: 1;
+}
+
+.papersSearchBar .btnPrimary {
+  flex-shrink: 0;
+}
+
+.papersSearchPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.papersResults {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.paperResult {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+}
+
+.paperResultHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.paperResultHead .paperCardTitle {
+  flex: 1;
+}
+
+.paperResultHead .btn,
+.paperResultHead .btnPrimary {
+  flex-shrink: 0;
+}
+
+.paperSummary[data-static] {
+  margin: 0;
+  cursor: text;
+}
+
+.paperCardFoot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
 /* Experiments view: the run table card plus the log viewer card. */
 .experiments {
   display: flex;

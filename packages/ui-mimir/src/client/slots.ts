@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchView } from './controller.ts'
 import type { createResearchPanelStore } from './store.ts'
 
@@ -54,6 +54,24 @@ export interface ResearchPanelInjected {
   reloadSource: () => void
   /** Load the literature list once, on the papers view's first open. */
   ensurePapers: () => void
+  /**
+   * Search arXiv from the papers view; the outcome lands in the view's
+   * `arxivSearch` slice.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchArxiv: (query: string) => void
+  /**
+   * Import one arXiv entry into the wiki, then refresh the literature list.
+   * @param entry - the parsed arXiv entry of one search result card.
+   * @returns null on success, the settled failure otherwise.
+   */
+  importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
+  /**
+   * Remove one remembered paper, then refresh the literature list.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  removePaper: (arxivId: string) => Promise<ResearchFailureView | null>
   /**
    * Load one whitelisted markdown artifact (the experiment-log viewer).
    * @param projectId - wiki project id.

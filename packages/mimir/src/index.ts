@@ -42,6 +42,7 @@ export type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
+  ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -49,9 +50,11 @@ export type {
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRejected,
+  ResearchRemovePaperResult,
   ResearchResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
+  ResearchSearchArxivResult,
   ResearchSuccess,
   ServerGpuView,
   ServerInput,
@@ -74,7 +77,7 @@ export { runReview, renderReviewRound } from './reviewer.ts'
 export type { ReviewerOptions, ReviewRequest } from './reviewer.ts'
 export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEngine, parseTectonicErrors } from './tools/latex.ts'
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
-export { createArxivSearchTool, createPaperFetchTool, parseArxivFeed } from './tools/arxiv.ts'
+export { createArxivSearchTool, createPaperFetchTool, parseArxivFeed, fetchArxivSearch } from './tools/arxiv.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 

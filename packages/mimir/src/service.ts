@@ -22,8 +22,11 @@ import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact }
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile } from './paper-source.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
+import { fetchArxivSearch } from './tools/arxiv.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
+  ArxivEntry,
+  PaperRecord,
   ResearchArtifactResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
@@ -34,6 +37,7 @@ import type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
+  ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -41,8 +45,10 @@ import type {
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRejected,
+  ResearchRemovePaperResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
+  ResearchSearchArxivResult,
   ResearchSuccess,
   ServerGpuView,
   ServerInput,
@@ -123,6 +129,12 @@ async function pdfMtime(pdfPath: string): Promise<number | null> {
 
 /** TCP reachability probe timeout; part of the checkServer probe contract. */
 const TCP_PROBE_TIMEOUT_MS = 4000
+/** Timeout of one arXiv API request made on the panel's behalf. */
+const ARXIV_FETCH_TIMEOUT_MS = 15_000
+/** Default result cap of one panel-driven arXiv search. */
+const ARXIV_SEARCH_DEFAULT_MAX_RESULTS = 10
+/** Hard result cap of one panel-driven arXiv search. */
+const ARXIV_SEARCH_MAX_RESULTS = 50
 /** Timeout of the best-effort ssh `nvidia-smi` readout. */
 const GPU_PROBE_TIMEOUT_MS = 8000
 /** Connect timeout handed to the ssh client itself. */
@@ -290,6 +302,79 @@ export class ResearchService extends TypertRemoteService {
       .map(([, record]) => record)
       .sort((left, right) => right.addedAt.localeCompare(left.addedAt))
     return Promise.resolve(success({ papers: Object.freeze(papers) }))
+  }
+
+  /**
+   * Search arXiv on the panel's behalf. The query must be non-empty
+   * (`invalid-input` otherwise); the request carries a hard 15s timeout and
+   * transport/HTTP failures settle as `operation-failed` with the underlying
+   * message.
+   * @param request - the free-text query and an optional result cap
+   * (default 10, hard cap 50).
+   * @returns the parsed entries, newest API order preserved.
+   */
+  @Remote('searchArxiv')
+  async searchArxiv(request: { query: string; maxResults?: number }): Promise<ResearchSearchArxivResult> {
+    const query = request.query.trim()
+    if (query === '') return rejected({ code: 'invalid-input', message: 'query must be non-empty' })
+    const maxResults = request.maxResults ?? ARXIV_SEARCH_DEFAULT_MAX_RESULTS
+    if (!Number.isSafeInteger(maxResults) || maxResults < 1 || maxResults > ARXIV_SEARCH_MAX_RESULTS) {
+      return rejected({ code: 'invalid-input', message: `maxResults must be an integer between 1 and ${ARXIV_SEARCH_MAX_RESULTS}` })
+    }
+    try {
+      const results = await fetchArxivSearch(query, maxResults, AbortSignal.timeout(ARXIV_FETCH_TIMEOUT_MS))
+      return success({ results: Object.freeze(results) })
+    } catch (error) {
+      return rejected({
+        code: 'operation-failed',
+        message: error instanceof Error ? error.message : 'arXiv search failed',
+      })
+    }
+  }
+
+  /**
+   * Remember one arXiv entry in the wiki's papers table. The write is an
+   * idempotent upsert keyed by the bare arXiv id: a re-import refreshes the
+   * metadata but preserves the existing record's notes and first-write
+   * timestamp.
+   * @param request - the parsed entry (an empty id or title is `invalid-input`).
+   * @returns whether the paper was newly imported (false on a refresh).
+   */
+  @Remote('importPaper')
+  async importPaper(request: { entry: ArxivEntry }): Promise<ResearchImportPaperResult> {
+    const entry = request.entry
+    const arxivId = entry.id.trim()
+    if (arxivId === '' || entry.title.trim() === '') {
+      return rejected({ code: 'invalid-input', message: 'entry id and title must be non-empty' })
+    }
+    const table = this.domain.table('papers')
+    const existing = table.get(arxivId)
+    const record: PaperRecord = {
+      arxivId,
+      title: entry.title,
+      authors: [...entry.authors],
+      summary: entry.summary,
+      url: entry.url === '' ? `https://arxiv.org/abs/${arxivId}` : entry.url,
+      notes: existing?.notes ?? '',
+      addedAt: existing?.addedAt ?? new Date().toISOString(),
+    }
+    await table.put(arxivId, record)
+    return success({ imported: existing === undefined })
+  }
+
+  /**
+   * Remove one remembered paper; an unknown arXiv id is `paper-not-found`.
+   * @param request - the bare arXiv id.
+   * @returns the removed id.
+   */
+  @Remote('removePaper')
+  async removePaper(request: { arxivId: string }): Promise<ResearchRemovePaperResult> {
+    const table = this.domain.table('papers')
+    if (table.get(request.arxivId) === undefined) {
+      return rejected({ code: 'paper-not-found' })
+    }
+    await table.delete(request.arxivId)
+    return success({ arxivId: request.arxivId })
   }
 
   /**

@@ -12,14 +12,13 @@ polish round every few iterations.
 - [x] Figures view: upload / delete / copy-LaTeX-snippet image management
 - [x] Servers view: CRUD + TCP probe + SSH nvidia-smi GPU bars
 - [x] UI refresh: nav icons, view headers, stat chips, status pills
+- [x] In-panel arXiv search: search box in the literature view, one-click
+      import into the wiki library (plus library card delete)
 
 ## Queue
 
 ### Literature & experiments
 
-- [ ] In-panel arXiv search: search box in the literature view, one-click
-      import of a result into the wiki library (reuses the host's arxiv
-      fetch path; no API key needed)
 - [ ] Compile issues click-through: clicking a LaTeX error/warning in the
       paper view jumps the editor to that line
 - [ ] Experiment metrics charts: render `experiments.metrics` series as

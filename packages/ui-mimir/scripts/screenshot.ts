@@ -71,6 +71,26 @@ for (const tab of TABS) {
   }
 }
 
+// ── Papers: search arXiv from the library view, then import one result.
+await workbench.getByRole('button', { name: /^文献$|^Library$/ }).first().click()
+await page.waitForTimeout(1200)
+await workbench.getByPlaceholder(/egocentric whole body/).fill('egocentric whole body')
+await workbench.getByRole('button', { name: /^搜索$|^Search$/ }).click()
+// The host-side fetch carries a 15s timeout; give the feed time to arrive.
+await page.waitForTimeout(6000)
+await page.screenshot({ path: `${OUT_DIR}/tab-papers-search.png` })
+console.log('captured tab-papers-search.png')
+// Import the first not-yet-imported result, then capture the 已入库 repaint.
+const importButton = workbench.getByRole('button', { name: /^导入$|^Import$/ }).first()
+if (await importButton.count() > 0) {
+  await importButton.click()
+  await page.waitForTimeout(2000)
+  await page.screenshot({ path: `${OUT_DIR}/tab-papers-imported.png` })
+  console.log('captured tab-papers-imported.png')
+} else {
+  console.log('no importable result (all imported or the search failed)')
+}
+
 // ── Figures: upload two figures, delete the route-smoke probe, hover a card.
 await workbench.getByRole('button', { name: /^图表$|^Figures$/ }).first().click()
 await page.waitForTimeout(1200)

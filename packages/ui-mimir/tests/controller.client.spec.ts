@@ -18,13 +18,16 @@ import type {
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFiguresResult,
+  ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
+  ResearchRemovePaperResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
+  ResearchSearchArxivResult,
 } from 'dsh-mimir/types'
 
 /** Wrap one business result in the carrier's success branch. */
@@ -59,6 +62,9 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     getPaperSource: missing('getPaperSource'),
     savePaperSource: missing('savePaperSource'),
     listPapers: missing('listPapers'),
+    searchArxiv: missing('searchArxiv'),
+    importPaper: missing('importPaper'),
+    removePaper: missing('removePaper'),
     listExperiments: missing('listExperiments'),
     readArtifact: missing('readArtifact'),
     listFigures: missing('listFigures'),
@@ -601,5 +607,110 @@ describe('ResearchController servers and figure deletion', () => {
     expect(seen).toEqual([{ projectId: 'p1', relPath: 'figures/f1.png', dir: undefined }])
     await settle()
     expect(controller.getSnapshot().figures).toMatchObject({ projectId: 'p1', status: 'ready' })
+  })
+})
+
+describe('ResearchController arXiv search and paper import', () => {
+  /** Settle all queued microtasks of the void-fired loads. */
+  const settle = async (): Promise<void> => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  const ENTRY = {
+    id: '2103.00020v2',
+    title: 'EgoSync & Friends: A Study',
+    authors: ['Doe, Jane'],
+    summary: 'body',
+    published: '2021-03-01T00:00:00Z',
+    url: 'https://arxiv.org/abs/2103.00020v2',
+  }
+  const PAPER = {
+    arxivId: ENTRY.id, title: ENTRY.title, authors: ENTRY.authors,
+    summary: ENTRY.summary, url: ENTRY.url, notes: '', addedAt: '2026-08-01T00:00:00Z',
+  }
+
+  it('publishes loading then the ready search outcome; an empty query never leaves the client', async () => {
+    const seen: string[] = []
+    const controller = new ResearchController(stubRemote({
+      searchArxiv: ({ query }) => {
+        seen.push(query)
+        return Promise.resolve(carried<ResearchSearchArxivResult>({ ok: true, value: { results: [ENTRY] } }))
+      },
+    }))
+    expect(controller.getSnapshot().arxivSearch).toBeNull()
+    controller.searchArxiv('   ')
+    expect(seen).toEqual([])
+    controller.searchArxiv(' egocentric ')
+    expect(controller.getSnapshot().arxivSearch).toMatchObject({ query: 'egocentric', status: 'loading' })
+    await settle()
+    expect(controller.getSnapshot().arxivSearch).toMatchObject({ query: 'egocentric', status: 'ready' })
+    expect(controller.getSnapshot().arxivSearch?.list[0]?.id).toBe(ENTRY.id)
+    expect(seen).toEqual(['egocentric'])
+  })
+
+  it('discards a superseded search and folds failures into the error slice', async () => {
+    const slow = deferred<RemoteResult<ResearchSearchArxivResult>>()
+    const controller = new ResearchController(stubRemote({
+      searchArxiv: ({ query }) => query === 'slow'
+        ? slow.promise
+        : Promise.resolve(carried<ResearchSearchArxivResult>({
+            ok: false, error: { code: 'operation-failed', message: 'HTTP 500' },
+          })),
+    }))
+    controller.searchArxiv('slow')
+    controller.searchArxiv('fast')
+    await settle()
+    expect(controller.getSnapshot().arxivSearch).toMatchObject({ query: 'fast', status: 'error' })
+    expect(controller.getSnapshot().arxivSearch?.failure).toMatchObject({ code: 'operation-failed', message: 'HTTP 500' })
+    // The superseded slow reply never overwrites the newer outcome.
+    slow.resolve(carried<ResearchSearchArxivResult>({ ok: true, value: { results: [ENTRY] } }))
+    await settle()
+    expect(controller.getSnapshot().arxivSearch).toMatchObject({ query: 'fast', status: 'error' })
+  })
+
+  it('refreshes the literature list after a successful import and returns failures otherwise', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      importPaper: ({ entry }) => Promise.resolve(carried<ResearchImportPaperResult>(
+        entry.id === 'bad'
+          ? { ok: false, error: { code: 'invalid-input', message: 'entry id and title must be non-empty' } }
+          : { ok: true, value: { imported: true } },
+      )),
+      listPapers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchPapersResult>({ ok: true, value: { papers: [PAPER] } }))
+      },
+    }))
+    const failure = await controller.importPaper({ ...ENTRY, id: 'bad' })
+    expect(failure).toMatchObject({ code: 'invalid-input' })
+    expect(lists).toBe(0)
+    const ok = await controller.importPaper(ENTRY)
+    expect(ok).toBeNull()
+    expect(lists).toBe(1)
+    expect(controller.getSnapshot().papers).toMatchObject({ status: 'ready' })
+    expect(controller.getSnapshot().papers.list[0]?.arxivId).toBe(ENTRY.id)
+  })
+
+  it('removePaper returns the business failure and refreshes the list on success', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      removePaper: ({ arxivId }) => Promise.resolve(carried<ResearchRemovePaperResult>(
+        arxivId === ENTRY.id
+          ? { ok: true, value: { arxivId } }
+          : { ok: false, error: { code: 'paper-not-found' } },
+      )),
+      listPapers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchPapersResult>({ ok: true, value: { papers: [] } }))
+      },
+    }))
+    const missing = await controller.removePaper('nope')
+    expect(missing).toMatchObject({ code: 'paper-not-found' })
+    expect(lists).toBe(0)
+    const ok = await controller.removePaper(ENTRY.id)
+    expect(ok).toBeNull()
+    expect(lists).toBe(1)
   })
 })

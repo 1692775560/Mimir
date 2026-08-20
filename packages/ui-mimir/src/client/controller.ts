@@ -12,6 +12,7 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
+  ArxivEntry,
   ExperimentRecord,
   FigureEntry,
   OutlineNode,
@@ -26,21 +27,24 @@ import type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
+  ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
+  ResearchRemovePaperResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
+  ResearchSearchArxivResult,
   ServerInput,
   ServerRecord,
   ServerStatusView,
 } from 'dsh-mimir/types'
 
 /**
- * The fifteen Remote calls this controller needs, exactly as the generated
+ * The eighteen Remote calls this controller needs, exactly as the generated
  * `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -56,6 +60,9 @@ export interface ResearchRemote {
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
   listPapers: () => Promise<RemoteResult<ResearchPapersResult>>
+  searchArxiv: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchSearchArxivResult>>
+  importPaper: (request: { entry: ArxivEntry }) => Promise<RemoteResult<ResearchImportPaperResult>>
+  removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
@@ -115,6 +122,14 @@ export interface ResearchPapersView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The arXiv search panel: the last query's outcome (null before any search). */
+export interface ResearchArxivSearchView {
+  readonly query: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly list: readonly ArxivEntry[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** One per-project fetched view (experiments, artifact, figures). */
 export interface ResearchProjectSlice<T> {
   readonly projectId: string
@@ -152,6 +167,8 @@ export interface ResearchView {
   readonly compile: ResearchCompileView
   readonly source: ResearchSourceView | null
   readonly papers: ResearchPapersView
+  /** The papers view's arXiv search outcome; null before the first search. */
+  readonly arxivSearch: ResearchArxivSearchView | null
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
@@ -168,6 +185,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   compile: Object.freeze({ projectId: null, state: 'idle', issues: Object.freeze([]), engine: null, pdfUpdatedAt: null }),
   source: null,
   papers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
+  arxivSearch: null,
   experiments: null,
   artifact: null,
   figures: null,
@@ -204,6 +222,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private outlineGeneration = 0
   private artifactGeneration = 0
   private figuresGeneration = 0
+  private arxivGeneration = 0
   private figuresInFlight = false
   private compileAbort: AbortController | null = null
   private compileQueued: string | null = null
@@ -353,6 +372,84 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Search arXiv for one query and publish the outcome to the papers view.
+   * A newer search supersedes an in-flight one, whose late reply is discarded
+   * by generation; an empty query never leaves the client.
+   * @param query - the free-text query.
+   */
+  searchArxiv(query: string): void {
+    const trimmed = query.trim()
+    if (trimmed === '') return
+    this.arxivGeneration += 1
+    const generation = this.arxivGeneration
+    this.publish({
+      arxivSearch: Object.freeze({ query: trimmed, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSearch = (view: ResearchArxivSearchView): void => {
+        if (this.disposed || generation !== this.arxivGeneration) return
+        this.publish({ arxivSearch: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.searchArxiv({ query: trimmed })
+        if (!carried.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSearch({ query: trimmed, status: 'ready', list: result.value.results, failure: null })
+      } catch (error) {
+        publishSearch({ query: trimmed, status: 'error', list: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Import one arXiv entry into the wiki, then refresh the literature list so
+   * both the library grid and the result card's imported state repaint. The
+   * failure view of a rejected import is returned so the card can surface it.
+   * @param entry - the parsed arXiv entry.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async importPaper(entry: ArxivEntry): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.importPaper({ entry })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Remove one remembered paper, then refresh the literature list so the
+   * library grid and any matching search result repaint.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async removePaper(arxivId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.removePaper({ arxivId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
       return null
     } catch (error) {
       return transportFailure(error)
