@@ -7,7 +7,9 @@
  * (click jumps the editor to the line), the iframe PDF preview, and the
  * bibliography panel that replaces the preview while open. The three panes
  * are resizable through drag handles (the widths persist to localStorage) and
- * the editor/preview panes can each take the full content area.
+ * the editor/preview panes can each take the full content area; below the
+ * narrow breakpoint they degrade to a one-pane tab layout and the outline
+ * rail hides.
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
@@ -20,7 +22,8 @@ import type {
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import {
   editorShareFromDrag, loadPaperLayout, PAPER_LAYOUT_DEFAULT, PAPER_LAYOUT_STORAGE_KEY,
-  railWidthFromDrag, serializePaperLayout, type PaperLayout,
+  PAPER_NARROW_BREAKPOINT, paperSoloPane, railWidthFromDrag, serializePaperLayout,
+  type PaperLayout, type PaperSoloPane,
 } from './paper-layout.ts'
 import type { PaperFullscreen } from './store.ts'
 import { failureCopy, lineRangeOf, SAVE_KEYS, sectionMoveFromDrop } from './view-common.ts'
@@ -45,6 +48,21 @@ const COMPRESS_ICON: ReactNode = (
     <path d="M13.5 9.5h-4v4M9.5 13.5 13 10M2.5 6.5h4v-4M6.5 2.5 3 6" />
   </svg>
 )
+
+/** Track one media query; re-renders when the match flips (e.g. a resize). */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  )
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const onChange = (): void => { setMatches(media.matches) }
+    onChange()
+    media.addEventListener('change', onChange)
+    return () => { media.removeEventListener('change', onChange) }
+  }, [query])
+  return matches
+}
 
 /** 10×14 grip icon: two columns of three dots (the drag affordance). */
 const GRIP_ICON: ReactNode = (
@@ -186,6 +204,12 @@ export function PaperView({
   const [layout, setLayout] = useState<PaperLayout>(() => loadPaperLayout(key => localStorage.getItem(key)))
   // Which drag handle is mid-gesture (drives the container's data-dragging).
   const [dragging, setDragging] = useState<'rail' | 'split' | null>(null)
+  // Under the narrow breakpoint the editor/preview degrade to a one-pane tab
+  // layout (the fullscreen CSS hides the other pane, the rail, and the
+  // handles); `solo` is the pane that currently owns the content area.
+  const narrow = useMediaQuery(`(max-width: ${PAPER_NARROW_BREAKPOINT}px)`)
+  const [paperTab, setPaperTab] = useState<PaperSoloPane>('editor')
+  const solo = paperSoloPane(narrow, paperTab, fullscreen)
 
   // A project switch closes the bib panel and exits fullscreen; both reload
   // for the new project on the next open.
@@ -358,10 +382,30 @@ export function PaperView({
     })
   }
 
+  // The narrow-width editor/preview tab bar (CSS-hidden at full width); both
+  // pane heads render it so the switch is reachable from whichever pane shows.
+  const paneTabs = (
+    <div className={css.paperTabs} role="tablist">
+      {(['editor', 'preview'] as const).map(pane => (
+        <button
+          key={pane}
+          type="button"
+          role="tab"
+          aria-selected={paperTab === pane}
+          className={css.paperTab}
+          data-active={paperTab === pane || undefined}
+          onClick={() => { setPaperTab(pane) }}
+        >
+          {t(pane === 'editor' ? 'editor.title' : 'preview.title')}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div
       className={css.paperLayout}
-      data-fullscreen={fullscreen ?? undefined}
+      data-fullscreen={solo ?? undefined}
       data-dragging={dragging ?? undefined}
     >
       <aside
@@ -438,25 +482,28 @@ export function PaperView({
       <section
         ref={editorPaneRef}
         className={css.editorPane}
-        style={fullscreen === null ? { flexGrow: layout.editor, flexBasis: 0 } : undefined}
+        style={solo === null ? { flexGrow: layout.editor, flexBasis: 0 } : undefined}
       >
         <div className={css.editorHead}>
           <h3 className={css.sectionTitle}>{t('editor.title')}</h3>
+          {paneTabs}
           <div className={css.paneHeadActions}>
             {currentSource !== null && currentSource.status === 'ready' && (
               <span className={css.savePill} data-state={currentSource.saveState} role="status">
                 {t(SAVE_KEYS[currentSource.saveState])}
               </span>
             )}
-            <button
-              type="button"
-              className={css.iconButton}
-              title={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
-              aria-label={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
-              onClick={() => { setFullscreen(fullscreen === 'editor' ? null : 'editor') }}
-            >
-              {fullscreen === 'editor' ? COMPRESS_ICON : EXPAND_ICON}
-            </button>
+            {!narrow && (
+              <button
+                type="button"
+                className={css.iconButton}
+                title={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+                aria-label={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+                onClick={() => { setFullscreen(fullscreen === 'editor' ? null : 'editor') }}
+              >
+                {fullscreen === 'editor' ? COMPRESS_ICON : EXPAND_ICON}
+              </button>
+            )}
           </div>
         </div>
         {currentSource !== null && currentSource.saveState === 'conflict' && (
@@ -516,9 +563,10 @@ export function PaperView({
       <section
         ref={previewPaneRef}
         className={css.previewPane}
-        style={fullscreen === null ? { flexGrow: 1 - layout.editor, flexBasis: 0 } : undefined}
+        style={solo === null ? { flexGrow: 1 - layout.editor, flexBasis: 0 } : undefined}
       >
         <div className={css.compileRow}>
+          {paneTabs}
           <button
             type="button"
             className={css.compileButton}
@@ -539,15 +587,17 @@ export function PaperView({
           >
             {bibOpen ? t('bib.close') : t('bib.open')}
           </button>
-          <button
-            type="button"
-            className={css.iconButton}
-            title={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
-            aria-label={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
-            onClick={() => { setFullscreen(fullscreen === 'preview' ? null : 'preview') }}
-          >
-            {fullscreen === 'preview' ? COMPRESS_ICON : EXPAND_ICON}
-          </button>
+          {!narrow && (
+            <button
+              type="button"
+              className={css.iconButton}
+              title={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+              aria-label={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+              onClick={() => { setFullscreen(fullscreen === 'preview' ? null : 'preview') }}
+            >
+              {fullscreen === 'preview' ? COMPRESS_ICON : EXPAND_ICON}
+            </button>
+          )}
         </div>
         {compileView.issues.length > 0 && (
           <ul className={css.issueList} aria-label={t('issues.title')}>

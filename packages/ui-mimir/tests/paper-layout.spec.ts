@@ -12,6 +12,8 @@ import {
   loadPaperLayout,
   PAPER_LAYOUT_DEFAULT,
   PAPER_LAYOUT_STORAGE_KEY,
+  PAPER_NARROW_BREAKPOINT,
+  paperSoloPane,
   PREVIEW_MIN_WIDTH,
   railWidthFromDrag,
   RAIL_COLLAPSE_BELOW,
@@ -86,5 +88,30 @@ describe('loadPaperLayout', () => {
 
   it('falls back when storage itself throws', () => {
     expect(loadPaperLayout(() => { throw new Error('denied') })).toEqual(PAPER_LAYOUT_DEFAULT)
+  })
+})
+
+describe('paperSoloPane', () => {
+  it('exposes the narrow breakpoint at 900px', () => {
+    expect(PAPER_NARROW_BREAKPOINT).toBe(900)
+  })
+
+  it('follows the tab selection under the narrow breakpoint', () => {
+    expect(paperSoloPane(true, 'editor', null)).toBe('editor')
+    expect(paperSoloPane(true, 'preview', null)).toBe('preview')
+  })
+
+  it('lets the tab override a stale fullscreen flag while narrow', () => {
+    expect(paperSoloPane(true, 'editor', 'preview')).toBe('editor')
+  })
+
+  it('follows the fullscreen flag at full width', () => {
+    expect(paperSoloPane(false, 'editor', 'preview')).toBe('preview')
+    expect(paperSoloPane(false, 'preview', 'editor')).toBe('editor')
+  })
+
+  it('keeps the split layout at full width with no fullscreen', () => {
+    expect(paperSoloPane(false, 'editor', null)).toBeNull()
+    expect(paperSoloPane(false, 'preview', null)).toBeNull()
   })
 })

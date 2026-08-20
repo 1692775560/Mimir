@@ -131,7 +131,8 @@ function MetricChart({ metricKey, rows }: {
  * @returns the metric charts, the experiment table, and the log viewer.
  */
 export function ExperimentsView({
-  experiments, artifact, servers, projectId, ensureServers, deleteExperiment, updateExperiment, t,
+  experiments, artifact, servers, projectId, ensureServers, deleteExperiment, updateExperiment,
+  retry, t,
 }: {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
@@ -140,6 +141,8 @@ export function ExperimentsView({
   readonly ensureServers: () => void
   readonly deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   readonly updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
+  /** Reload the slice after a load failure (re-selects the current project). */
+  readonly retry: () => void
   readonly t: ResearchT
 }) {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
@@ -171,6 +174,9 @@ export function ExperimentsView({
       ) : experiments.status === 'error' ? (
         <p className={css.failure} role="alert">
           {t('error.experiments')}：{failureCopy(t, experiments.failure)}
+          <button type="button" className={css.retry} onClick={retry}>
+            {t('projects.retry')}
+          </button>
         </p>
       ) : experiments.list.length === 0 ? (
         <EmptyState glyph="🧪">{t('experiments.empty')}</EmptyState>

@@ -35,10 +35,13 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Left rail: brand head + pill nav + the project picker at the bottom. */
+/* Left rail: brand head + pill nav + the project picker at the bottom.
+   min-width: 0 or a long nowrap project title inflates the rail past its
+   216px basis via the flex item's automatic minimum size. */
 .side {
   display: flex;
   flex: 0 0 216px;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
@@ -1418,6 +1421,7 @@ li.dropIndicator {
 
 .experimentTableWrap {
   padding: 16px 18px;
+  overflow-x: auto;
 }
 
 .experimentTableWrap .sectionTitle {
@@ -2216,4 +2220,114 @@ li.dropIndicator {
 
 :global(body[data-ds-dark-theme]) .backdrop {
   background: rgb(0 0 0 / 40%);
+}
+
+/* Narrow-width editor/preview tab bar: rendered in both pane heads, shown
+   only under the 900px breakpoint where the paper view degrades to one pane. */
+.paperTabs {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+.paperTab {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.paperTab[data-active] {
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+@media (max-width: 900px) {
+  .paperTabs {
+    display: inline-flex;
+  }
+
+  .compileRow,
+  .editorHead {
+    flex-wrap: wrap;
+  }
+}
+
+/* Very narrow windows: the side rail becomes a top bar — the nav turns
+   horizontal (scrollable), the project picker drops to a full-width row, and
+   the shortcut hint hides. The workbench is fixed to 96vw, so a viewport
+   query doubles as a container query. */
+@media (max-width: 700px) {
+  .workbench {
+    flex-direction: column;
+  }
+
+  .side {
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  }
+
+  .sideHead {
+    padding: 10px 12px;
+  }
+
+  .nav {
+    flex: 1;
+    min-width: 0;
+    flex-direction: row;
+    padding: 4px 8px;
+    overflow-x: auto;
+  }
+
+  .navItem {
+    flex: 0 0 auto;
+  }
+
+  /* The active-tab accent moves from the left edge to the bottom edge. */
+  .navItem[data-active]::before {
+    top: auto;
+    right: 12px;
+    bottom: 2px;
+    left: 14px;
+    width: auto;
+    height: 3px;
+  }
+
+  .sideProjects {
+    flex: 1 1 100%;
+    max-height: 96px;
+    border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
+  }
+
+  .sideProjects .projectList {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .sideProjects .projectRow {
+    flex: 0 0 200px;
+  }
+
+  .sideFoot {
+    display: none;
+  }
+
+  .content {
+    padding: 12px 14px;
+  }
 }

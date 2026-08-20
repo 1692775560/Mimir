@@ -89,3 +89,22 @@ export function loadPaperLayout(getItem: (key: string) => string | null): PaperL
 export function serializePaperLayout(layout: PaperLayout): string {
   return JSON.stringify({ rail: layout.rail, editor: layout.editor })
 }
+
+/** Below this content width (px) the paper view degrades to a one-pane tab layout. */
+export const PAPER_NARROW_BREAKPOINT = 900
+
+/** The pane the narrow-width tab bar can select. */
+export type PaperSoloPane = 'editor' | 'preview'
+
+/**
+ * Which pane takes the whole content area: under the narrow breakpoint the
+ * tab bar decides (the rail and split handle hide via the fullscreen CSS);
+ * at full width the explicit fullscreen flag decides (null = split).
+ */
+export function paperSoloPane(
+  narrow: boolean,
+  tab: PaperSoloPane,
+  fullscreen: PaperSoloPane | null,
+): PaperSoloPane | null {
+  return narrow ? tab : fullscreen
+}

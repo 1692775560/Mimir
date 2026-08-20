@@ -349,6 +349,7 @@ export function ResearchPanel({
             ensureServers={ensureServers}
             deleteExperiment={deleteExperiment}
             updateExperiment={updateExperiment}
+            retry={() => { if (selectedProjectId !== null) selectProject(selectedProjectId) }}
             t={t}
           />
         )}

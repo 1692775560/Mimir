@@ -71,6 +71,15 @@ polish round every few iterations.
       switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; a hint line sits at
       the rail bottom. (Opening the panel by shortcut was skipped — the host
       sidebar owns that surface.)
+- [x] Narrow-width layout adaptation: below 900px the paper view degrades to
+      a one-pane editor/preview tab bar (`paperSoloPane` picks the visible
+      pane; the existing fullscreen CSS hides the other pane, the outline
+      rail, and the drag handles); below 700px the sidebar becomes a top bar
+      with a horizontally scrollable nav and a full-width project row. Card
+      grids already degrade to a single column via `auto-fill minmax`. Also
+      fixed a pre-existing flex bug: a long nowrap project title inflated the
+      sidebar past its 216px basis (`.side` now has `min-width: 0`), and the
+      experiments error state gained a retry button.
 
 ## Queue
 
@@ -80,8 +89,6 @@ polish round every few iterations.
       — needs a real server address from the user, otherwise demo-only
 
 ### UI/UX polish rounds
-
-- [ ] Narrow-width layout adaptation
 
 ## Blocked (needs user input)
 
