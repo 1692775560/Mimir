@@ -5,14 +5,15 @@
  * reader can expand, tag pills and linked-project badges, the agent's working
  * notes, and edit/delete actions. The edit action opens an inline editor
  * (tags, project links, notes); a filter bar above the grid narrows the
- * library by one tag and/or the currently selected project.
+ * library by one tag and/or the currently selected project; each card can be
+ * appended to the selected project's `references.bib` in one click.
  * @module dsh-client-ui-mimir/client/PapersView
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ArxivEntry, PaperRecord, ResearchProjectView } from 'dsh-mimir/types'
 import type {
-  ResearchArxivSearchView, ResearchFailureView, ResearchPapersView,
+  ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
 } from './controller.ts'
 import { collectTags, failureCopy, filterPapers, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
@@ -26,6 +27,69 @@ interface PaperPatch {
   readonly notes?: string
 }
 
+/** Settle feedback of one card's add-to-bibliography button. */
+type AddToBibState = 'idle' | 'adding' | 'added' | 'exists'
+
+/** How long the added/exists feedback shows before the button resets. */
+const ADD_TO_BIB_RESET_MS = 2000
+
+/**
+ * One card's "add to bibliography" button: appends the paper to the selected
+ * project's `references.bib` and shows the settled outcome briefly. Disabled
+ * until a project is selected.
+ */
+function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
+  readonly paper: PaperRecord
+  readonly projectId: string | null
+  readonly importPapersToBib: (
+    projectId: string,
+    arxivIds: string[],
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
+  readonly onError: (message: string) => void
+  readonly t: ResearchT
+}) {
+  const [state, setState] = useState<AddToBibState>('idle')
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cancel a pending feedback reset on unmount.
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current)
+  }, [])
+
+  const add = (): void => {
+    if (projectId === null || state === 'adding') return
+    setState('adding')
+    void importPapersToBib(projectId, [paper.arxivId]).then((outcome) => {
+      if ('code' in outcome) {
+        setState('idle')
+        onError(`${t('papers.addToBibFailed')}：${outcome.message}`)
+        return
+      }
+      setState(outcome.added.length > 0 ? 'added' : 'exists')
+      resetTimerRef.current = setTimeout(() => { setState('idle') }, ADD_TO_BIB_RESET_MS)
+    })
+  }
+
+  const copy = state === 'adding'
+    ? t('papers.addingToBib')
+    : state === 'added'
+      ? t('papers.addedToBib')
+      : state === 'exists'
+        ? t('papers.alreadyInBib')
+        : t('papers.addToBib')
+  return (
+    <button
+      type="button"
+      className={css.btn}
+      disabled={projectId === null || state === 'adding'}
+      title={projectId === null ? t('bib.noProject') : undefined}
+      onClick={add}
+    >
+      {copy}
+    </button>
+  )
+}
+
 /**
  * @param props - the literature view, the arXiv search slice, the project
  * list (for link checkboxes and badges), the selected project (the
@@ -33,7 +97,10 @@ interface PaperPatch {
  * copy.
  * @returns the search bar and results over the filterable library grid.
  */
-export function PapersView({ papers, arxivSearch, projects, selectedProjectId, ensurePapers, searchArxiv, importPaper, updatePaper, removePaper, t }: {
+export function PapersView({
+  papers, arxivSearch, projects, selectedProjectId, ensurePapers, searchArxiv,
+  importPaper, updatePaper, removePaper, importPapersToBib, t,
+}: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
   readonly projects: readonly ResearchProjectView[]
@@ -43,6 +110,10 @@ export function PapersView({ papers, arxivSearch, projects, selectedProjectId, e
   readonly importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
   readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly removePaper: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly importPapersToBib: (
+    projectId: string,
+    arxivIds: string[],
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly t: ResearchT
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -379,6 +450,13 @@ export function PapersView({ papers, arxivSearch, projects, selectedProjectId, e
                           {t('papers.edit')}
                         </button>
                       )}
+                      <AddToBibButton
+                        paper={paper}
+                        projectId={selectedProjectId}
+                        importPapersToBib={importPapersToBib}
+                        onError={setActionError}
+                        t={t}
+                      />
                       <button
                         type="button"
                         className={css.btn}

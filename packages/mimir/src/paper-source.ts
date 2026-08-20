@@ -49,7 +49,6 @@ export type SavePaperOutcome =
   | { readonly kind: 'saved'; readonly mtimeMs: number }
   | { readonly kind: 'missing' }
   | { readonly kind: 'conflict'; readonly currentMtimeMs: number }
-
 /** Whether one fs failure names a missing entry (as opposed to a real I/O error). */
 export function isNotFound(error: unknown): boolean {
   return typeof error === 'object' && error !== null
@@ -84,11 +83,57 @@ export async function readPaperSource(texPath: string): Promise<PaperSourceSnaps
 }
 
 /**
+ * Replace a workspace text file only when its current mtime still equals the
+ * mtime the caller's draft is based on — the generalized form of the
+ * `main.tex` save, shared by `references.bib`. A null `baseMtimeMs` means
+ * "the caller read an absent file": the save then CREATES the file, and an
+ * existing file conflicts (someone created it since). A mismatch means
+ * another writer (the agent's file tools, a `/paper-*` command) landed a
+ * change the caller never saw; the draft is preserved client-side and the
+ * conflict is reported instead of overwriting. The commit preserves an
+ * existing file's permission bits. The parent directory must exist (callers
+ * resolve and stat it first, reporting `invalid-dir`/`paper-not-found`).
+ * @param filePath - absolute path of the file to replace.
+ * @param content - complete next file content.
+ * @param baseMtimeMs - mtime the draft is based on, or null for create-only.
+ * @returns `saved` with the committed mtime, `missing` when the file was
+ * expected but is gone, or `conflict` with the mtime that displaced the base.
+ */
+export async function saveTextFileOptimistic(
+  filePath: string,
+  content: string,
+  baseMtimeMs: number | null,
+): Promise<SavePaperOutcome> {
+  // The writer lock requires the parent directory to exist; a missing file
+  // with a non-null base must report `missing`, not a lock-setup failure.
+  if (baseMtimeMs !== null && await statOrUndefined(filePath) === undefined) return { kind: 'missing' }
+  return await withFileLock(filePath, async (): Promise<SavePaperOutcome> => {
+    const current = await statOrUndefined(filePath)
+    if (current === undefined) {
+      if (baseMtimeMs !== null) return { kind: 'missing' }
+      // Fresh inode: the standard user-default bits (the umask applies).
+      await writeFileAtomic(filePath, content, { mode: 0o666 })
+    } else {
+      if (baseMtimeMs === null || current.mtimeMs !== baseMtimeMs) {
+        return { kind: 'conflict', currentMtimeMs: current.mtimeMs }
+      }
+      await writeFileAtomic(filePath, content, { mode: current.mode & 0o777 })
+    }
+    const committed = await statOrUndefined(filePath)
+    // A lock-free third party deleting the file between the rename and this
+    // stat is an I/O race the wire union cannot name; fail loud instead of
+    // reporting the stale base mtime as the commit's.
+    if (committed === undefined) {
+      throw new Error(`research: '${filePath}' disappeared during an atomic save`)
+    }
+    return { kind: 'saved', mtimeMs: committed.mtimeMs }
+  })
+}
+
+/**
  * Replace `main.tex` only when its current mtime still equals the mtime the
- * caller's draft is based on. A mismatch means another writer (the agent's
- * file tools, a `/paper-*` command) landed a change the caller never saw; the
- * draft is preserved client-side and the conflict is reported instead of
- * overwriting. The commit preserves the file's existing permission bits.
+ * caller's draft is based on. Thin wrapper over {@link saveTextFileOptimistic}
+ * keeping the paper-save contract: the file must already exist.
  * @param texPath - absolute path of the paper's `main.tex`.
  * @param content - complete next file content.
  * @param baseMtimeMs - mtime the draft was last read from or saved as.
@@ -100,23 +145,5 @@ export async function savePaperSourceFile(
   content: string,
   baseMtimeMs: number,
 ): Promise<SavePaperOutcome> {
-  // The writer lock requires the parent directory to exist; a missing file
-  // must report `missing`, not a lock-setup failure.
-  if (await statOrUndefined(texPath) === undefined) return { kind: 'missing' }
-  return await withFileLock(texPath, async (): Promise<SavePaperOutcome> => {
-    const current = await statOrUndefined(texPath)
-    if (current === undefined) return { kind: 'missing' }
-    if (current.mtimeMs !== baseMtimeMs) {
-      return { kind: 'conflict', currentMtimeMs: current.mtimeMs }
-    }
-    await writeFileAtomic(texPath, content, { mode: current.mode & 0o777 })
-    const committed = await statOrUndefined(texPath)
-    // A lock-free third party deleting the file between the rename and this
-    // stat is an I/O race the wire union cannot name; fail loud instead of
-    // reporting the stale base mtime as the commit's.
-    if (committed === undefined) {
-      throw new Error(`research: '${texPath}' disappeared during an atomic save`)
-    }
-    return { kind: 'saved', mtimeMs: committed.mtimeMs }
-  })
+  return await saveTextFileOptimistic(texPath, content, baseMtimeMs)
 }

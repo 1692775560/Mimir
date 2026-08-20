@@ -116,6 +116,7 @@ export function ResearchPanel({
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -135,6 +136,7 @@ export function ResearchPanel({
   const figures = useResearch(view => view.figures)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
+  const bib = useResearch(view => view.bib)
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -304,6 +306,13 @@ export function ResearchPanel({
             editSource={editSource}
             reloadSource={reloadSource}
             compile={compile}
+            bib={bib}
+            papers={papers}
+            ensureBibliography={ensureBibliography}
+            reloadBibliography={reloadBibliography}
+            deleteBibEntry={deleteBibEntry}
+            importPapersToBib={importPapersToBib}
+            ensurePapers={ensurePapers}
             t={t}
           />
         )}
@@ -318,6 +327,7 @@ export function ResearchPanel({
             importPaper={importPaper}
             updatePaper={updatePaper}
             removePaper={removePaper}
+            importPapersToBib={importPapersToBib}
             t={t}
           />
         )}

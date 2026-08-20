@@ -9,6 +9,13 @@ polish round every few iterations.
 
 ## Done
 
+- [x] BibTeX management: the paper view's bibliography panel reads the
+      project's `references.bib` (tolerant dependency-free parser with a
+      parse∘serialize round-trip invariant), lists entries with delete, and
+      appends library papers as `@misc` entries — from the panel's import
+      picker or each library card's one-click button (new `getBibliography` /
+      `saveBibliography` / `importPapersToBib` Remotes; deletes and imports
+      write the file under optimistic concurrency, conflicts reload)
 - [x] Figures view: upload / delete / copy-LaTeX-snippet image management
 - [x] Servers view: CRUD + TCP probe + SSH nvidia-smi GPU bars
 - [x] UI refresh: nav icons, view headers, stat chips, status pills
@@ -50,8 +57,6 @@ polish round every few iterations.
 
 ### Writing experience
 
-- [ ] BibTeX management: edit `refs.bib` in the panel, generate entries from
-      the literature library in one click
 - [ ] Outline drag-to-reorder sections (rewrites `main.tex` section order)
 - [ ] Paper view layout: draggable editor/preview splitter, editor fullscreen
 

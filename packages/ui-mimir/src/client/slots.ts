@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
 import type { ArxivEntry, ServerInput } from 'dsh-mimir/types'
-import type { ResearchFailureView, ResearchView } from './controller.ts'
+import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
 
@@ -150,6 +150,29 @@ export interface ResearchPanelInjected {
   checkServer: (id: string) => Promise<void>
   /** Probe every listed server that is not already being probed. */
   checkAllServers: () => void
+  /**
+   * Load one project's `references.bib` on the bib panel's first open.
+   * @param projectId - wiki project id.
+   */
+  ensureBibliography: (projectId: string) => void
+  /** Re-read the open bibliography from the Host (the conflict recovery path). */
+  reloadBibliography: () => void
+  /**
+   * Delete one entry from the open bibliography and commit the file.
+   * @param key - the citation key to drop.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteBibEntry: (key: string) => Promise<ResearchFailureView | null>
+  /**
+   * Append library papers to one project's `references.bib`.
+   * @param projectId - wiki project id.
+   * @param arxivIds - the papers to append.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  importPapersToBib: (
+    projectId: string,
+    arxivIds: string[],
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
 }
 
 /** Full props of the sidebar-footer research toggle. */

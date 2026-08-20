@@ -13,11 +13,13 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   ArxivEntry,
+  BibEntry,
   ExperimentRecord,
   FigureEntry,
   OutlineNode,
   PaperRecord,
   ResearchArtifactResult,
+  ResearchBibliographyResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
@@ -28,6 +30,7 @@ import type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
+  ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -36,6 +39,7 @@ import type {
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRemovePaperResult,
+  ResearchSaveBibliographyResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -46,8 +50,8 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The twenty Remote calls this controller needs, exactly as the generated
- * `research` namespace types them.
+ * The twenty-three Remote calls this controller needs, exactly as the
+ * generated `research` namespace types them.
  */
 export interface ResearchRemote {
   listProjects: () => Promise<RemoteResult<ResearchListProjectsResult>>
@@ -80,6 +84,18 @@ export interface ResearchRemote {
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
+  getBibliography: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchBibliographyResult>>
+  saveBibliography: (request: {
+    projectId: string
+    entries: BibEntry[]
+    baseMtimeMs: number | null
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSaveBibliographyResult>>
+  importPapersToBib: (request: {
+    projectId: string
+    arxivIds: string[]
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchImportBibResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -164,6 +180,25 @@ export interface ResearchServersView {
   readonly failure: ResearchFailureView | null
 }
 
+/** Settled counts of one `importPapersToBib` run (appended vs already-present keys). */
+export interface ResearchImportCounts {
+  readonly added: readonly string[]
+  readonly skipped: readonly string[]
+}
+
+/** The selected project's `references.bib` view, edited entry-wise through the panel. */
+export interface ResearchBibView {
+  readonly projectId: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly entries: readonly BibEntry[]
+  /** Optimistic-concurrency base for entry deletes; null while the file is absent. */
+  readonly mtimeMs: number | null
+  readonly saveState: ResearchSaveState
+  readonly failure: ResearchFailureView | null
+  /** The last import's counts, surfaced as the panel's confirmation line. */
+  readonly lastImport: ResearchImportCounts | null
+}
+
 /** One server's probe lifecycle: in flight, or the last settled view. */
 export type ServerCheckState = ServerStatusView | 'checking'
 
@@ -184,6 +219,8 @@ export interface ResearchView {
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
+  /** The selected project's bibliography; null until the bib panel first opens. */
+  readonly bib: ResearchBibView | null
 }
 
 const INITIAL_VIEW: ResearchView = Object.freeze({
@@ -200,6 +237,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   figures: null,
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
+  bib: null,
 })
 
 /** Translate one settled Remote envelope or business branch into a failure view. */
@@ -232,6 +270,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private artifactGeneration = 0
   private figuresGeneration = 0
   private arxivGeneration = 0
+  private bibGeneration = 0
   private figuresInFlight = false
   private compileAbort: AbortController | null = null
   private compileQueued: string | null = null
@@ -487,6 +526,166 @@ export class ResearchController implements HostObservable<ResearchView> {
       return null
     } catch (error) {
       return transportFailure(error)
+    }
+  }
+
+  /**
+   * Load one project's `references.bib` on the bib panel's first open. A
+   * ready (or in-flight) view of the same project is kept; a project switch
+   * or an error view reloads.
+   * @param projectId - wiki project id.
+   */
+  ensureBibliography(projectId: string): void {
+    const current = this.view.bib
+    if (current !== null && current.projectId === projectId
+      && (current.status === 'ready' || current.status === 'loading')) return
+    this.bibGeneration += 1
+    const generation = this.bibGeneration
+    const lastImport = current !== null && current.projectId === projectId ? current.lastImport : null
+    this.publish({
+      bib: Object.freeze({
+        projectId, status: 'loading', entries: Object.freeze([]), mtimeMs: null,
+        saveState: 'clean', failure: null, lastImport,
+      }),
+    })
+    void this.loadBibliography(projectId, generation)
+  }
+
+  /** Re-read the open bibliography from the Host (the conflict recovery path). */
+  reloadBibliography(): void {
+    const current = this.view.bib
+    if (current === null) return
+    this.bibGeneration += 1
+    const generation = this.bibGeneration
+    this.publish({
+      bib: Object.freeze({ ...current, status: 'loading', saveState: 'clean', failure: null }),
+    })
+    void this.loadBibliography(current.projectId, generation)
+  }
+
+  /**
+   * Delete one entry from the open bibliography and commit the file under
+   * optimistic concurrency. The failure view of a rejected save is returned
+   * so the row can surface it; a conflict freezes the panel until reloaded.
+   * @param key - the citation key to drop.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteBibEntry(key: string): Promise<ResearchFailureView | null> {
+    const bib = this.view.bib
+    if (bib === null || bib.status !== 'ready' || bib.saveState === 'saving') {
+      return failureOf('bib-not-ready', 'bibliography is not loaded')
+    }
+    const entries = bib.entries.filter(entry => entry.key !== key)
+    const generation = this.bibGeneration
+    this.publish({ bib: Object.freeze({ ...bib, saveState: 'saving', failure: null }) })
+    try {
+      const carried = await this.remote.saveBibliography({
+        projectId: bib.projectId, entries, baseMtimeMs: bib.mtimeMs, dir: this.dirOf(bib.projectId),
+      })
+      if (this.disposed || generation !== this.bibGeneration) return null
+      const current = this.view.bib
+      if (current === null || current.projectId !== bib.projectId || current.status !== 'ready') return null
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ bib: Object.freeze({ ...current, saveState: 'save-error', failure }) })
+        return failure
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({
+          bib: Object.freeze({
+            ...current,
+            saveState: result.error.code === 'conflict' ? 'conflict' : 'save-error',
+            failure: result.error.code === 'conflict' ? null : failure,
+          }),
+        })
+        return failure
+      }
+      this.publish({
+        bib: Object.freeze({
+          ...current, entries: Object.freeze(entries), mtimeMs: result.value.mtimeMs,
+          saveState: 'saved', failure: null,
+        }),
+      })
+      return null
+    } catch (error) {
+      const failure = transportFailure(error)
+      if (!this.disposed && generation === this.bibGeneration) {
+        const current = this.view.bib
+        if (current !== null && current.projectId === bib.projectId) {
+          this.publish({ bib: Object.freeze({ ...current, saveState: 'save-error', failure }) })
+        }
+      }
+      return failure
+    }
+  }
+
+  /**
+   * Append library papers to one project's `references.bib`, then repaint the
+   * open bib panel from the Host's authoritative file. The settled counts are
+   * returned so the invoking button shows its own feedback.
+   * @param projectId - wiki project id.
+   * @param arxivIds - the papers to append.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  async importPapersToBib(
+    projectId: string,
+    arxivIds: string[],
+  ): Promise<ResearchFailureView | ResearchImportCounts> {
+    try {
+      const carried = await this.remote.importPapersToBib({ projectId, arxivIds, dir: this.dirOf(projectId) })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const counts = Object.freeze({ added: result.value.added, skipped: result.value.skipped })
+      if (this.disposed) return counts
+      const bib = this.view.bib
+      if (bib !== null && bib.projectId === projectId && bib.status !== 'loading') {
+        this.publish({ bib: Object.freeze({ ...bib, lastImport: counts }) })
+        this.reloadBibliography()
+      }
+      return counts
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /** Fetch one project's `references.bib`; a superseded generation never publishes. */
+  private async loadBibliography(projectId: string, generation: number): Promise<void> {
+    const publishBib = (view: ResearchBibView): void => {
+      if (this.disposed || generation !== this.bibGeneration) return
+      this.publish({ bib: Object.freeze(view) })
+    }
+    const lastImport = this.view.bib !== null && this.view.bib.projectId === projectId
+      ? this.view.bib.lastImport
+      : null
+    try {
+      const carried = await this.remote.getBibliography({ projectId, dir: this.dirOf(projectId) })
+      if (!carried.ok) {
+        publishBib({
+          projectId, status: 'error', entries: [], mtimeMs: null,
+          saveState: 'clean', failure: failureOf(carried.error.code, carried.error.message), lastImport,
+        })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        publishBib({
+          projectId, status: 'error', entries: [], mtimeMs: null,
+          saveState: 'clean', failure: businessFailure(result.error), lastImport,
+        })
+        return
+      }
+      publishBib({
+        projectId, status: 'ready', entries: result.value.entries,
+        mtimeMs: result.value.mtimeMs, saveState: 'clean', failure: null, lastImport,
+      })
+    } catch (error) {
+      publishBib({
+        projectId, status: 'error', entries: [], mtimeMs: null,
+        saveState: 'clean', failure: transportFailure(error), lastImport,
+      })
     }
   }
 

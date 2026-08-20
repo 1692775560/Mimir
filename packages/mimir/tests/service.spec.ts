@@ -9,7 +9,7 @@
  * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
@@ -433,5 +433,123 @@ describe('ResearchService.updatePaper', () => {
     expect(again).toEqual({ ok: true, value: { imported: false } })
     const stored = domain.table('papers').get(ARXIV_ENTRY.id)
     expect(stored).toMatchObject({ title: 'New Title', tags: ['egocentric'], projectIds: ['p1'], notes: 'read it' })
+  })
+})
+
+describe('ResearchService bibliography remotes', () => {
+  /** Seed two remembered papers and the scaffolded paper directory. */
+  async function seedBibFixture(domain: Awaited<ReturnType<typeof harness>>['domain'], workspaceDir: string) {
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await mkdir(join(workspaceDir, 'paper'), { recursive: true })
+    await domain.table('papers').put(ARXIV_ENTRY.id, {
+      arxivId: ARXIV_ENTRY.id,
+      title: ARXIV_ENTRY.title,
+      authors: [...ARXIV_ENTRY.authors],
+      summary: ARXIV_ENTRY.summary,
+      url: ARXIV_ENTRY.url,
+      notes: 'baseline notes',
+      tags: [],
+      projectIds: [],
+      addedAt: '2026-08-01T00:00:00.000Z',
+    })
+    await domain.table('papers').put('1812.01187v1', {
+      arxivId: '1812.01187v1',
+      title: 'EgoHMR',
+      authors: ['Zhang, Wei'],
+      summary: '…',
+      url: '',
+      notes: '',
+      tags: [],
+      projectIds: [],
+      addedAt: '2026-08-02T00:00:00.000Z',
+    })
+  }
+
+  const BIB_TEXT = '@article{vaswani2017,\n  title = {Attention Is All You Need},\n  year = {2017},\n}\n'
+
+  it('getBibliography reads an absent file as a successful empty list with a null mtime', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    const outcome = await service.getBibliography({ projectId: 'p1' })
+    expect(outcome).toEqual({ ok: true, value: { entries: [], mtimeMs: null } })
+    await expect(service.getBibliography({ projectId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+  })
+
+  it('getBibliography parses an existing file and carries its mtime', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    await writeFile(join(workspaceDir, 'paper', 'references.bib'), BIB_TEXT)
+    const outcome = await service.getBibliography({ projectId: 'p1' })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.value.entries).toEqual([
+      { key: 'vaswani2017', type: 'article', fields: { title: 'Attention Is All You Need', year: '2017' } },
+    ])
+    expect(outcome.value.mtimeMs).toBe((await stat(join(workspaceDir, 'paper', 'references.bib'))).mtimeMs)
+  })
+
+  it('saveBibliography creates an absent file only with a null base, else conflicts', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    const bibPath = join(workspaceDir, 'paper', 'references.bib')
+    const created = await service.saveBibliography({
+      projectId: 'p1',
+      entries: [{ key: 'a', type: 'misc', fields: { title: 'T' } }],
+      baseMtimeMs: null,
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    const text = await readFile(bibPath, 'utf8')
+    expect(text).toBe('@misc{a,\n  title = {T},\n}\n')
+    // A second create-only save now conflicts (the file exists).
+    await expect(service.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: null }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    // Saving on the committed base works; a stale base conflicts.
+    const saved = await service.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: created.value.mtimeMs })
+    expect(saved.ok).toBe(true)
+    if (!saved.ok) return
+    expect(await readFile(bibPath, 'utf8')).toBe('')
+    await expect(service.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: created.value.mtimeMs }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict', currentMtimeMs: saved.value.mtimeMs } })
+  })
+
+  it('saveBibliography reports bib-not-found when a based-on file is gone', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    await expect(service.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: 12345 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'bib-not-found' } })
+    // And the paper directory itself must exist.
+    const { domain: domain2, service: service2 } = await harness()
+    await domain2.table('projects').put(PROJECT.id, PROJECT)
+    await expect(service2.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: null }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+  })
+
+  it('importPapersToBib appends new keys, skips existing ones, and round-trips the file', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    const first = await service.importPapersToBib({ projectId: 'p1', arxivIds: [ARXIV_ENTRY.id, '1812.01187v1'] })
+    expect(first).toEqual({ ok: true, value: { added: ['210300020v2', '181201187v1'], skipped: [] } })
+    const text = await readFile(join(workspaceDir, 'paper', 'references.bib'), 'utf8')
+    expect(text).toContain('@misc{210300020v2,')
+    expect(text).toContain('eprint = {2103.00020v2}')
+    expect(text).toContain('note = {baseline notes}')
+    // url falls back to the arXiv abs page when the record carries none.
+    expect(text).toContain('url = {https://arxiv.org/abs/1812.01187v1}')
+    // A repeat import skips both; a mix adds only the new one.
+    const again = await service.importPapersToBib({ projectId: 'p1', arxivIds: [ARXIV_ENTRY.id] })
+    expect(again).toEqual({ ok: true, value: { added: [], skipped: ['210300020v2'] } })
+    const listed = await service.getBibliography({ projectId: 'p1' })
+    expect(listed.ok && listed.value.entries.map(entry => entry.key)).toEqual(['210300020v2', '181201187v1'])
+  })
+
+  it('importPapersToBib rejects an unknown arXiv id without writing anything', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedBibFixture(domain, workspaceDir)
+    await expect(service.importPapersToBib({ projectId: 'p1', arxivIds: [ARXIV_ENTRY.id, 'ghost'] }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+    await expect(service.getBibliography({ projectId: 'p1' }))
+      .resolves.toEqual({ ok: true, value: { entries: [], mtimeMs: null } })
   })
 })

@@ -11,6 +11,7 @@ import type { ResearchRemote } from '../src/client/controller.ts'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ResearchArtifactResult,
+  ResearchBibliographyResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
@@ -19,6 +20,7 @@ import type {
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFiguresResult,
+  ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -26,6 +28,7 @@ import type {
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchRemovePaperResult,
+  ResearchSaveBibliographyResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -77,6 +80,9 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     saveServer: missing('saveServer'),
     deleteServer: missing('deleteServer'),
     checkServer: missing('checkServer'),
+    getBibliography: missing('getBibliography'),
+    saveBibliography: missing('saveBibliography'),
+    importPapersToBib: missing('importPapersToBib'),
     ...overrides,
   }
 }
@@ -84,6 +90,18 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
 const IDLE: ResearchCompileStatusResult = {
   ok: true,
   value: { state: 'idle', issues: [], engine: null, pdfUpdatedAt: null },
+}
+
+/** Two-entry bibliography fixture for the bib panel tests. */
+const BIB: ResearchBibliographyResult = {
+  ok: true,
+  value: {
+    entries: [
+      { key: 'alpha2024', type: 'misc', fields: { title: 'Alpha' } },
+      { key: 'beta2023', type: 'article', fields: { title: 'Beta', author: 'Bob' } },
+    ],
+    mtimeMs: 1000,
+  },
 }
 
 describe('ResearchController', () => {
@@ -777,5 +795,122 @@ describe('ResearchController arXiv search and paper import', () => {
     expect(seen).toMatchObject({ arxivId: ENTRY.id, tags: ['baseline'], projectIds: ['p1'] })
     expect(lists).toBe(1)
     expect(controller.getSnapshot().papers).toMatchObject({ status: 'ready' })
+  })
+
+  it('ensureBibliography loads the entries once and keeps a ready view', async () => {
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => {
+        calls += 1
+        return Promise.resolve(carried(BIB))
+      },
+    }))
+    expect(controller.getSnapshot().bib).toBeNull()
+    controller.ensureBibliography('p1')
+    expect(controller.getSnapshot().bib?.status).toBe('loading')
+    await Promise.resolve()
+    await Promise.resolve()
+    const bib = controller.getSnapshot().bib
+    expect(bib?.status).toBe('ready')
+    expect(bib?.entries.map(entry => entry.key)).toEqual(['alpha2024', 'beta2023'])
+    expect(bib?.mtimeMs).toBe(1000)
+    controller.ensureBibliography('p1')
+    expect(calls).toBe(1)
+    controller.ensureBibliography('p2')
+    expect(calls).toBe(2)
+    expect(controller.getSnapshot().bib?.projectId).toBe('p2')
+  })
+
+  it('deleteBibEntry commits the entries minus the key under the current mtime', async () => {
+    const saves: Array<{ entries: Array<{ key: string }>; baseMtimeMs: number | null }> = []
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => Promise.resolve(carried(BIB)),
+      saveBibliography: (request) => {
+        saves.push(request)
+        return Promise.resolve(carried<ResearchSaveBibliographyResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const failure = await controller.deleteBibEntry('alpha2024')
+    expect(failure).toBeNull()
+    expect(saves[0]?.baseMtimeMs).toBe(1000)
+    expect(saves[0]?.entries.map(entry => entry.key)).toEqual(['beta2023'])
+    const bib = controller.getSnapshot().bib
+    expect(bib?.entries.map(entry => entry.key)).toEqual(['beta2023'])
+    expect(bib?.mtimeMs).toBe(2000)
+    expect(bib?.saveState).toBe('saved')
+  })
+
+  it('deleteBibEntry freezes the panel on a conflict until reloaded', async () => {
+    let reads = 0
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => {
+        reads += 1
+        return Promise.resolve(carried(BIB))
+      },
+      saveBibliography: () => Promise.resolve(carried<ResearchSaveBibliographyResult>({
+        ok: false,
+        error: { code: 'conflict', currentMtimeMs: 3000 },
+      })),
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const failure = await controller.deleteBibEntry('alpha2024')
+    expect(failure?.code).toBe('conflict')
+    expect(controller.getSnapshot().bib?.saveState).toBe('conflict')
+    controller.reloadBibliography()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(reads).toBe(2)
+    expect(controller.getSnapshot().bib?.saveState).toBe('clean')
+  })
+
+  it('importPapersToBib returns the counts and repaints the open panel', async () => {
+    let reads = 0
+    const seen: string[][] = []
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => {
+        reads += 1
+        return Promise.resolve(carried(BIB))
+      },
+      importPapersToBib: (request) => {
+        seen.push(request.arxivIds)
+        return Promise.resolve(carried<ResearchImportBibResult>({
+          ok: true,
+          value: { added: ['gamma2025'], skipped: ['alpha2024'] },
+        }))
+      },
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const outcome = await controller.importPapersToBib('p1', ['2103.00020v2', '2103.00021v1'])
+    expect(seen).toEqual([['2103.00020v2', '2103.00021v1']])
+    expect('added' in outcome && outcome.added).toEqual(['gamma2025'])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(reads).toBe(2)
+    const bib = controller.getSnapshot().bib
+    expect(bib?.status).toBe('ready')
+    expect(bib?.lastImport).toEqual({ added: ['gamma2025'], skipped: ['alpha2024'] })
+  })
+
+  it('importPapersToBib surfaces a business failure without touching the bib view', async () => {
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => Promise.resolve(carried(BIB)),
+      importPapersToBib: () => Promise.resolve(carried<ResearchImportBibResult>({
+        ok: false,
+        error: { code: 'paper-not-found' },
+      })),
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const outcome = await controller.importPapersToBib('p1', ['nope'])
+    expect('code' in outcome && outcome.code).toBe('paper-not-found')
+    expect(controller.getSnapshot().bib?.lastImport).toBeNull()
   })
 })

@@ -4,30 +4,22 @@
  * free LaTeX syntax-highlight overlay (transparent-text textarea over a
  * token-rendered pre, degrading to plain past HIGHLIGHT_MAX_LENGTH), the
  * autosave status pill, the compile row with the severity-colored issue list
- * (click jumps the editor to the line), and the iframe PDF preview.
+ * (click jumps the editor to the line), the iframe PDF preview, and the
+ * bibliography panel that replaces the preview while open.
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OutlineNode } from 'dsh-mimir/types'
 import type {
-  ResearchCompileView, ResearchOutlineView, ResearchSaveState, ResearchSourceView,
+  ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
+  ResearchOutlineView, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
-import type { ResearchKey } from './locales.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
-import { failureCopy, lineRangeOf } from './view-common.ts'
+import { failureCopy, lineRangeOf, SAVE_KEYS } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
+import { BibPanel } from './BibPanel.tsx'
 import css from './ResearchPanel.module.css'
-
-/** Locale key of one autosave state label. */
-const SAVE_KEYS: Record<ResearchSaveState, ResearchKey> = {
-  clean: 'save.saved',
-  dirty: 'save.dirty',
-  saving: 'save.saving',
-  saved: 'save.saved',
-  conflict: 'save.conflict',
-  'save-error': 'save.error',
-}
 
 /** Editor line height in px; keep in sync with `.editor` in the module CSS. */
 const EDITOR_LINE_HEIGHT = 19
@@ -60,7 +52,9 @@ function OutlineTree({ nodes, onJump }: {
  * @returns the editing surface.
  */
 export function PaperView({
-  outline, compileView, source, projectId, dir, editSource, reloadSource, compile, t,
+  outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
+  bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
+  ensurePapers, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -70,6 +64,16 @@ export function PaperView({
   readonly editSource: (content: string) => void
   readonly reloadSource: () => void
   readonly compile: (projectId: string) => void
+  readonly bib: ResearchBibView | null
+  readonly papers: ResearchPapersView
+  readonly ensureBibliography: (projectId: string) => void
+  readonly reloadBibliography: () => void
+  readonly deleteBibEntry: (key: string) => Promise<ResearchFailureView | null>
+  readonly importPapersToBib: (
+    projectId: string,
+    arxivIds: string[],
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
+  readonly ensurePapers: () => void
   readonly t: ResearchT
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
@@ -80,6 +84,12 @@ export function PaperView({
   const [railCollapsed, setRailCollapsed] = useState(false)
   // Gutter row flashed after a jump (issue list or outline click).
   const [flashLine, setFlashLine] = useState<number | null>(null)
+  // The bibliography panel replaces the PDF preview while open.
+  const [bibOpen, setBibOpen] = useState(false)
+
+  // A project switch closes the bib panel; it reloads for the new project on
+  // the next open.
+  useEffect(() => { setBibOpen(false) }, [projectId])
 
   /** Sync the gutter and the highlight overlay to the textarea's viewport. */
   const syncEditorScroll = (): void => {
@@ -263,6 +273,15 @@ export function PaperView({
           <span className={css.compileStatus} data-state={compileView.state} role="status">
             {compileStatusCopy}
           </span>
+          <button
+            type="button"
+            className={css.bibToggle}
+            disabled={projectId === null}
+            data-active={bibOpen || undefined}
+            onClick={() => { setBibOpen(prev => !prev) }}
+          >
+            {bibOpen ? t('bib.close') : t('bib.open')}
+          </button>
         </div>
         {compileView.issues.length > 0 && (
           <ul className={css.issueList} aria-label={t('issues.title')}>
@@ -291,14 +310,29 @@ export function PaperView({
             ))}
           </ul>
         )}
-        {pdfUrl === null
+        {bibOpen && projectId !== null
           ? (
-            <div className={css.previewEmpty}>
-              <span className={css.emptyGlyph} aria-hidden>📄</span>
-              <span>{t('preview.empty')}</span>
-            </div>
+            <BibPanel
+              bib={bib}
+              papers={papers}
+              projectId={projectId}
+              ensureBibliography={ensureBibliography}
+              reloadBibliography={reloadBibliography}
+              deleteBibEntry={deleteBibEntry}
+              importPapersToBib={importPapersToBib}
+              ensurePapers={ensurePapers}
+              onClose={() => { setBibOpen(false) }}
+              t={t}
+            />
           )
-          : <iframe className={css.previewFrame} title={t('preview.title')} src={pdfUrl} />}
+          : pdfUrl === null
+            ? (
+              <div className={css.previewEmpty}>
+                <span className={css.emptyGlyph} aria-hidden>📄</span>
+                <span>{t('preview.empty')}</span>
+              </div>
+            )
+            : <iframe className={css.previewFrame} title={t('preview.title')} src={pdfUrl} />}
       </section>
     </div>
   )

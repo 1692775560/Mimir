@@ -7,12 +7,22 @@
  * @module dsh-client-ui-mimir/client/view-common
  */
 
-import type { ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage } from 'dsh-mimir/types'
-import type { ResearchFailureView } from './controller.ts'
+import type { BibEntry, ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage } from 'dsh-mimir/types'
+import type { ResearchFailureView, ResearchSaveState } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 
 /** The `t` function shape every view receives from the panel. */
-export type ResearchT = (key: ResearchKey) => string
+export type ResearchT = (key: ResearchKey, params?: Record<string, unknown>) => string
+
+/** Locale key of one autosave state label (the editor's and the bib panel's pill). */
+export const SAVE_KEYS: Record<ResearchSaveState, ResearchKey> = {
+  clean: 'save.saved',
+  dirty: 'save.dirty',
+  saving: 'save.saving',
+  saved: 'save.saved',
+  conflict: 'save.conflict',
+  'save-error': 'save.error',
+}
 
 /** Locale key of one pipeline stage label. */
 export const STAGE_KEYS: Record<ProjectStage, ResearchKey> = {
@@ -144,6 +154,22 @@ export function formatMetricValue(value: number | string): string {
   if (typeof value === 'string') return value
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value)
   return String(Number(value.toPrecision(4)))
+}
+
+/**
+ * One-line summary of one bibliography entry (the bib panel's row): the
+ * title when present, else the author/year pair, else the entry type.
+ * Whitespace runs collapse; the result truncates at 80 characters.
+ */
+export function bibSummaryOf(entry: BibEntry): string {
+  const title = entry.fields['title']?.replace(/\s+/g, ' ').trim()
+  if (title !== undefined && title !== '') {
+    return title.length > 80 ? `${title.slice(0, 80)}…` : title
+  }
+  const fallback = [entry.fields['author']?.trim(), entry.fields['year']?.trim()]
+    .filter(part => part !== undefined && part !== '')
+    .join(' · ')
+  return fallback === '' ? entry.type : fallback
 }
 
 /** All tags across the library, deduped and alphabetically sorted (the filter bar). */

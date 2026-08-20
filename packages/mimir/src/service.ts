@@ -19,15 +19,19 @@ import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { parseTexOutline } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
-import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile } from './paper-source.ts'
+import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
+import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
+import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
 import { fetchArxivSearch } from './tools/arxiv.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
+  BibEntry,
   PaperRecord,
   ResearchArtifactResult,
+  ResearchBibliographyResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
@@ -38,6 +42,7 @@ import type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
+  ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -47,6 +52,7 @@ import type {
   ResearchProjectView,
   ResearchRejected,
   ResearchRemovePaperResult,
+  ResearchSaveBibliographyResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -554,6 +560,131 @@ export class ResearchService extends TypertRemoteService {
       return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
     }
     return success({ mtimeMs: outcome.mtimeMs })
+  }
+
+  /**
+   * Read the addressed project's `references.bib` as parsed entries. An
+   * absent file is a SUCCESS with an empty list and a null mtime — the panel
+   * treats "no bibliography yet" as a normal state, not an error.
+   * @param request - the selected project, plus an optional explicit paper
+   * directory (relative to the workspace) overriding the record's `paperDir`.
+   * @returns entries in file order plus the mtime the parse belongs to (the
+   * optimistic-concurrency base for `saveBibliography`; null when absent), or
+   * `project-not-found`/`invalid-dir` for a bad address.
+   */
+  @Remote('getBibliography')
+  async getBibliography(request: { projectId: string; dir?: string | undefined }): Promise<ResearchBibliographyResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const snapshot = await readPaperSource(join(dir, 'references.bib'))
+    if (snapshot === undefined) return success({ entries: Object.freeze([]), mtimeMs: null })
+    return success({ entries: Object.freeze(parseBibtex(snapshot.content)), mtimeMs: snapshot.mtimeMs })
+  }
+
+  /**
+   * Replace the addressed project's `references.bib` under optimistic
+   * concurrency, creating it when it does not exist yet: a null
+   * `baseMtimeMs` states "I read an absent file" and only a create commits;
+   * otherwise the file's mtime must still equal the base. The paper directory
+   * itself must exist (`paper-not-found` otherwise) — a bibliography without
+   * a scaffolded paper is never created.
+   * @param request - the selected project, the complete next entry list, the
+   * mtime the caller's draft is based on (null for create-only), and an
+   * optional explicit paper directory.
+   * @returns the committed mtime, `project-not-found`, `paper-not-found`,
+   * `invalid-dir`, `bib-not-found` when the file was expected but is gone, or
+   * `conflict` carrying the mtime that displaced the base.
+   */
+  @Remote('saveBibliography')
+  async saveBibliography(request: {
+    projectId: string
+    entries: BibEntry[]
+    baseMtimeMs: number | null
+    dir?: string | undefined
+  }): Promise<ResearchSaveBibliographyResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    try {
+      const stats = await stat(dir)
+      if (!stats.isDirectory()) return rejected({ code: 'paper-not-found' })
+    } catch (error) {
+      if (isNotFound(error)) return rejected({ code: 'paper-not-found' })
+      throw error
+    }
+    const outcome = await saveTextFileOptimistic(
+      join(dir, 'references.bib'), serializeBibtex(request.entries), request.baseMtimeMs,
+    )
+    if (outcome.kind === 'missing') return rejected({ code: 'bib-not-found' })
+    if (outcome.kind === 'conflict') {
+      return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
+    }
+    return success({ mtimeMs: outcome.mtimeMs })
+  }
+
+  /**
+   * Append `@misc` entries for the given remembered papers to the addressed
+   * project's `references.bib`, skipping citation keys already present. Every
+   * arXiv id must name a wiki paper (`paper-not-found` on the first unknown
+   * one — nothing is written then). The read-merge-write runs inside the
+   * writer lock, so a concurrent panel save or agent write cannot be lost.
+   * @param request - the selected project, the arXiv ids to append, and an
+   * optional explicit paper directory.
+   * @returns the appended and the already-present citation keys, or
+   * `project-not-found`/`paper-not-found`/`invalid-dir`.
+   */
+  @Remote('importPapersToBib')
+  async importPapersToBib(request: {
+    projectId: string
+    arxivIds: string[]
+    dir?: string | undefined
+  }): Promise<ResearchImportBibResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    try {
+      const stats = await stat(dir)
+      if (!stats.isDirectory()) return rejected({ code: 'paper-not-found' })
+    } catch (error) {
+      if (isNotFound(error)) return rejected({ code: 'paper-not-found' })
+      throw error
+    }
+    const papers = this.domain.table('papers')
+    const sources = new Map<string, PaperRecord>()
+    for (const arxivId of request.arxivIds) {
+      const paper = papers.get(arxivId)
+      if (paper === undefined) return rejected({ code: 'paper-not-found' })
+      sources.set(arxivId, paper)
+    }
+    const bibPath = join(dir, 'references.bib')
+    return await withFileLock(bibPath, async (): Promise<ResearchImportBibResult> => {
+      const snapshot = await readPaperSource(bibPath)
+      const entries = parseBibtex(snapshot?.content ?? '')
+      const present = new Set(entries.map(entry => entry.key))
+      const added: string[] = []
+      const skipped: string[] = []
+      for (const [arxivId, paper] of sources) {
+        const key = bibKeyOf(arxivId)
+        if (present.has(key)) { skipped.push(key); continue }
+        entries.push(entryFromPaper(paper))
+        present.add(key)
+        added.push(key)
+      }
+      if (added.length > 0) {
+        await writeFileAtomic(bibPath, serializeBibtex(entries), { mode: 0o666 })
+      }
+      return success({ added: Object.freeze(added), skipped: Object.freeze(skipped) })
+    })
   }
 
   /**

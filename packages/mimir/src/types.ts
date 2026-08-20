@@ -11,6 +11,8 @@ import type { LatexEngineKind } from './tools/latex.ts'
 import type { ArxivEntry } from './tools/arxiv.ts'
 export type { OutlineNode } from './outline.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
+export type { BibEntry } from './bibtex.ts'
+import type { BibEntry } from './bibtex.ts'
 
 /** One independent-review verdict. */
 export type Verdict = 'PASS' | 'WARN' | 'FAIL'
@@ -146,6 +148,7 @@ export interface ResearchCompileStatusView {
 export type ResearchFailure =
   | { readonly code: 'project-not-found'; readonly projectId: string }
   | { readonly code: 'paper-not-found' }
+  | { readonly code: 'bib-not-found' }
   | { readonly code: 'invalid-dir'; readonly dir: string }
   | { readonly code: 'invalid-path'; readonly path: string }
   | { readonly code: 'figure-not-found'; readonly relPath: string }
@@ -299,3 +302,18 @@ export type ResearchDeleteServerResult = ResearchResult<{ readonly id: string }>
 
 /** `checkServer` result: the settled probe view. */
 export type ResearchCheckServerResult = ResearchResult<ServerStatusView>
+
+/** `getBibliography` result: the parsed `references.bib` entries plus the file mtime (null when absent). */
+export type ResearchBibliographyResult = ResearchResult<{
+  readonly entries: readonly BibEntry[]
+  readonly mtimeMs: number | null
+}>
+
+/** `saveBibliography` result: the committed mtime (a conflict rejects with its mtime). */
+export type ResearchSaveBibliographyResult = ResearchResult<{ readonly mtimeMs: number }>
+
+/** `importPapersToBib` result: appended and already-present citation keys. */
+export type ResearchImportBibResult = ResearchResult<{
+  readonly added: readonly string[]
+  readonly skipped: readonly string[]
+}>

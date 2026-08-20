@@ -29,7 +29,8 @@ import { createResearchPanelStore } from './store.ts'
 import { en, zh } from './locales.ts'
 
 export type {
-  ResearchArtifactView, ResearchCompileView, ResearchFailureView, ResearchLoadStatus,
+  ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
+  ResearchImportCounts, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
   ResearchSaveState, ResearchSourceView, ResearchView,
 } from './controller.ts'
@@ -160,6 +161,10 @@ export function apply(ctx: ClientContext): void {
       deleteServer: (id) => controller.deleteServer(id),
       checkServer: (id) => controller.checkServer(id),
       checkAllServers: () => { controller.checkAllServers() },
+      ensureBibliography: (projectId) => { controller.ensureBibliography(projectId) },
+      reloadBibliography: () => { controller.reloadBibliography() },
+      deleteBibEntry: key => controller.deleteBibEntry(key),
+      importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
     }),
   }, ResearchPanel))
 }
