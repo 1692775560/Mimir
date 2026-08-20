@@ -1,16 +1,17 @@
 /**
- * The research workbench: a wide fixed overlay with a left rail (the five
+ * The research workbench: a wide fixed overlay with a left rail (the six
  * view tabs plus the project picker at the bottom) and a content area that
  * renders the active view — the project overview card, the Overleaf-style
  * paper editor, the literature library, the experiment records with the
- * experiment log, and the paper-figure grid. All data arrives through the
- * four props shares — the shared store carries open/selection/active-tab, the
- * `useResearch` hook carries the remote view, and the inject face carries the
- * verbs. The component owns no subscription machinery.
+ * experiment log, the paper-figure grid, and the compute-server board. All
+ * data arrives through the four props shares — the shared store carries
+ * open/selection/active-tab, the `useResearch` hook carries the remote view,
+ * and the inject face carries the verbs. The component owns no subscription
+ * machinery.
  * @module dsh-client-ui-mimir/client/ResearchPanel
  */
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
 import type { ResearchPanelProps } from './slots.ts'
@@ -19,10 +20,11 @@ import { PaperView } from './PaperView.tsx'
 import { PapersView } from './PapersView.tsx'
 import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
+import { ServersView } from './ServersView.tsx'
 import css from './ResearchPanel.module.css'
 
-/** The five view tabs in rail order. */
-const TABS: readonly ResearchTab[] = ['overview', 'paper', 'papers', 'experiments', 'figures']
+/** The six view tabs in rail order. */
+const TABS: readonly ResearchTab[] = ['overview', 'paper', 'papers', 'experiments', 'figures', 'servers']
 
 /** Locale key of one tab label. */
 const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
@@ -31,6 +33,52 @@ const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
   papers: 'tab.papers',
   experiments: 'tab.experiments',
   figures: 'tab.figures',
+  servers: 'tab.servers',
+}
+
+/** One 16×16 stroke icon per tab, painted in the nav item's currentColor. */
+const TAB_ICONS: Record<ResearchTab, ReactNode> = {
+  overview: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="2" width="5" height="5" rx="1" />
+      <rect x="2" y="9" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+    </svg>
+  ),
+  paper: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 1.5h5l3 3v10H4z" />
+      <path d="M9 1.5v3h3" />
+      <path d="M6 8.5h4M6 11h4" />
+    </svg>
+  ),
+  papers: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 2h6a1 1 0 0 1 1 1v11l-4-2.6L4 14V3a1 1 0 0 1 1-1z" />
+    </svg>
+  ),
+  experiments: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 1.5h3" />
+      <path d="M7 1.5v4L3.6 12a1.5 1.5 0 0 0 1.3 2.2h6.2a1.5 1.5 0 0 0 1.3-2.2L9 5.5v-4" />
+      <path d="M5 10.5h6" />
+    </svg>
+  ),
+  figures: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <circle cx="5.5" cy="6.5" r="1" />
+      <path d="M2 11.5 5.5 8l2.5 2.5L10.5 8 14 11.5" />
+    </svg>
+  ),
+  servers: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="2.5" width="11" height="4.5" rx="1" />
+      <rect x="2.5" y="9" width="11" height="4.5" rx="1" />
+      <path d="M5 4.75h.01M5 11.25h.01" />
+    </svg>
+  ),
 }
 
 /** The artifact shown by the experiments view's log section. */
@@ -44,7 +92,8 @@ const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
 export function ResearchPanel({
   useStore, actions, useResearch,
   ensure, selectProject, compile, editSource, reloadSource,
-  ensurePapers, loadArtifact, loadFigures, t,
+  ensurePapers, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
   const selectedProjectId = useStore(state => state.selectedProjectId)
@@ -58,6 +107,8 @@ export function ResearchPanel({
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
+  const servers = useResearch(view => view.servers)
+  const serverChecks = useResearch(view => view.serverChecks)
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -74,6 +125,15 @@ export function ResearchPanel({
   useEffect(() => {
     if (open && activeTab === 'papers') ensurePapers()
   }, [open, activeTab, ensurePapers])
+  // The overview's stat chips count the papers and figures slices, both lazy:
+  // warm them when the overview opens so the chips show real numbers instead
+  // of dashes. The experiments slice is already loaded by select().
+  useEffect(() => {
+    if (open && activeTab === 'overview') {
+      ensurePapers()
+      if (selectedProjectId !== null) loadFigures(selectedProjectId)
+    }
+  }, [open, activeTab, selectedProjectId, ensurePapers, loadFigures])
   useEffect(() => {
     if (open && activeTab === 'experiments' && selectedProjectId !== null) {
       loadArtifact(selectedProjectId, EXPERIMENT_LOG_ARTIFACT)
@@ -90,6 +150,18 @@ export function ResearchPanel({
   const selectedProject = selectedProjectId === null
     ? undefined
     : projects.find(project => project.id === selectedProjectId)
+
+  // The overview's stat chips read whatever the other views already fetched;
+  // a view not yet loaded (or belonging to another project) shows a dash.
+  const overviewStats = {
+    papers: papers.status === 'ready' ? papers.list.length : null,
+    experiments: experiments !== null && experiments.projectId === selectedProjectId && experiments.status === 'ready'
+      ? experiments.list.length
+      : null,
+    figures: figures !== null && figures.projectId === selectedProjectId && figures.status === 'ready'
+      ? figures.list.length
+      : null,
+  }
 
   return (
     <div className={css.workbench} role="dialog" aria-label={t('panel.title')}>
@@ -112,6 +184,7 @@ export function ResearchPanel({
               data-active={tab === activeTab || undefined}
               onClick={() => { actions.setTab(tab) }}
             >
+              <span className={css.navIcon} aria-hidden>{TAB_ICONS[tab]}</span>
               {t(TAB_KEYS[tab])}
             </button>
           ))}
@@ -150,7 +223,7 @@ export function ResearchPanel({
         </div>
       </aside>
       <main className={css.content}>
-        {activeTab === 'overview' && <OverviewView project={selectedProject} t={t} />}
+        {activeTab === 'overview' && <OverviewView project={selectedProject} stats={overviewStats} t={t} />}
         {activeTab === 'paper' && (
           <PaperView
             outline={outline}
@@ -179,6 +252,20 @@ export function ResearchPanel({
             projectId={selectedProjectId}
             dir={selectedProject?.paperDir}
             loadFigures={loadFigures}
+            uploadFigures={uploadFigures}
+            deleteFigure={deleteFigure}
+            t={t}
+          />
+        )}
+        {activeTab === 'servers' && (
+          <ServersView
+            servers={servers}
+            checks={serverChecks}
+            ensureServers={ensureServers}
+            saveServer={saveServer}
+            deleteServer={deleteServer}
+            checkServer={checkServer}
+            checkAllServers={checkAllServers}
             t={t}
           />
         )}

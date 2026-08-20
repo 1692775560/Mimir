@@ -1,0 +1,319 @@
+/**
+ * The servers view: a card grid of the remembered compute servers — name,
+ * `user@host:port`, note, a probe-status dot with latency and relative check
+ * time, and the GPU table (per-GPU utilization and memory bars) — plus an
+ * inline add/edit form card. Opening the view loads the list once and probes
+ * every server once; probes are repeatable per card or for the whole list.
+ * @module dsh-client-ui-mimir/client/ServersView
+ */
+
+import { useEffect, useState } from 'react'
+import type { ServerInput, ServerRecord } from 'dsh-mimir/types'
+import type {
+  ResearchFailureView, ResearchServersView, ServerCheckState,
+} from './controller.ts'
+import { failureCopy, relativeTime, type ResearchT } from './view-common.ts'
+import { EmptyState } from './EmptyState.tsx'
+import { ViewHead } from './ViewHead.tsx'
+import css from './ResearchPanel.module.css'
+
+/** Form field state: the port stays text until submit. */
+interface ServerFormState {
+  readonly name: string
+  readonly host: string
+  readonly port: string
+  readonly username: string
+  readonly note: string
+}
+
+/** The blank form the add button opens. */
+const EMPTY_FORM: ServerFormState = { name: '', host: '', port: '22', username: '', note: '' }
+
+/** Form state of one existing record (the edit path's refill). */
+function formOf(record: ServerRecord): ServerFormState {
+  return {
+    name: record.name,
+    host: record.host,
+    port: String(record.port),
+    username: record.username,
+    note: record.note,
+  }
+}
+
+/** The status-dot data-state of one server's probe lifecycle. */
+function dotStateOf(check: ServerCheckState | undefined): string {
+  if (check === undefined) return 'unknown'
+  if (check === 'checking') return 'checking'
+  return check.state
+}
+
+/**
+ * @param props - the servers slice, the per-server probe states, the
+ * ensure/save/delete/check verbs, and copy.
+ * @returns the server card grid plus the inline form card.
+ */
+export function ServersView({
+  servers, checks, ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
+}: {
+  readonly servers: ResearchServersView
+  readonly checks: Readonly<Record<string, ServerCheckState>>
+  readonly ensureServers: () => void
+  readonly saveServer: (server: ServerInput) => Promise<ResearchFailureView | null>
+  readonly deleteServer: (id: string) => Promise<ResearchFailureView | null>
+  readonly checkServer: (id: string) => Promise<void>
+  readonly checkAllServers: () => void
+  readonly t: ResearchT
+}) {
+  /** 'new' for the add form, a server id for the edit form, null when closed. */
+  const [editing, setEditing] = useState<'new' | string | null>(null)
+  const [form, setForm] = useState<ServerFormState>(EMPTY_FORM)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  // The view mounts only while its tab is active: load the list once, then
+  // probe every listed server exactly once (a settled or in-flight probe
+  // occupies the id's slot, so the effect never re-fires it).
+  useEffect(() => { ensureServers() }, [ensureServers])
+  useEffect(() => {
+    if (servers.status !== 'ready') return
+    for (const server of servers.list) {
+      if (checks[server.id] === undefined) void checkServer(server.id)
+    }
+  }, [servers, checks, checkServer])
+
+  const openAdd = (): void => {
+    setEditing('new')
+    setForm(EMPTY_FORM)
+    setFormError(null)
+  }
+  const openEdit = (record: ServerRecord): void => {
+    setEditing(record.id)
+    setForm(formOf(record))
+    setFormError(null)
+  }
+  const patchForm = (patch: Partial<ServerFormState>): void => {
+    setForm(current => ({ ...current, ...patch }))
+  }
+  const submit = (): void => {
+    if (saving) return
+    setSaving(true)
+    setFormError(null)
+    const server: ServerInput = {
+      id: editing === 'new' || editing === null ? undefined : editing,
+      name: form.name,
+      host: form.host,
+      port: Number(form.port),
+      username: form.username,
+      note: form.note,
+    }
+    void saveServer(server)
+      .then((failure) => {
+        if (failure !== null) {
+          setFormError(failure.message)
+          return
+        }
+        setEditing(null)
+      })
+      .finally(() => { setSaving(false) })
+  }
+  const removeServer = (record: ServerRecord): void => {
+    if (!window.confirm(t('servers.confirmDelete'))) return
+    void deleteServer(record.id).then((failure) => {
+      setActionError(failure === null ? null : `${t('servers.deleteFailed')}：${failure.message}`)
+    })
+  }
+
+  const editingRecord = editing === null || editing === 'new'
+    ? undefined
+    : servers.list.find(server => server.id === editing)
+
+  return (
+    <div className={css.servers}>
+      <ViewHead title={t('tab.servers')} subtitle={t('view.servers.subtitle')}>
+        <button type="button" className={css.btnPrimary} onClick={openAdd}>
+          {t('servers.add')}
+        </button>
+        <button
+          type="button"
+          className={css.btn}
+          disabled={servers.list.length === 0}
+          onClick={checkAllServers}
+        >
+          {t('servers.checkAll')}
+        </button>
+      </ViewHead>
+      {actionError !== null && (
+        <p className={css.failure} role="alert">{actionError}</p>
+      )}
+      {editing !== null && (editing === 'new' || editingRecord !== undefined) && (
+        <div className={css.serverForm}>
+          <h3 className={css.sectionTitle}>
+            {editing === 'new' ? t('servers.form.add') : t('servers.form.edit')}
+          </h3>
+          <div className={css.serverFormGrid}>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('servers.form.name')}</span>
+              <input
+                className={css.input}
+                value={form.name}
+                placeholder={t('servers.form.namePlaceholder')}
+                onChange={event => { patchForm({ name: event.target.value }) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('servers.form.host')}</span>
+              <input
+                className={css.input}
+                value={form.host}
+                placeholder={t('servers.form.hostPlaceholder')}
+                onChange={event => { patchForm({ host: event.target.value }) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('servers.form.port')}</span>
+              <input
+                className={css.input}
+                value={form.port}
+                inputMode="numeric"
+                onChange={event => { patchForm({ port: event.target.value }) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('servers.form.username')}</span>
+              <input
+                className={css.input}
+                value={form.username}
+                placeholder={t('servers.form.usernamePlaceholder')}
+                onChange={event => { patchForm({ username: event.target.value }) }}
+              />
+            </label>
+            <label className={css.field} data-wide>
+              <span className={css.fieldLabel}>{t('servers.form.note')}</span>
+              <input
+                className={css.input}
+                value={form.note}
+                placeholder={t('servers.form.notePlaceholder')}
+                onChange={event => { patchForm({ note: event.target.value }) }}
+              />
+            </label>
+          </div>
+          {formError !== null && (
+            <p className={css.failure} role="alert">{formError}</p>
+          )}
+          <div className={css.serverFormActions}>
+            <button type="button" className={css.btnPrimary} disabled={saving} onClick={submit}>
+              {t('servers.form.save')}
+            </button>
+            <button type="button" className={css.btn} onClick={() => { setEditing(null) }}>
+              {t('servers.form.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+      {servers.status === 'cold' || servers.status === 'loading' ? (
+        <p className={css.hint}>{t('servers.loading')}</p>
+      ) : servers.status === 'error' ? (
+        <p className={css.failure} role="alert">
+          {t('error.servers')}：{failureCopy(t, servers.failure)}
+          <button type="button" className={css.btn} onClick={ensureServers}>
+            {t('error.retry')}
+          </button>
+        </p>
+      ) : servers.list.length === 0 ? (
+        <EmptyState glyph="🖥️">{t('servers.empty')}</EmptyState>
+      ) : (
+        <div className={css.serversGrid}>
+          {servers.list.map((record) => {
+            const check = checks[record.id]
+            const checking = check === 'checking'
+            const settled = check !== undefined && check !== 'checking' ? check : null
+            return (
+              <article key={record.id} className={css.serverCard}>
+                <div className={css.serverCardHead}>
+                  <span className={css.serverDot} data-state={dotStateOf(check)} aria-hidden />
+                  <div className={css.serverCardTitle}>
+                    <span className={css.serverName}>{record.name}</span>
+                    <code className={css.serverAddress}>
+                      {record.username === '' ? '' : `${record.username}@`}
+                      {record.host}:{record.port}
+                    </code>
+                  </div>
+                  <span className={css.serverState} data-state={dotStateOf(check)}>
+                    {checking
+                      ? t('servers.state.checking')
+                      : settled === null
+                        ? t('servers.state.unknown')
+                        : settled.state === 'online' ? t('servers.state.online') : t('servers.state.offline')}
+                  </span>
+                </div>
+                {record.note !== '' && <p className={css.serverNote}>{record.note}</p>}
+                <p className={css.serverProbe}>
+                  {settled === null
+                    ? checking ? t('servers.state.checking') : t('servers.neverChecked')
+                    : (
+                      <>
+                        {settled.latencyMs !== null && <span>{settled.latencyMs} ms · </span>}
+                        <span>{relativeTime(t, settled.checkedAt)}</span>
+                      </>
+                    )}
+                </p>
+                {settled !== null && settled.message !== null && (
+                  <p className={css.serverMessage} role="status">{settled.message}</p>
+                )}
+                {settled !== null && settled.state === 'online' && (
+                  settled.gpus.length === 0 ? (
+                    <p className={css.hint}>{t('servers.noGpus')}</p>
+                  ) : (
+                    <div className={css.gpuList}>
+                      {settled.gpus.map((gpu, index) => (
+                        <div key={`${gpu.name}-${index}`} className={css.gpuRow}>
+                          <span className={css.gpuName} title={gpu.name}>{gpu.name}</span>
+                          <span className={css.gpuMetric}>
+                            <span className={css.gpuBar}>
+                              <span className={css.gpuBarFill} style={{ width: `${Math.min(100, Math.max(0, gpu.utilizationPct))}%` }} />
+                            </span>
+                            <span className={css.gpuValue}>{gpu.utilizationPct}%</span>
+                          </span>
+                          <span className={css.gpuMetric}>
+                            <span className={css.gpuBar} data-kind="memory">
+                              <span
+                                className={css.gpuBarFill}
+                                style={{
+                                  width: gpu.memoryTotalMb > 0
+                                    ? `${Math.min(100, (gpu.memoryUsedMb / gpu.memoryTotalMb) * 100)}%`
+                                    : '0%',
+                                }}
+                              />
+                            </span>
+                            <span className={css.gpuValue}>{gpu.memoryUsedMb}/{gpu.memoryTotalMb} MB</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+                <div className={css.serverActions}>
+                  <button
+                    type="button"
+                    className={css.btn}
+                    disabled={checking}
+                    onClick={() => { void checkServer(record.id) }}
+                  >
+                    {t('servers.check')}
+                  </button>
+                  <button type="button" className={css.btn} onClick={() => { openEdit(record) }}>
+                    {t('servers.edit')}
+                  </button>
+                  <button type="button" className={css.btn} data-danger onClick={() => { removeServer(record) }}>
+                    {t('servers.delete')}
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

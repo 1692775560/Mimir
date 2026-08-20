@@ -11,15 +11,20 @@ import type { ResearchRemote } from '../src/client/controller.ts'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ResearchArtifactResult,
+  ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
+  ResearchDeleteFigureResult,
+  ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFiguresResult,
   ResearchListProjectsResult,
+  ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveServerResult,
 } from 'dsh-mimir/types'
 
 /** Wrap one business result in the carrier's success branch. */
@@ -57,13 +62,18 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     listExperiments: missing('listExperiments'),
     readArtifact: missing('readArtifact'),
     listFigures: missing('listFigures'),
+    deleteFigure: missing('deleteFigure'),
+    listServers: missing('listServers'),
+    saveServer: missing('saveServer'),
+    deleteServer: missing('deleteServer'),
+    checkServer: missing('checkServer'),
     ...overrides,
   }
 }
 
 const IDLE: ResearchCompileStatusResult = {
   ok: true,
-  value: { state: 'idle', issues: [], pdfUpdatedAt: null },
+  value: { state: 'idle', issues: [], engine: null, pdfUpdatedAt: null },
 }
 
 describe('ResearchController', () => {
@@ -157,7 +167,7 @@ describe('ResearchController', () => {
     const controller = new ResearchController(stubRemote({
       compile: () => Promise.resolve(carried<ResearchCompileResult>({
         ok: true,
-        value: { state: 'ok', issues: [], pdfUpdatedAt: 1724000000000 },
+        value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 1724000000000 },
       })),
     }))
     const done = controller.compile('p1')
@@ -179,7 +189,7 @@ describe('ResearchController', () => {
     const first = controller.compile('p1')
     await controller.compile('p1')
     expect(calls).toBe(1)
-    run.resolve(carried({ ok: true, value: { state: 'ok', issues: [], pdfUpdatedAt: 1 } }))
+    run.resolve(carried({ ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 1 } }))
     await first
     await Promise.resolve()
     await Promise.resolve()
@@ -250,7 +260,7 @@ describe('ResearchController source editing', () => {
       compile: () => {
         compiles += 1
         return Promise.resolve(carried<ResearchCompileResult>({
-          ok: true, value: { state: 'ok', issues: [], pdfUpdatedAt: 5 },
+          ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 5 },
         }))
       },
     }))
@@ -327,7 +337,7 @@ describe('ResearchController source editing', () => {
       compile: (request) => {
         seen.push(['compile', request])
         return Promise.resolve(carried<ResearchCompileResult>({
-          ok: true, value: { state: 'ok', issues: [], pdfUpdatedAt: 3 },
+          ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 3 },
         }))
       },
     }))
@@ -363,7 +373,7 @@ describe('ResearchController source editing', () => {
     await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + COMPILE_DEBOUNCE_MS)
     // The save landed but its compile queued behind the in-flight run.
     expect(compiles).toBe(1)
-    run.resolve(carried({ ok: true, value: { state: 'ok', issues: [], pdfUpdatedAt: 9 } }))
+    run.resolve(carried({ ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 9 } }))
     await first
     await vi.advanceTimersByTimeAsync(0)
     expect(compiles).toBe(2)
@@ -485,5 +495,111 @@ describe('ResearchController workbench views', () => {
     controller.loadFigures('p1', true)
     await settle()
     expect(calls).toBe(2)
+  })
+})
+
+describe('ResearchController servers and figure deletion', () => {
+  /** Settle all queued microtasks of the void-fired loads. */
+  const settle = async (): Promise<void> => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  const SERVER = {
+    id: 'srv-1', name: 'gpu01', host: '10.0.0.8', port: 22,
+    username: 'ops', note: '', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z',
+  }
+
+  it('loads the server list once on ensureServers', async () => {
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      listServers: () => {
+        calls += 1
+        return Promise.resolve(carried<ResearchListServersResult>({ ok: true, value: { servers: [SERVER] } }))
+      },
+    }))
+    expect(controller.getSnapshot().servers.status).toBe('cold')
+    controller.ensureServers()
+    expect(controller.getSnapshot().servers.status).toBe('loading')
+    await settle()
+    expect(controller.getSnapshot().servers).toMatchObject({ status: 'ready' })
+    expect(controller.getSnapshot().servers.list[0]?.name).toBe('gpu01')
+    controller.ensureServers()
+    expect(calls).toBe(1)
+  })
+
+  it('refreshes the list after a save and returns the business failure on invalid input', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      saveServer: ({ server }) => Promise.resolve(carried<ResearchSaveServerResult>(
+        server.name === ''
+          ? { ok: false, error: { code: 'invalid-input', message: 'name must be non-empty' } }
+          : { ok: true, value: { server: { ...SERVER, name: server.name } } },
+      )),
+      listServers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchListServersResult>({ ok: true, value: { servers: [SERVER] } }))
+      },
+    }))
+    const failure = await controller.saveServer({ ...SERVER, id: undefined, name: '' })
+    expect(failure).toMatchObject({ code: 'invalid-input' })
+    expect(lists).toBe(0)
+    const ok = await controller.saveServer({ ...SERVER, id: undefined })
+    expect(ok).toBeNull()
+    expect(lists).toBe(1)
+    expect(controller.getSnapshot().servers.status).toBe('ready')
+  })
+
+  it('publishes checking then the settled probe view, and deleteServer drops the slot', async () => {
+    const probe = deferred<RemoteResult<ResearchCheckServerResult>>()
+    const controller = new ResearchController(stubRemote({
+      listServers: () => Promise.resolve(carried<ResearchListServersResult>({ ok: true, value: { servers: [SERVER] } })),
+      checkServer: () => probe.promise,
+      deleteServer: () => Promise.resolve(carried<ResearchDeleteServerResult>({ ok: true, value: { id: SERVER.id } })),
+    }))
+    const checking = controller.checkServer(SERVER.id)
+    expect(controller.getSnapshot().serverChecks[SERVER.id]).toBe('checking')
+    probe.resolve(carried<ResearchCheckServerResult>({
+      ok: true,
+      value: {
+        state: 'offline', latencyMs: null, gpus: [],
+        checkedAt: '2026-08-02T00:00:00Z', message: 'connect ECONNREFUSED',
+      },
+    }))
+    await checking
+    expect(controller.getSnapshot().serverChecks[SERVER.id]).toMatchObject({ state: 'offline' })
+    const failure = await controller.deleteServer(SERVER.id)
+    expect(failure).toBeNull()
+    expect(controller.getSnapshot().serverChecks[SERVER.id]).toBeUndefined()
+  })
+
+  it('resiliently folds a carrier failure into an offline probe view', async () => {
+    const controller = new ResearchController(stubRemote({
+      checkServer: () => Promise.resolve({ ok: false, error: { code: 'unavailable', message: 'host down', details: {} } }),
+    }))
+    await controller.checkServer(SERVER.id)
+    expect(controller.getSnapshot().serverChecks[SERVER.id]).toMatchObject({
+      state: 'offline', message: 'host down',
+    })
+  })
+
+  it('deleteFigure forwards the paperDir and forces a rescan', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      listProjects: () => Promise.resolve(carried(PROJECTS)),
+      deleteFigure: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchDeleteFigureResult>({ ok: true, value: { relPath: request.relPath } }))
+      },
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
+    }))
+    controller.ensure()
+    await settle()
+    const failure = await controller.deleteFigure('p1', 'figures/f1.png')
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ projectId: 'p1', relPath: 'figures/f1.png', dir: undefined }])
+    await settle()
+    expect(controller.getSnapshot().figures).toMatchObject({ projectId: 'p1', status: 'ready' })
   })
 })

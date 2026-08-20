@@ -38,6 +38,17 @@ export function formatSize(sizeBytes: number): string {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** Localized relative timestamp (e.g. a probe's checkedAt), coarse-grained. */
+export function relativeTime(t: ResearchT, iso: string): string {
+  const elapsedMs = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 60_000) return t('time.justNow')
+  const minutes = Math.floor(elapsedMs / 60_000)
+  if (minutes < 60) return `${minutes} ${t('time.minutesAgo')}`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ${t('time.hoursAgo')}`
+  return `${Math.floor(hours / 24)} ${t('time.daysAgo')}`
+}
+
 /**
  * Build the figure route URL for one file of one project's paper directory.
  * The record's `paperDir` rides along as `?dir=`, same convention as the

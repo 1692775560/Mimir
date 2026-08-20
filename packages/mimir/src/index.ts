@@ -7,9 +7,9 @@
  */
 
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { extname, resolve, sep } from 'node:path'
+import { basename, extname, join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: pulls the ctx.webServer Context merge for the PDF route below.
@@ -32,14 +32,18 @@ export type {
   FigureEntry,
   OutlineNode,
   ResearchArtifactResult,
+  ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileState,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchDeleteFigureResult,
+  ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
   ResearchListProjectsResult,
+  ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
@@ -47,7 +51,12 @@ export type {
   ResearchRejected,
   ResearchResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveServerResult,
   ResearchSuccess,
+  ServerGpuView,
+  ServerInput,
+  ServerRecord,
+  ServerStatusView,
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
@@ -274,10 +283,75 @@ function createFigureHandler(
   }
 }
 
+/** Raw-body cap of the figure upload route (a security invariant, not a tunable). */
+const FIGURE_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024
+
+/**
+ * Receive one uploaded figure for a wiki project's paper directory. The query
+ * carries `?project=` (an unknown id is a 404), `?name=` (reduced to its
+ * basename, so no traversal is expressible; a non-figure extension is a 400),
+ * and an optional `?dir=` override resolved like the PDF route. The raw body
+ * lands at `figures/<name>` under the paper directory (created on demand,
+ * same-name overwrite); a body over {@link FIGURE_UPLOAD_LIMIT_BYTES} is a
+ * 413, any method but POST a 405.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createFigureUploadHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'POST') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const projectId = url.searchParams.get('project')
+    if (projectId === null || projectId.length === 0) {
+      res.writeHead(400).end('expected ?project=<project id>')
+      return
+    }
+    const record = deps.domain.table('projects').get(projectId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const name = basename(url.searchParams.get('name') ?? '')
+    if (name === '' || !isFigureFile(name)) {
+      res.writeHead(400).end('name must name a figure file (.png/.jpg/.jpeg/.svg/.pdf)')
+      return
+    }
+    const dir = resolvePaperDir(root, url.searchParams.get('dir') ?? undefined, record.paperDir)
+    if (dir === undefined) {
+      res.writeHead(400).end('dir must be a relative path inside the research workspace')
+      return
+    }
+    const chunks: Buffer[] = []
+    let sizeBytes = 0
+    for await (const chunk of req) {
+      sizeBytes += (chunk as Buffer).length
+      if (sizeBytes > FIGURE_UPLOAD_LIMIT_BYTES) {
+        res.writeHead(413).end('figure exceeds the 50MB limit')
+        req.destroy()
+        return
+      }
+      chunks.push(chunk as Buffer)
+    }
+    const figuresDir = join(dir, 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    await writeFile(join(figuresDir, name), Buffer.concat(chunks))
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ relPath: `figures/${name}` }))
+  }
+}
+
+
 /**
  * Mount the research suite: open the wiki domain, register the four tools and
- * the five commands, mount the research panel's Remote service and PDF route,
- * and tie the domain's close to the plugin lifecycle.
+ * the five commands, mount the research panel's Remote service and its HTTP
+ * routes (PDF, figure, figure upload), and tie the domain's close to the
+ * plugin lifecycle.
  * @param ctx - Plugin context.
  * @param config - Validated plugin config.
  * @returns resolution after the domain is open and every surface is registered.
@@ -324,5 +398,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       handler: createFigureHandler(deps),
     }),
     'mimir.figureRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/figure-upload',
+      handler: createFigureUploadHandler(deps),
+    }),
+    'mimir.figureUploadRoute',
   )
 }

@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { ClaimRecord, ExperimentRecord, IdeaRecord, PaperRecord, ProjectRecord } from './types.ts'
+import type { ClaimRecord, ExperimentRecord, IdeaRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
 
 /** Durable shape of one remembered paper. */
 export const paperRecord = z.object({
@@ -61,9 +61,27 @@ export const experimentRecord = z.object({
   updatedAt: z.string(),
 })
 
+/** Durable shape of one remembered compute server. */
+export const serverRecord = z.object({
+  id: z.string(),
+  name: z.string(),
+  host: z.string(),
+  port: z.number().int().min(1).max(65535),
+  /** SSH login user; an empty string downgrades probes to TCP-only. */
+  username: z.string(),
+  note: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
 /**
- * The research wiki domain spec: five tables, no global singleton. The spec
+ * The research wiki domain spec: six tables, no global singleton. The spec
  * object is the single source of the domain's name, version, and schemas.
+ * The `servers` table was added WITHOUT a version bump: the domain loader
+ * fills a table missing from a stored snapshot with an empty map, so
+ * existing v2 JSON stores open with `servers` empty, while a bump would make
+ * the storage-json backend reject every existing file (`version-mismatch`)
+ * with no migration path.
  */
 export const researchWikiDomainSpec = defineDomain({
   name: 'research_wiki',
@@ -74,6 +92,7 @@ export const researchWikiDomainSpec = defineDomain({
     claims: domainTable<string, ClaimRecord>(claimRecord),
     projects: domainTable<string, ProjectRecord>(projectRecord),
     experiments: domainTable<string, ExperimentRecord>(experimentRecord),
+    servers: domainTable<string, ServerRecord>(serverRecord),
   },
 })
 

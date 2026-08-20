@@ -65,6 +65,21 @@ describe('researchWikiDomainSpec', () => {
     expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
   })
 
+  it('opens a v2 snapshot predating the servers table with servers empty', async () => {
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('papers').put(paper.arxivId, paper)
+    }
+    // The servers table was added without a version bump; a store written
+    // before it existed simply has no servers snapshot to load.
+    pool.media.get('research_wiki')!.tables.delete('servers')
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
+    expect(reopened.table('servers').size).toBe(0)
+  })
+
   it('rejects a stored record that fails its zod schema, naming table and key', async () => {
     const pool = new MemoryMediaPool()
     {

@@ -18,7 +18,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ResearchView } from './controller.ts'
+import type { ServerInput } from 'dsh-mimir/types'
+import type { ResearchFailureView, ResearchView } from './controller.ts'
 import type { createResearchPanelStore } from './store.ts'
 
 /** Store handle type shared by both registrations. */
@@ -65,6 +66,49 @@ export interface ResearchPanelInjected {
    * @param force - bypass the fresh-view skip (the refresh button).
    */
   loadFigures: (projectId: string, force?: boolean) => void
+  /**
+   * Upload image files into one project's paper directory through the
+   * `/research/figure-upload` route, one POST per file, then force a rescan.
+   * @param projectId - wiki project id.
+   * @param dir - the project's paper directory override, when any.
+   * @param files - the picked files.
+   * @param onProgress - called after each settled upload with (done, total).
+   * @returns resolution after every file settled; per-file HTTP failures throw.
+   */
+  uploadFigures: (
+    projectId: string,
+    dir: string | undefined,
+    files: readonly File[],
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<void>
+  /**
+   * Delete one figure of one project and force a rescan.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /** Load the server list once, on the servers view's first open. */
+  ensureServers: () => void
+  /**
+   * Create or update one server, then refresh the list.
+   * @param server - the upsert payload; `id` present updates, absent creates.
+   * @returns null on success, the settled failure otherwise.
+   */
+  saveServer: (server: ServerInput) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one server and its probe state, then refresh the list.
+   * @param id - server record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteServer: (id: string) => Promise<ResearchFailureView | null>
+  /**
+   * Probe one server (TCP reachability plus the best-effort GPU readout).
+   * @param id - server record id.
+   */
+  checkServer: (id: string) => Promise<void>
+  /** Probe every listed server that is not already being probed. */
+  checkAllServers: () => void
 }
 
 /** Full props of the sidebar-footer research toggle. */

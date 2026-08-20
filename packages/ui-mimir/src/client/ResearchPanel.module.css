@@ -38,7 +38,7 @@
 /* Left rail: brand head + pill nav + the project picker at the bottom. */
 .side {
   display: flex;
-  flex: 0 0 200px;
+  flex: 0 0 216px;
   min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
@@ -102,8 +102,9 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 9px;
   height: 34px;
-  padding: 0 12px 0 16px;
+  padding: 0 12px 0 14px;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -112,6 +113,23 @@
   text-align: left;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.navIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+
+.navIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.navItem[data-active] .navIcon {
+  opacity: 1;
 }
 
 .navItem:hover {
@@ -134,6 +152,130 @@
   width: 3px;
   border-radius: 2px;
   background: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+/* Unified view header: title + subtitle on the left, actions on the right. */
+.viewHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.viewHeadText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.viewTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.viewSubtitle {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.viewActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The two button faces: `btn` is the outlined secondary, `btnPrimary` the
+   solid primary. The `data-danger` flag paints a destructive secondary. */
+.btn,
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn {
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-primary, #17233d);
+}
+
+.btn[data-danger] {
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.btn[data-danger]:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 30%));
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 8%));
+}
+
+.btnPrimary {
+  border: 1px solid transparent;
+  background: var(--dsw-alias-button-primary-fill, #4176e6);
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  box-shadow: 0 2px 6px rgb(65 118 230 / 25%);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover, #2f5fd0);
+  box-shadow: 0 4px 10px rgb(65 118 230 / 30%);
+}
+
+.btn:disabled,
+.btnPrimary:disabled {
+  cursor: default;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+/* Overview stat chips: one tinted chip per count. */
+.statChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.statChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 999px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.statValue {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
 }
 
 .sideProjects {
@@ -237,7 +379,7 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 20px 24px;
+  padding: 24px 28px;
   background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
 }
 
@@ -265,6 +407,9 @@
 
 /* Overview: the selected project's card with the five-stage progress track. */
 .overviewWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   width: 100%;
   max-width: 1080px;
   margin: 0 auto;
@@ -689,14 +834,20 @@
   font-size: 13px;
 }
 
-/* Papers view: the library card grid. */
+/* Papers view: the library card grid under the view header. */
+.papers {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
 .papersGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
 .paperCard {
@@ -914,19 +1065,15 @@
   margin: 6px 0;
 }
 
-/* Figures view: the thumbnail grid plus the lightbox overlay. */
+/* Figures view: the thumbnail grid plus the lightbox overlay. Cards are
+   divs carrying an inner preview button and a hover-revealed action row. */
 .figures {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-}
-
-.figuresToolbar {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .figuresGrid {
@@ -936,6 +1083,7 @@
 }
 
 .figureCard {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -945,13 +1093,69 @@
   background: var(--dsw-specific-menu, #fff);
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
   text-align: left;
-  cursor: pointer;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.figureCard:hover {
+.figureCard:hover,
+.figureCard:focus-within {
   border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
   box-shadow: 0 4px 16px rgb(0 0 0 / 8%);
+}
+
+.figurePreview {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* The copy/delete row, revealed on hover or keyboard focus. */
+.figureActions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.figureCard:hover .figureActions,
+.figureCard:focus-within .figureActions {
+  opacity: 1;
+  transform: none;
+}
+
+.figureAction {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 10%);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.figureAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-primary, #17233d);
+}
+
+.figureAction[data-copied] {
+  border-color: transparent;
+  background: var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 12%));
+  color: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.figureAction[data-danger]:hover {
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 10%));
+  color: var(--dsw-alias-state-error-primary, #d93026);
 }
 
 .figureThumb {
@@ -1006,4 +1210,282 @@
   border-radius: 10px;
   box-shadow: 0 24px 64px rgb(0 0 0 / 40%);
   object-fit: contain;
+}
+
+/* Servers view: the compute-server card grid plus the inline add/edit form. */
+.servers {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.serversGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.serverCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.serverCard:hover {
+  border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
+  box-shadow: 0 4px 16px rgb(0 0 0 / 8%);
+}
+
+.serverCardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* The probe-status dot: green online, red offline, grey never probed, and a
+   pulsing blue while a probe is in flight. */
+.serverDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-border-l3, rgb(0 0 0 / 20%));
+}
+
+.serverDot[data-state='online'] {
+  background: var(--dsw-alias-state-success-primary, #2da44e);
+  box-shadow: 0 0 0 3px var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 15%));
+}
+
+.serverDot[data-state='offline'] {
+  background: var(--dsw-alias-state-error-primary, #d93026);
+  box-shadow: 0 0 0 3px var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 12%));
+}
+
+.serverDot[data-state='checking'] {
+  background: var(--dsw-alias-state-business-primary, #4176e6);
+  animation: serverDotPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes serverDotPulse {
+  from { box-shadow: 0 0 0 2px rgb(65 118 230 / 20%); }
+  to { box-shadow: 0 0 0 5px rgb(65 118 230 / 8%); }
+}
+
+.serverCardTitle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.serverName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.serverAddress {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The textual twin of the dot, painted in the same state color. */
+.serverState {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--dsw-alias-markdown-code-block, #f1f3f5);
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+}
+
+.serverState[data-state='online'] {
+  background: var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 12%));
+  color: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.serverState[data-state='offline'] {
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 10%));
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.serverState[data-state='checking'] {
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 12%));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.serverNote {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.serverProbe {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.serverMessage {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 8%));
+  color: var(--dsw-alias-state-error-primary, #d93026);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.gpuList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+}
+
+.gpuRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gpuName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gpuMetric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gpuBar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dsw-alias-border-l1, rgb(0 0 0 / 6%));
+  overflow: hidden;
+}
+
+.gpuBarFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--dsw-alias-state-business-primary, #4176e6);
+  transition: width 0.3s ease;
+}
+
+.gpuBar[data-kind='memory'] .gpuBarFill {
+  background: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.gpuValue {
+  flex: 0 0 auto;
+  min-width: 86px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.serverActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* The inline add/edit form card above the grid. */
+.serverForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 4px 16px rgb(0 0 0 / 4%);
+}
+
+.serverForm .sectionTitle {
+  margin: 0;
+}
+
+.serverFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field[data-wide] {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 9px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--dsw-alias-label-quaternary, #9aa2b1);
+}
+
+.input:focus {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  box-shadow: 0 0 0 3px var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 15%));
+}
+
+.serverFormActions {
+  display: flex;
+  gap: 8px;
 }

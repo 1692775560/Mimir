@@ -10,32 +10,44 @@
  * @module dsh-mimir/src/service
  */
 
-import { readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { execFile } from 'node:child_process'
+import { readFile, stat, unlink } from 'node:fs/promises'
+import { connect } from 'node:net'
+import { join, resolve, sep } from 'node:path'
+import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { parseTexOutline } from './outline.ts'
-import { isArtifactName, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
+import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile } from './paper-source.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
   ResearchArtifactResult,
+  ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchDeleteFigureResult,
+  ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
   ResearchListProjectsResult,
+  ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRejected,
   ResearchSavePaperSourceResult,
+  ResearchSaveServerResult,
   ResearchSuccess,
+  ServerGpuView,
+  ServerInput,
+  ServerRecord,
+  ServerStatusView,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -107,6 +119,103 @@ async function pdfMtime(pdfPath: string): Promise<number | null> {
     if (!isNotFound(error)) throw error
     return null
   }
+}
+
+/** TCP reachability probe timeout; part of the checkServer probe contract. */
+const TCP_PROBE_TIMEOUT_MS = 4000
+/** Timeout of the best-effort ssh `nvidia-smi` readout. */
+const GPU_PROBE_TIMEOUT_MS = 8000
+/** Connect timeout handed to the ssh client itself. */
+const GPU_PROBE_SSH_CONNECT_TIMEOUT_S = 5
+/** The remote command whose CSV output feeds the GPU table. */
+const NVIDIA_SMI_QUERY = 'nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits'
+
+/** Outcome of one TCP reachability probe. */
+type TcpProbeOutcome =
+  | { readonly ok: true; readonly latencyMs: number }
+  | { readonly ok: false; readonly message: string }
+
+/**
+ * Connect to `host:port` once, measuring the handshake latency. The probe
+ * never throws: every failure mode (refused, unreachable, timed out) settles
+ * as the `ok: false` branch carrying the socket's own message.
+ * @param host - server host name or address.
+ * @param port - server TCP port.
+ * @returns the connected latency, or the failure message.
+ */
+function probeTcp(host: string, port: number): Promise<TcpProbeOutcome> {
+  return new Promise<TcpProbeOutcome>((settle) => {
+    const startedAt = Date.now()
+    let done = false
+    const socket = connect({ host, port })
+    const finish = (outcome: TcpProbeOutcome): void => {
+      if (done) return
+      done = true
+      socket.destroy()
+      settle(outcome)
+    }
+    socket.once('connect', () => { finish({ ok: true, latencyMs: Date.now() - startedAt }) })
+    socket.once('error', (error) => { finish({ ok: false, message: error.message }) })
+    socket.setTimeout(TCP_PROBE_TIMEOUT_MS, () => {
+      finish({ ok: false, message: `tcp connect timed out after ${String(TCP_PROBE_TIMEOUT_MS)}ms` })
+    })
+  })
+}
+
+const execFileAsync = promisify(execFile)
+
+/** Outcome of the best-effort GPU readout over ssh. */
+type GpuProbeOutcome =
+  | { readonly ok: true; readonly gpus: readonly ServerGpuView[] }
+  | { readonly ok: false; readonly message: string }
+
+/**
+ * Read one server's GPU table over a batch-mode ssh call. Best-effort: an ssh
+ * or `nvidia-smi` failure is the `ok: false` branch, never a rejection, so the
+ * caller can still report the server itself as reachable.
+ * @param record - the server to probe (host, port, and login user).
+ * @returns the parsed GPU rows, or the failure message.
+ */
+async function probeGpus(record: ServerRecord): Promise<GpuProbeOutcome> {
+  try {
+    const { stdout } = await execFileAsync('ssh', [
+      '-o', 'BatchMode=yes',
+      '-o', `ConnectTimeout=${String(GPU_PROBE_SSH_CONNECT_TIMEOUT_S)}`,
+      '-p', String(record.port),
+      `${record.username}@${record.host}`,
+      NVIDIA_SMI_QUERY,
+    ], { timeout: GPU_PROBE_TIMEOUT_MS })
+    const gpus: ServerGpuView[] = []
+    for (const line of stdout.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed === '') continue
+      const [name, utilizationPct, memoryUsedMb, memoryTotalMb] = trimmed.split(',').map(field => field.trim())
+      gpus.push({
+        name: name ?? '',
+        utilizationPct: Number(utilizationPct),
+        memoryUsedMb: Number(memoryUsedMb),
+        memoryTotalMb: Number(memoryTotalMb),
+      })
+    }
+    return { ok: true, gpus: Object.freeze(gpus) }
+  } catch (error) {
+    // execFile failures carry the child's stderr; prefer it over the generic
+    // "Command failed" wrapper so the panel shows the ssh client's own words.
+    const stderr = typeof error === 'object' && error !== null && 'stderr' in error
+      ? String((error as { stderr: unknown }).stderr).trim()
+      : ''
+    return { ok: false, message: stderr !== '' ? stderr : error instanceof Error ? error.message : 'ssh probe failed' }
+  }
+}
+
+/** First invalid-input message for one server upsert payload, or null when valid. */
+function validateServerInput(input: ServerInput): string | null {
+  if (input.name.trim().length === 0) return 'name must be non-empty'
+  if (input.host.trim().length === 0) return 'host must be non-empty'
+  if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
+    return 'port must be an integer between 1 and 65535'
+  }
+  return null
 }
 
 /**
@@ -372,6 +481,153 @@ export class ResearchService extends TypertRemoteService {
       return Promise.resolve(rejected({ code: 'project-not-found', projectId: request.projectId }))
     }
     return Promise.resolve(success(this.compileStatus.get(key) ?? IDLE_STATUS))
+  }
+
+  /**
+   * Delete one figure file of the addressed project's paper directory. The
+   * path must stay inside the paper directory and carry a servable figure
+   * extension — anything else is `invalid-path`, a listed-but-absent file is
+   * `figure-not-found`.
+   * @param request - the selected project, the paper-directory-relative figure
+   * path, and an optional explicit paper directory (relative to the workspace)
+   * overriding the record's `paperDir`.
+   * @returns the deleted path, or a business failure.
+   */
+  @Remote('deleteFigure')
+  async deleteFigure(request: { projectId: string; relPath: string; dir?: string | undefined }): Promise<ResearchDeleteFigureResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const figurePath = resolve(dir, request.relPath)
+    if (!figurePath.startsWith(dir + sep) || !isFigureFile(request.relPath)) {
+      return rejected({ code: 'invalid-path', path: request.relPath })
+    }
+    try {
+      await unlink(figurePath)
+    } catch (error) {
+      if (isNotFound(error)) return rejected({ code: 'figure-not-found', relPath: request.relPath })
+      throw error
+    }
+    return success({ relPath: request.relPath })
+  }
+
+  /**
+   * List every remembered compute server, most recently updated first.
+   * @returns the server cards for the panel's servers view.
+   */
+  @Remote('listServers')
+  listServers(): Promise<ResearchListServersResult> {
+    const servers = [...this.domain.table('servers').entries()]
+      .map(([, record]) => record)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    return Promise.resolve(success({ servers: Object.freeze(servers) }))
+  }
+
+  /**
+   * Upsert one compute server. An `id` in the payload selects the update form
+   * (the existing record's `createdAt` survives; `updatedAt` refreshes); its
+   * absence creates a record with a generated id. Name and host must be
+   * non-empty and the port a valid TCP port — violations are `invalid-input`,
+   * an unknown update id is `server-not-found`.
+   * @param request - the server fields, with `id` marking the update form.
+   * @returns the stored record.
+   */
+  @Remote('saveServer')
+  async saveServer(request: { server: ServerInput }): Promise<ResearchSaveServerResult> {
+    const input = request.server
+    const invalid = validateServerInput(input)
+    if (invalid !== null) return rejected({ code: 'invalid-input', message: invalid })
+    const table = this.domain.table('servers')
+    const now = new Date().toISOString()
+    if (input.id !== undefined) {
+      const existing = table.get(input.id)
+      if (existing === undefined) return rejected({ code: 'server-not-found', id: input.id })
+      const next: ServerRecord = {
+        ...existing,
+        name: input.name,
+        host: input.host,
+        port: input.port,
+        username: input.username,
+        note: input.note,
+        updatedAt: now,
+      }
+      await table.put(input.id, next)
+      return success({ server: next })
+    }
+    const created: ServerRecord = {
+      id: `srv-${Date.now().toString(36)}`,
+      name: input.name,
+      host: input.host,
+      port: input.port,
+      username: input.username,
+      note: input.note,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await table.put(created.id, created)
+    return success({ server: created })
+  }
+
+  /**
+   * Delete one remembered server; an unknown id is `server-not-found`.
+   * @param request - the record id.
+   * @returns the deleted id.
+   */
+  @Remote('deleteServer')
+  async deleteServer(request: { id: string }): Promise<ResearchDeleteServerResult> {
+    const table = this.domain.table('servers')
+    if (table.get(request.id) === undefined) {
+      return rejected({ code: 'server-not-found', id: request.id })
+    }
+    await table.delete(request.id)
+    return success({ id: request.id })
+  }
+
+  /**
+   * Probe one remembered server. The probe is two best-effort stages: a TCP
+   * connect (failure settles the view `offline`), then — only when the TCP
+   * probe connected and the record names a login user — a batch-mode ssh
+   * `nvidia-smi` readout whose failure downgrades the GPU table to empty
+   * without flipping the state.
+   * @param request - the record id; an unknown id is `server-not-found`.
+   * @returns the settled probe view.
+   */
+  @Remote('checkServer')
+  async checkServer(request: { id: string }): Promise<ResearchCheckServerResult> {
+    const record = this.domain.table('servers').get(request.id)
+    if (record === undefined) {
+      return rejected({ code: 'server-not-found', id: request.id })
+    }
+    const tcp = await probeTcp(record.host, record.port)
+    if (!tcp.ok) {
+      return success<ServerStatusView>({
+        state: 'offline',
+        latencyMs: null,
+        gpus: Object.freeze([]),
+        checkedAt: new Date().toISOString(),
+        message: tcp.message,
+      })
+    }
+    if (record.username === '') {
+      return success<ServerStatusView>({
+        state: 'online',
+        latencyMs: tcp.latencyMs,
+        gpus: Object.freeze([]),
+        checkedAt: new Date().toISOString(),
+        message: null,
+      })
+    }
+    const gpu = await probeGpus(record)
+    return success<ServerStatusView>({
+      state: 'online',
+      latencyMs: tcp.latencyMs,
+      gpus: gpu.ok ? gpu.gpus : Object.freeze([]),
+      checkedAt: new Date().toISOString(),
+      message: gpu.ok ? null : `gpu probe failed: ${gpu.message}`,
+    })
   }
 }
 

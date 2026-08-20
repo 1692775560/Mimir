@@ -2,47 +2,122 @@
  * The figures view: a thumbnail grid of the selected project's paper figures,
  * served through the `/research/figure` route. Raster and SVG entries show an
  * inline thumbnail and open a lightbox on click; PDF figures show a badge
- * card that opens in a new tab. The refresh button forces a rescan.
+ * card that opens in a new tab. Hovering a card reveals its two file
+ * operations — copy the LaTeX figure block, delete the file — and the view
+ * head carries the upload button (POST `/research/figure-upload`) plus the
+ * forced rescan.
  * @module dsh-client-ui-mimir/client/FiguresView
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FigureEntry } from 'dsh-mimir/types'
-import type { ResearchProjectSlice } from './controller.ts'
+import type { ResearchFailureView, ResearchProjectSlice } from './controller.ts'
 import { failureCopy, figureUrl, formatSize, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
+import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
+
+/** The LaTeX figure block one card's copy button puts on the clipboard. */
+function latexOf(entry: FigureEntry): string {
+  const label = entry.name.replace(/\.[^.]+$/, '')
+  return `\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics[width=0.8\\linewidth]{${entry.relPath}}\n  \\caption{}\n  \\label{fig:${label}}\n\\end{figure}`
+}
+
+/** How long the copied confirmation replaces the copy button's label. */
+const COPIED_FEEDBACK_MS = 1500
 
 /**
  * @param props - the figures slice, the selected project and its paperDir,
- * the rescan verb, and copy.
+ * the rescan/upload/delete verbs, and copy.
  * @returns the thumbnail grid plus the lightbox overlay.
  */
-export function FiguresView({ figures, projectId, dir, loadFigures, t }: {
+export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigures, deleteFigure, t }: {
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
   readonly projectId: string | null
   readonly dir: string | undefined
   readonly loadFigures: (projectId: string, force?: boolean) => void
+  readonly uploadFigures: (
+    projectId: string,
+    dir: string | undefined,
+    files: readonly File[],
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<void>
+  readonly deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const [preview, setPreview] = useState<FigureEntry | null>(null)
+  const [copiedPath, setCopiedPath] = useState<string | null>(null)
+  const [upload, setUpload] = useState<{ done: number; total: number } | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement | null>(null)
   if (projectId === null) {
     return <EmptyState glyph="🖼️">{t('figures.noProject')}</EmptyState>
   }
   const url = (entry: FigureEntry): string => figureUrl(projectId, entry.relPath, dir)
+
+  const copyLatex = (entry: FigureEntry): void => {
+    void navigator.clipboard.writeText(latexOf(entry)).then(() => {
+      setCopiedPath(entry.relPath)
+      setTimeout(() => {
+        setCopiedPath(current => (current === entry.relPath ? null : current))
+      }, COPIED_FEEDBACK_MS)
+    })
+  }
+
+  const removeFigure = (entry: FigureEntry): void => {
+    if (!window.confirm(t('figures.confirmDelete'))) return
+    void deleteFigure(projectId, entry.relPath).then((failure) => {
+      setActionError(failure === null ? null : `${t('figures.deleteFailed')}：${failure.message}`)
+    })
+  }
+
+  const pickFiles = (files: readonly File[]): void => {
+    if (files.length === 0 || upload !== null) return
+    setActionError(null)
+    setUpload({ done: 0, total: files.length })
+    void uploadFigures(projectId, dir, files, (done, total) => { setUpload({ done, total }) })
+      .catch((error: unknown) => {
+        setActionError(`${t('figures.uploadFailed')}：${error instanceof Error ? error.message : 'upload failed'}`)
+      })
+      .finally(() => { setUpload(null) })
+  }
+
   return (
     <div className={css.figures}>
-      <div className={css.figuresToolbar}>
-        <button type="button" className={css.retry} onClick={() => { loadFigures(projectId, true) }}>
+      <ViewHead title={t('tab.figures')} subtitle={t('view.figures.subtitle')}>
+        <button
+          type="button"
+          className={css.btnPrimary}
+          disabled={upload !== null}
+          onClick={() => { fileInput.current?.click() }}
+        >
+          {upload === null ? t('figures.upload') : `${t('figures.uploading')} ${upload.done}/${upload.total}`}
+        </button>
+        <button type="button" className={css.btn} onClick={() => { loadFigures(projectId, true) }}>
           {t('figures.refresh')}
         </button>
-      </div>
+      </ViewHead>
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        accept=".png,.jpg,.jpeg,.svg,.pdf"
+        hidden
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])]
+          event.target.value = ''
+          pickFiles(files)
+        }}
+      />
+      {actionError !== null && (
+        <p className={css.failure} role="alert">{actionError}</p>
+      )}
       {figures === null || figures.status === 'loading' ? (
         <p className={css.hint}>{t('figures.loading')}</p>
       ) : figures.status === 'error' ? (
         <p className={css.failure} role="alert">
           {t('error.figures')}：{failureCopy(t, figures.failure)}
-          <button type="button" className={css.retry} onClick={() => { loadFigures(projectId, true) }}>
+          <button type="button" className={css.btn} onClick={() => { loadFigures(projectId, true) }}>
             {t('error.retry')}
           </button>
         </p>
@@ -51,33 +126,43 @@ export function FiguresView({ figures, projectId, dir, loadFigures, t }: {
       ) : (
         <div className={css.figuresGrid}>
           {figures.list.map((entry) => {
-            if (entry.name.toLowerCase().endsWith('.pdf')) {
-              return (
-                <button
-                  key={entry.relPath}
-                  type="button"
-                  className={css.figureCard}
-                  data-kind="pdf"
-                  title={t('figures.openPdf')}
-                  onClick={() => { window.open(url(entry), '_blank') }}
-                >
-                  <span className={css.figureBadge}>{t('figures.pdfBadge')}</span>
-                  <span className={css.figureName}>{entry.name}</span>
-                  <span className={css.figureSize}>{formatSize(entry.sizeBytes)}</span>
-                </button>
-              )
-            }
+            const isPdf = entry.name.toLowerCase().endsWith('.pdf')
             return (
-              <button
-                key={entry.relPath}
-                type="button"
-                className={css.figureCard}
-                onClick={() => { setPreview(entry) }}
-              >
-                <img className={css.figureThumb} src={url(entry)} alt={entry.name} loading="lazy" />
-                <span className={css.figureName}>{entry.name}</span>
+              <div key={entry.relPath} className={css.figureCard}>
+                <button
+                  type="button"
+                  className={css.figurePreview}
+                  title={isPdf ? t('figures.openPdf') : undefined}
+                  onClick={() => {
+                    if (isPdf) window.open(url(entry), '_blank')
+                    else setPreview(entry)
+                  }}
+                >
+                  {isPdf
+                    ? <span className={css.figureBadge}>{t('figures.pdfBadge')}</span>
+                    : <img className={css.figureThumb} src={url(entry)} alt={entry.name} loading="lazy" />}
+                </button>
+                <span className={css.figureName} title={entry.relPath}>{entry.name}</span>
                 <span className={css.figureSize}>{formatSize(entry.sizeBytes)}</span>
-              </button>
+                <div className={css.figureActions}>
+                  <button
+                    type="button"
+                    className={css.figureAction}
+                    data-copied={copiedPath === entry.relPath || undefined}
+                    onClick={() => { copyLatex(entry) }}
+                  >
+                    {copiedPath === entry.relPath ? t('figures.copied') : t('figures.copyLatex')}
+                  </button>
+                  <button
+                    type="button"
+                    className={css.figureAction}
+                    data-danger
+                    onClick={() => { removeFigure(entry) }}
+                  >
+                    {t('figures.delete')}
+                  </button>
+                </div>
+              </div>
             )
           })}
         </div>

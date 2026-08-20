@@ -141,8 +141,12 @@ export type ResearchFailure =
   | { readonly code: 'project-not-found'; readonly projectId: string }
   | { readonly code: 'paper-not-found' }
   | { readonly code: 'invalid-dir'; readonly dir: string }
+  | { readonly code: 'invalid-path'; readonly path: string }
+  | { readonly code: 'figure-not-found'; readonly relPath: string }
   | { readonly code: 'artifact-not-found'; readonly name: string }
   | { readonly code: 'invalid-artifact'; readonly name: string }
+  | { readonly code: 'server-not-found'; readonly id: string }
+  | { readonly code: 'invalid-input'; readonly message: string }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
   | { readonly code: 'operation-failed'; readonly message: string }
 
@@ -210,3 +214,66 @@ export interface FigureEntry {
 
 /** `listFigures` result: image files of the project's paper directory. */
 export type ResearchFiguresResult = ResearchResult<{ readonly figures: readonly FigureEntry[] }>
+
+/** `deleteFigure` result: the deleted file's paper-directory-relative path. */
+export type ResearchDeleteFigureResult = ResearchResult<{ readonly relPath: string }>
+
+/** One remembered compute server (a GPU box the experiments run on). */
+export interface ServerRecord {
+  readonly id: string
+  readonly name: string
+  readonly host: string
+  readonly port: number
+  /** SSH login user; an empty string downgrades probes to TCP-only. */
+  readonly username: string
+  /** Free-form operator note. */
+  readonly note: string
+  /** ISO-8601 timestamp of the record's first write. */
+  readonly createdAt: string
+  /** ISO-8601 timestamp of the last write. */
+  readonly updatedAt: string
+}
+
+/** Upsert payload of `saveServer`: `id` present updates, absent creates. */
+export interface ServerInput {
+  readonly id?: string | undefined
+  readonly name: string
+  readonly host: string
+  readonly port: number
+  readonly username: string
+  readonly note: string
+}
+
+/** One GPU row parsed from a remote `nvidia-smi` probe. */
+export interface ServerGpuView {
+  readonly name: string
+  /** GPU utilization in percent. */
+  readonly utilizationPct: number
+  readonly memoryUsedMb: number
+  readonly memoryTotalMb: number
+}
+
+/** The settled outcome of one `checkServer` probe. */
+export interface ServerStatusView {
+  /** `online` once the TCP probe connects; the GPU readout is best-effort on top. */
+  readonly state: 'online' | 'offline'
+  /** TCP connect latency in ms; null when the probe never connected. */
+  readonly latencyMs: number | null
+  readonly gpus: readonly ServerGpuView[]
+  /** ISO-8601 timestamp of the probe. */
+  readonly checkedAt: string
+  /** Failure detail (offline reason or the skipped/failed GPU probe); null when clean. */
+  readonly message: string | null
+}
+
+/** `listServers` result: every remembered server, most recently updated first. */
+export type ResearchListServersResult = ResearchResult<{ readonly servers: readonly ServerRecord[] }>
+
+/** `saveServer` result: the upserted record (with its generated id on create). */
+export type ResearchSaveServerResult = ResearchResult<{ readonly server: ServerRecord }>
+
+/** `deleteServer` result: the deleted record's id. */
+export type ResearchDeleteServerResult = ResearchResult<{ readonly id: string }>
+
+/** `checkServer` result: the settled probe view. */
+export type ResearchCheckServerResult = ResearchResult<ServerStatusView>

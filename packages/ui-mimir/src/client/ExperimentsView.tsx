@@ -11,6 +11,7 @@ import type { ExperimentRecord } from 'dsh-mimir/types'
 import type { ResearchArtifactView, ResearchProjectSlice } from './controller.ts'
 import { failureCopy, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
+import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Render `**bold**` spans inside one text line. */
@@ -67,6 +68,7 @@ export function ExperimentsView({ experiments, artifact, projectId, t }: {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
   return (
     <div className={css.experiments}>
+      <ViewHead title={t('tab.experiments')} subtitle={t('view.experiments.subtitle')} />
       {experiments === null || experiments.status === 'loading' ? (
         <p className={css.hint}>{t('experiments.loading')}</p>
       ) : experiments.status === 'error' ? (

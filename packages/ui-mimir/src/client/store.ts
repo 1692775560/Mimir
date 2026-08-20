@@ -8,8 +8,8 @@
 
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** The workbench's five view tabs. */
-export type ResearchTab = 'overview' | 'paper' | 'papers' | 'experiments' | 'figures'
+/** The workbench's six view tabs. */
+export type ResearchTab = 'overview' | 'paper' | 'papers' | 'experiments' | 'figures' | 'servers'
 
 /** Shared panel viewing state. */
 export interface ResearchPanelState {

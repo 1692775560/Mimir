@@ -17,22 +17,30 @@ import type {
   OutlineNode,
   PaperRecord,
   ResearchArtifactResult,
+  ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchDeleteFigureResult,
+  ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFiguresResult,
   ResearchListProjectsResult,
+  ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
   ResearchSavePaperSourceResult,
+  ResearchSaveServerResult,
+  ServerInput,
+  ServerRecord,
+  ServerStatusView,
 } from 'dsh-mimir/types'
 
 /**
- * The ten Remote calls this controller needs, exactly as the generated
+ * The fifteen Remote calls this controller needs, exactly as the generated
  * `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -51,6 +59,11 @@ export interface ResearchRemote {
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
+  deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
+  listServers: () => Promise<RemoteResult<ResearchListServersResult>>
+  saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
+  deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
+  checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -120,6 +133,16 @@ export interface ResearchArtifactView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The servers view: every remembered compute server. */
+export interface ResearchServersView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly ServerRecord[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** One server's probe lifecycle: in flight, or the last settled view. */
+export type ServerCheckState = ServerStatusView | 'checking'
+
 /** Immutable view published to the panel. */
 export interface ResearchView {
   readonly projects: readonly ResearchProjectView[]
@@ -132,6 +155,9 @@ export interface ResearchView {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
+  readonly servers: ResearchServersView
+  /** Per-server probe state, keyed by server id; absent means never probed. */
+  readonly serverChecks: Readonly<Record<string, ServerCheckState>>
 }
 
 const INITIAL_VIEW: ResearchView = Object.freeze({
@@ -145,6 +171,8 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   experiments: null,
   artifact: null,
   figures: null,
+  servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
+  serverChecks: Object.freeze({}),
 })
 
 /** Translate one settled Remote envelope or business branch into a failure view. */
@@ -172,6 +200,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private readonly listeners = new Set<() => void>()
   private loadPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
+  private serversPromise: Promise<void> | null = null
   private outlineGeneration = 0
   private artifactGeneration = 0
   private figuresGeneration = 0
@@ -306,6 +335,142 @@ export class ResearchController implements HostObservable<ResearchView> {
         this.figuresInFlight = false
       }
     })()
+  }
+
+  /**
+   * Delete one figure of one project and force a rescan. The failure view of
+   * a rejected delete is returned so the card can surface it; a successful
+   * delete republishes the figures slice.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteFigure(projectId: string, relPath: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteFigure({ projectId, relPath, dir: this.dirOf(projectId) })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.figuresInFlight = false
+      this.loadFigures(projectId, true)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /** Load the server list once, on the servers view's first open. */
+  ensureServers(): void {
+    if (this.view.servers.status === 'ready' || this.serversPromise !== null) return
+    this.serversPromise = this.loadServers().finally(() => { this.serversPromise = null })
+  }
+
+  /**
+   * Create or update one server, then refresh the list.
+   * @param server - the upsert payload; `id` present updates, absent creates.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveServer(server: ServerInput): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.saveServer({ server })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadServers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one server, drop its probe state, and refresh the list.
+   * @param id - server record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteServer(id: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteServer({ id })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const checks = { ...this.view.serverChecks }
+      delete checks[id]
+      this.publish({ serverChecks: Object.freeze(checks) })
+      await this.loadServers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Probe one server: publish `checking`, then the settled view. A probe
+   * already in flight for the same server is left alone.
+   * @param id - server record id.
+   */
+  async checkServer(id: string): Promise<void> {
+    if (this.view.serverChecks[id] === 'checking') return
+    this.publish({ serverChecks: Object.freeze({ ...this.view.serverChecks, [id]: 'checking' }) })
+    const settled = await this.runServerCheck(id)
+    if (this.disposed) return
+    // A delete during the probe already dropped this id's slot.
+    if (!(id in this.view.serverChecks)) return
+    this.publish({ serverChecks: Object.freeze({ ...this.view.serverChecks, [id]: settled }) })
+  }
+
+  /** Probe every listed server that is not already being probed. */
+  checkAllServers(): void {
+    for (const server of this.view.servers.list) void this.checkServer(server.id)
+  }
+
+  /** Run one probe, translating every failure mode into a settled offline view. */
+  private async runServerCheck(id: string): Promise<ServerStatusView> {
+    const offline = (message: string): ServerStatusView => Object.freeze({
+      state: 'offline', latencyMs: null, gpus: Object.freeze([]),
+      checkedAt: new Date().toISOString(), message,
+    })
+    try {
+      const carried = await this.remote.checkServer({ id })
+      if (!carried.ok) return offline(carried.error.message)
+      const result = carried.value
+      if (!result.ok) return offline(businessFailure(result.error).message)
+      return result.value
+    } catch (error) {
+      return offline(error instanceof Error ? error.message : 'server probe failed')
+    }
+  }
+
+  /** Fetch the server list and publish it. */
+  private async loadServers(): Promise<void> {
+    this.publish({ servers: Object.freeze({ ...this.view.servers, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.listServers()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({
+          servers: Object.freeze({ ...this.view.servers, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }),
+        })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          servers: Object.freeze({ ...this.view.servers, status: 'error', failure: businessFailure(result.error) }),
+        })
+        return
+      }
+      this.publish({
+        servers: Object.freeze({ status: 'ready', list: result.value.servers, failure: null }),
+      })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({
+        servers: Object.freeze({ ...this.view.servers, status: 'error', failure: transportFailure(error) }),
+      })
+    }
   }
 
   /**

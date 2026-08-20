@@ -26,15 +26,19 @@ English | [中文](README.zh.md)
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
 
-**Web workbench (five views)** — a sidebar toggle opens a 96vw×95vh overlay: **Overview** (pipeline stage progress, artifacts), **Paper** (collapsible clickable outline, auto-saving `main.tex` editor with sync line numbers, one-click compile with engine label, error list that jumps to source lines, inline PDF preview), **Library** (remembered papers), **Experiments** (run records + `EXPERIMENT_LOG.md`), **Figures** (paper-directory image grid with preview).
+**Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay: **Overview** (pipeline stage progress, stat chips, artifacts), **Paper** (collapsible clickable outline, auto-saving `main.tex` editor with sync line numbers, one-click compile with engine label, error list that jumps to source lines, inline PDF preview), **Library** (remembered papers), **Experiments** (run records + `EXPERIMENT_LOG.md`), **Figures** (paper-directory image grid with preview, upload, delete, and copy-LaTeX-reference card actions), **Servers** (remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars).
 
 | Overview | Library | Experiments |
 | --- | --- | --- |
 | ![Overview](docs/screenshots/tab-overview.png) | ![Library](docs/screenshots/tab-papers.png) | ![Experiments](docs/screenshots/tab-experiments.png) |
 
+| Figures | Servers |
+| --- | --- |
+| ![Figures](docs/screenshots/tab-figures.png) | ![Servers](docs/screenshots/tab-servers.png) |
+
 ## Packages
 
-- **`dsh-mimir`** (`packages/mimir`) — the host plugin: commands, tools, wiki domain, reviewer loop, LaTeX compile, and the `research` Remote namespace + `/research/pdf` / `/research/figure` routes backing the panel.
+- **`dsh-mimir`** (`packages/mimir`) — the host plugin: commands, tools, wiki domain, reviewer loop, LaTeX compile, and the `research` Remote namespace (15 methods) + `/research/pdf` / `/research/figure` / `/research/figure-upload` routes backing the panel.
 - **`dsh-client-ui-mimir`** (`packages/ui-mimir`) — the browser workbench: sidebar toggle + overlay panel.
 
 ## Install

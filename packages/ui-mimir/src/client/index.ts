@@ -44,6 +44,24 @@ const NS = 'research'
 export const inject = ['slots', 'remote', 'remote.research', 'locale']
 
 /**
+ * Upload one figure file through the host's upload route. The route answers
+ * JSON on success; anything else throws with the response's own text.
+ * @param projectId - wiki project id.
+ * @param dir - the project's paper directory override, when any.
+ * @param file - the picked file.
+ * @returns resolution after the file is stored.
+ */
+async function uploadOneFigure(projectId: string, dir: string | undefined, file: File): Promise<void> {
+  const query = `?project=${encodeURIComponent(projectId)}&name=${encodeURIComponent(file.name)}`
+    + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
+  const response = await fetch(`/research/figure-upload${query}`, { method: 'POST', body: file })
+  if (!response.ok) {
+    const detail = (await response.text()).trim()
+    throw new Error(detail === '' ? `upload failed (${String(response.status)})` : detail)
+  }
+}
+
+/**
  * Client plugin body: the research toggle, the panel overlay, and the shared
  * object layer.
  * @param ctx - client root context.
@@ -88,6 +106,21 @@ export function apply(ctx: ClientContext): void {
       ensurePapers: () => { controller.ensurePapers() },
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
       loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
+      uploadFigures: async (projectId, dir, files, onProgress) => {
+        let done = 0
+        for (const file of files) {
+          await uploadOneFigure(projectId, dir, file)
+          done += 1
+          onProgress?.(done, files.length)
+        }
+        controller.loadFigures(projectId, true)
+      },
+      deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
+      ensureServers: () => { controller.ensureServers() },
+      saveServer: (server) => controller.saveServer(server),
+      deleteServer: (id) => controller.deleteServer(id),
+      checkServer: (id) => controller.checkServer(id),
+      checkAllServers: () => { controller.checkAllServers() },
     }),
   }, ResearchPanel))
 }
