@@ -1,0 +1,34 @@
+{
+  "name": "@deepseek-ai/dsh-typert-protocol",
+  "description": "Vendored source of @deepseek-ai/dsh-typert-protocol 0.1.0-rc.8 — the Typert generator only recognizes Remote metadata declared inside a workspace-registered package, so the protocol is compiled in-repo. Never publish; consumers resolve the npm release at runtime.",
+  "version": "0.1.0-rc.8",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1",
+    "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.8"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.8"
+  }
+}

@@ -1,0 +1,328 @@
+/**
+ * Research-assistant plugin suite: an arXiv literature surface, a persistent
+ * research wiki (papers / ideas / claims / projects), a LaTeX compile tool,
+ * and an independent fresh-reviewer loop — the ARIS workflow mechanisms as
+ * one dsh-native plugin.
+ * @module dsh-mimir
+ */
+
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { extname, resolve, sep } from 'node:path'
+import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+// Type-only: pulls the ctx.webServer Context merge for the PDF route below.
+import type {} from '@deepseek-ai/dsh-host-webserver'
+import { researchWikiDomainSpec } from './store.ts'
+import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
+import { createWikiNoteTool } from './tools/wiki.ts'
+import { createLatexCompileTool } from './tools/latex.ts'
+import { registerIdeaCommand } from './commands/idea.ts'
+import { registerPlanCommand } from './commands/plan.ts'
+import { registerReviewCommand } from './commands/review.ts'
+import { registerPaperCommands } from './commands/paper.ts'
+import type { ResearchCommandDeps } from './commands/common.ts'
+import { resolvePaperDir } from './paper-source.ts'
+import { isFigureFile } from './artifacts.ts'
+import { ResearchService } from './service.ts'
+
+export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage } from './types.ts'
+export type {
+  FigureEntry,
+  OutlineNode,
+  ResearchArtifactResult,
+  ResearchCompileResult,
+  ResearchCompileState,
+  ResearchCompileStatusResult,
+  ResearchCompileStatusView,
+  ResearchExperimentsResult,
+  ResearchFailure,
+  ResearchFiguresResult,
+  ResearchListProjectsResult,
+  ResearchOutlineResult,
+  ResearchPaperSourceResult,
+  ResearchPapersResult,
+  ResearchProjectView,
+  ResearchRejected,
+  ResearchResult,
+  ResearchSavePaperSourceResult,
+  ResearchSuccess,
+} from './types.ts'
+export { researchWikiDomainSpec } from './store.ts'
+export type { ResearchWikiDomain } from './store.ts'
+export { parseLatexErrors } from './latex-log.ts'
+export type { LatexIssue } from './latex-log.ts'
+export { parseTexOutline } from './outline.ts'
+export { readPaperSource, resolvePaperDir, savePaperSourceFile } from './paper-source.ts'
+export type { PaperSourceSnapshot, SavePaperOutcome } from './paper-source.ts'
+export { DEFAULT_PAPER_DIR } from './paper-source.ts'
+export { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact, ARTIFACT_NAMES } from './artifacts.ts'
+export type { ArtifactName, FigureFile } from './artifacts.ts'
+export { ResearchService } from './service.ts'
+export type { ResearchServiceConfig } from './service.ts'
+export { runReview, renderReviewRound } from './reviewer.ts'
+export type { ReviewerOptions, ReviewRequest } from './reviewer.ts'
+export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEngine, parseTectonicErrors } from './tools/latex.ts'
+export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
+export { createArxivSearchTool, createPaperFetchTool, parseArxivFeed } from './tools/arxiv.ts'
+export type { ArxivEntry } from './tools/arxiv.ts'
+export { createWikiNoteTool } from './tools/wiki.ts'
+
+/** Cordis plugin name. */
+export const name = 'mimir'
+/** The wiki needs the domain form; commands, tools, and review need their registries; the panel's PDF preview needs the HTTP carrier. */
+export const inject = ['commands', 'tools', 'subagents', 'storageDomain', 'webServer']
+
+/** Deployment policy for the research suite. */
+export interface Config {
+  /** Research workspace root, resolved against the process cwd (default `.research`). */
+  workspaceDir?: string
+  /** Independent-review deployment knobs. */
+  reviewer?: {
+    /** Subagent provider route (default `spawn`); reserved for cross-model review. */
+    provider?: string
+    /** Review-round budget per project (default 3). */
+    maxRounds?: number
+  }
+  /** LaTeX compile deployment knobs. */
+  latex?: {
+    /**
+     * Engine selection (default `auto`): `'auto'` probes `latexmk` then
+     * `tectonic` on PATH (cached for the process lifetime); an explicit
+     * engine name (`'latexmk'` / `'tectonic'`) is used as-is; an absolute
+     * path runs that executable, its basename picking the command line.
+     */
+    engine?: string
+    /** Compile kill timeout in milliseconds (default 120000). */
+    timeoutMs?: number
+  }
+  /** arXiv search deployment knobs. */
+  arxiv?: {
+    /** Default result cap for `arxiv_search` (default 10). */
+    maxResults?: number
+  }
+}
+
+/** Schemastery configuration for the research suite. */
+export const Config: z<Config> = z.object({
+  workspaceDir: z.string().default('.research'),
+  reviewer: z.object({
+    provider: z.string().default('spawn'),
+    maxRounds: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(3),
+  }).default({ provider: 'spawn', maxRounds: 3 }),
+  latex: z.object({
+    engine: z.string().default('auto'),
+    timeoutMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(120_000),
+  }).default({ engine: 'auto', timeoutMs: 120_000 }),
+  arxiv: z.object({
+    maxResults: z.number().step(1).min(1).max(100).default(10),
+  }).default({ maxResults: 10 }),
+})
+
+/** Fully defaulted config view used by tools and commands. */
+interface ResolvedConfig {
+  readonly workspaceDir: string
+  readonly reviewer: { readonly provider: string; readonly maxRounds: number }
+  readonly latex: { readonly engine: string; readonly timeoutMs: number }
+  readonly arxiv: { readonly maxResults: number }
+}
+
+/** Validate defaults even when a caller invokes apply() without Loader normalization. */
+function resolveConfig(config: Config): ResolvedConfig {
+  const workspaceDir = config.workspaceDir ?? '.research'
+  const reviewer = { provider: config.reviewer?.provider ?? 'spawn', maxRounds: config.reviewer?.maxRounds ?? 3 }
+  const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
+  const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
+  if (workspaceDir.trim().length === 0) throw new TypeError('workspaceDir must be a non-empty path')
+  if (reviewer.provider.trim().length === 0) throw new TypeError('reviewer.provider must be a non-empty provider name')
+  if (!Number.isSafeInteger(reviewer.maxRounds) || reviewer.maxRounds < 1) throw new TypeError('reviewer.maxRounds must be a positive safe integer')
+  if (latex.engine.trim().length === 0) throw new TypeError('latex.engine must be a non-empty engine selection')
+  if (!Number.isSafeInteger(latex.timeoutMs) || latex.timeoutMs < 1) throw new TypeError('latex.timeoutMs must be a positive safe integer')
+  if (!Number.isSafeInteger(arxiv.maxResults) || arxiv.maxResults < 1) throw new TypeError('arxiv.maxResults must be a positive safe integer')
+  return { workspaceDir, reviewer, latex, arxiv }
+}
+
+/**
+ * Stream the compiled paper PDF for one wiki project. The paper directory
+ * resolves per request — a `?dir=` query override, else the project record's
+ * `paperDir`, else `paper` — always confined inside the workspace (a
+ * violating `dir` is a 400), so the project id only selects WHICH project's
+ * panel may read it: an unknown id is a 404.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createPdfHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const pathname = url.pathname
+    const prefix = '/research/pdf/'
+    if (!pathname.startsWith(prefix) || pathname.length === prefix.length) {
+      res.writeHead(404).end('expected /research/pdf/<project id>')
+      return
+    }
+    const projectId = decodeURIComponent(pathname.slice(prefix.length))
+    const record = deps.domain.table('projects').get(projectId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const requestDir = url.searchParams.get('dir') ?? undefined
+    const dir = resolvePaperDir(root, requestDir, record.paperDir)
+    if (dir === undefined) {
+      res.writeHead(400).end('dir must be a relative path inside the research workspace')
+      return
+    }
+    const pdfPath = resolve(dir, 'main.pdf')
+    const stats = await stat(pdfPath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) {
+      res.writeHead(404).end('paper pdf not found; compile first')
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Length': stats.size,
+      // The panel cache-busts with ?v=<pdfUpdatedAt>; a stale cached preview
+      // would otherwise survive a recompile under the same URL.
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
+    createReadStream(pdfPath).pipe(res)
+  }
+}
+
+/** Content-Type of one servable figure extension. */
+const FIGURE_CONTENT_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+}
+
+/**
+ * Stream one figure file of a wiki project's paper directory. The paper
+ * directory resolves like the PDF route (`?dir=` override, record
+ * `paperDir`, default); `?path=` is relative to it — an absolute path, a
+ * `..` escape, or a non-figure extension is a 400, a missing file a 404.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createFigureHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const prefix = '/research/figure/'
+    if (!url.pathname.startsWith(prefix) || url.pathname.length === prefix.length) {
+      res.writeHead(404).end('expected /research/figure/<project id>')
+      return
+    }
+    const projectId = decodeURIComponent(url.pathname.slice(prefix.length))
+    const record = deps.domain.table('projects').get(projectId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const relPath = url.searchParams.get('path')
+    if (relPath === null || relPath.length === 0 || !isFigureFile(relPath)) {
+      res.writeHead(400).end('path must name a figure file (.png/.jpg/.jpeg/.svg/.pdf)')
+      return
+    }
+    const dir = resolvePaperDir(root, url.searchParams.get('dir') ?? undefined, record.paperDir)
+    if (dir === undefined) {
+      res.writeHead(400).end('dir must be a relative path inside the research workspace')
+      return
+    }
+    const figurePath = resolve(dir, relPath)
+    if (!figurePath.startsWith(dir + sep)) {
+      res.writeHead(400).end('path escapes the paper directory')
+      return
+    }
+    const stats = await stat(figurePath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) {
+      res.writeHead(404).end('figure not found')
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': FIGURE_CONTENT_TYPES[extname(relPath).toLowerCase()] ?? 'application/octet-stream',
+      'Content-Length': stats.size,
+      // Same cache-bust rationale as the PDF route; figures are immutable per
+      // mtime from the panel's point of view.
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
+    createReadStream(figurePath).pipe(res)
+  }
+}
+
+/**
+ * Mount the research suite: open the wiki domain, register the four tools and
+ * the five commands, mount the research panel's Remote service and PDF route,
+ * and tie the domain's close to the plugin lifecycle.
+ * @param ctx - Plugin context.
+ * @param config - Validated plugin config.
+ * @returns resolution after the domain is open and every surface is registered.
+ */
+export async function apply(ctx: Context, config: Config): Promise<void> {
+  const resolved = resolveConfig(config)
+  const domain = await ctx.storageDomain.open(researchWikiDomainSpec)
+  ctx.effect(() => () => domain.close(), 'mimir.domainClose')
+
+  const deps: ResearchCommandDeps = {
+    workspaceDir: resolve(process.cwd(), resolved.workspaceDir),
+    domain,
+    reviewer: resolved.reviewer,
+    latex: resolved.latex,
+  }
+
+  ctx.tools.register(createArxivSearchTool(resolved.arxiv.maxResults))
+  ctx.tools.register(createPaperFetchTool())
+  ctx.tools.register(createWikiNoteTool(domain))
+  ctx.tools.register(createLatexCompileTool(resolved.latex))
+
+  registerIdeaCommand(ctx, deps)
+  registerPlanCommand(ctx, deps)
+  registerReviewCommand(ctx, deps)
+  registerPaperCommands(ctx, deps)
+
+  ctx.plugin(ResearchService, {
+    workspaceDir: deps.workspaceDir,
+    domain,
+    latex: resolved.latex,
+  })
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/pdf',
+      handler: createPdfHandler(deps),
+    }),
+    'mimir.pdfRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/figure',
+      handler: createFigureHandler(deps),
+    }),
+    'mimir.figureRoute',
+  )
+}

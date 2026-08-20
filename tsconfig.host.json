@@ -1,0 +1,20 @@
+{
+  // Host-face aggregate: the Typert generator's workspace-root marker and
+  // program entry (it discovers contributors through these references).
+  // Extends the base so the analyzer's program shares the package compiler
+  // shape (NodeNext resolution of the npm-hosted @deepseek-ai dependencies).
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "packages/typert-protocol"
+    },
+    {
+      "path": "packages/mimir"
+    }
+  ]
+}

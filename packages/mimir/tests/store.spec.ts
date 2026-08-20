@@ -1,0 +1,113 @@
+/**
+ * Behavior tests for the research-wiki domain spec: schema validation at the
+ * durable boundary and ordinary table operations over a real storage-domain
+ * facility backed by the in-memory backend shared across storage suites.
+ */
+
+import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
+import { researchWikiDomainSpec } from '../src/store.ts'
+import type { IdeaRecord, PaperRecord } from '../src/types.ts'
+
+/** Boot a context with the storage hub, one memory backend, and a domain facility over it. */
+async function harness(pool?: MemoryMediaPool) {
+  const ctx = new Context()
+  await ctx.plugin(Storage)
+  const backend = new MemoryStorageBackend(pool)
+  ctx.storage.backend.register('memory', backend)
+  ctx.provide(storageBackendServiceKey('memory'), backend)
+  const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', facility)
+  return { ctx, facility }
+}
+
+const paper: PaperRecord = {
+  arxivId: '2103.00020v2',
+  title: 'A Paper',
+  authors: ['Doe, Jane'],
+  summary: 'Summary text.',
+  url: 'https://arxiv.org/abs/2103.00020v2',
+  notes: '',
+  addedAt: '2026-08-20T00:00:00.000Z',
+}
+
+const idea: IdeaRecord = {
+  id: 'idea-1',
+  title: 'An Idea',
+  hypothesis: 'It works.',
+  status: 'active',
+  createdAt: '2026-08-20T00:00:00.000Z',
+}
+
+describe('researchWikiDomainSpec', () => {
+  it('round-trips records through open, put, get, and entries', async () => {
+    const { facility } = await harness()
+    const domain = await facility.open(researchWikiDomainSpec)
+    await domain.table('papers').put(paper.arxivId, paper)
+    await domain.table('ideas').put(idea.id, idea)
+    expect(domain.table('papers').get(paper.arxivId)).toEqual(paper)
+    expect([...domain.table('ideas').entries()]).toEqual([[idea.id, idea]])
+    expect(domain.table('claims').size).toBe(0)
+    expect(domain.table('projects').size).toBe(0)
+  })
+
+  it('reopens stored records from the shared medium after a simulated restart', async () => {
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('papers').put(paper.arxivId, paper)
+    }
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
+  })
+
+  it('rejects a stored record that fails its zod schema, naming table and key', async () => {
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('ideas').put(idea.id, idea)
+    }
+    pool.media.get('research_wiki')!.tables.get('ideas')!.set(idea.id, { ...idea, status: 'bogus' })
+    const { facility } = await harness(pool)
+    await expect(facility.open(researchWikiDomainSpec)).rejects.toMatchObject({
+      name: 'DomainError',
+      code: 'invalid-record',
+      detail: { table: 'ideas', key: 'idea-1' },
+    })
+  })
+
+  it('serializes reviewRounds increments without losing updates', async () => {
+    const { facility } = await harness()
+    const domain = await facility.open(researchWikiDomainSpec)
+    await domain.table('projects').put('p1', {
+      id: 'p1',
+      title: 'Project',
+      stage: 'writing',
+      artifacts: ['paper/main.tex'],
+      reviewRounds: 0,
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    })
+    await Promise.all(Array.from({ length: 3 }, () =>
+      domain.table('projects').update('p1', current => ({ ...current, reviewRounds: current.reviewRounds + 1 }))))
+    expect(domain.table('projects').get('p1')?.reviewRounds).toBe(3)
+  })
+
+  it('keeps failed ideas listed after their status flips', async () => {
+    const { facility } = await harness()
+    const domain = await facility.open(researchWikiDomainSpec)
+    await domain.table('ideas').put(idea.id, idea)
+    await domain.table('ideas').update(idea.id, current => ({
+      ...current,
+      status: 'failed' as const,
+      failureReason: 'Hypothesis contradicted by experiment 2.',
+    }))
+    const stored = domain.table('ideas').get(idea.id)
+    expect(stored?.status).toBe('failed')
+    expect(stored?.failureReason).toBe('Hypothesis contradicted by experiment 2.')
+    expect([...domain.table('ideas').keys()]).toEqual([idea.id])
+  })
+})

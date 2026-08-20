@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": false,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"],
+    // The Typert generator only recognizes Remote metadata declared inside a
+    // workspace-registered package, so the protocol package is vendored under
+    // packages/typert-protocol and every in-repo type resolution of it (and
+    // its /types subpath) goes to that source. Session/agent stay external:
+    // the generator runs in package subset mode (dsh-mimir only), which never
+    // expands npm-owned types.
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": ["./packages/typert-protocol/src/index.ts"],
+      "@deepseek-ai/dsh-typert-protocol/types": ["./packages/typert-protocol/src/types.ts"],
+      "@deepseek-ai/dsh-typert-protocol/invariant": ["./packages/typert-protocol/src/invariant.ts"]
+    }
+  }
+}

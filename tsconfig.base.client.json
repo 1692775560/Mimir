@@ -1,0 +1,10 @@
+{
+  // Browser-side compiler shape: DOM library API and React JSX, no ambient
+  // node types.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": []
+  }
+}

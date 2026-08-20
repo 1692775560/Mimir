@@ -1,0 +1,19 @@
+# Opt-in Mimir patch over the shipped dsh Web composition. The web profile
+# already mounts storage + storage-json + storage-domain, so this overlay only
+# inserts the suite itself; the wiki persists under the profile's storage root.
+
+- insert:
+    # The reviewer subagent route defaults to the base composition's fresh
+    # `spawn` provider; reviewer.maxRounds caps the per-project review loop.
+    - id: mimir
+      name: 'dsh-mimir'
+      config:
+        workspaceDir: .research       # research workspace root, resolved against the process cwd
+        reviewer:
+          provider: spawn             # subagent provider route
+          maxRounds: 3                # per-project review-round budget
+        latex:
+          engine: auto                # auto (probe latexmk then tectonic on PATH), an engine name, or an absolute binary path
+          timeoutMs: 120000           # compile kill timeout; raise it for tectonic's first network fetch
+        arxiv:
+          maxResults: 10              # default arxiv_search result cap

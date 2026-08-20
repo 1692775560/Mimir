@@ -1,0 +1,105 @@
+/**
+ * Behavior tests for the paper-source file operations: snapshot reads with
+ * their mtime, optimistic-concurrency saves (success, conflict, missing),
+ * and the atomic commit preserving content and permission bits.
+ */
+
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { readPaperSource, resolvePaperDir, savePaperSourceFile } from '../src/paper-source.ts'
+
+describe('resolvePaperDir', () => {
+  const root = join(tmpdir(), 'research-ws')
+
+  it('falls back to the default paper directory', () => {
+    expect(resolvePaperDir(root)).toBe(join(root, 'paper'))
+  })
+
+  it('prefers the project record paperDir over the default', () => {
+    expect(resolvePaperDir(root, undefined, 'ego-wholebody-paper'))
+      .toBe(join(root, 'ego-wholebody-paper'))
+  })
+
+  it('prefers an explicit request dir over the project record', () => {
+    expect(resolvePaperDir(root, 'other-paper', 'ego-wholebody-paper'))
+      .toBe(join(root, 'other-paper'))
+  })
+
+  it('rejects a .. escape and an absolute path', () => {
+    expect(resolvePaperDir(root, '../outside')).toBeUndefined()
+    expect(resolvePaperDir(root, 'a/../../outside')).toBeUndefined()
+    expect(resolvePaperDir(root, '/etc/passwd')).toBeUndefined()
+    expect(resolvePaperDir(root, undefined, '../../outside')).toBeUndefined()
+  })
+
+  it('rejects an empty candidate', () => {
+    expect(resolvePaperDir(root, '')).toBeUndefined()
+    expect(resolvePaperDir(root, '   ')).toBeUndefined()
+  })
+})
+
+describe('paper-source', () => {
+  let dir: string
+  let texPath: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'research-paper-source-'))
+    texPath = join(dir, 'main.tex')
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  describe('readPaperSource', () => {
+    it('returns undefined when the file does not exist', async () => {
+      expect(await readPaperSource(texPath)).toBeUndefined()
+    })
+
+    it('returns the content with the mtime it was read from', async () => {
+      await writeFile(texPath, '\\documentclass{article}\n', 'utf8')
+      const snapshot = await readPaperSource(texPath)
+      expect(snapshot?.content).toBe('\\documentclass{article}\n')
+      expect(snapshot?.mtimeMs).toBe((await stat(texPath)).mtimeMs)
+    })
+  })
+
+  describe('savePaperSourceFile', () => {
+    it('reports missing when the file does not exist', async () => {
+      expect(await savePaperSourceFile(texPath, 'x', 0)).toEqual({ kind: 'missing' })
+    })
+
+    it('commits the content and returns the new mtime when the base matches', async () => {
+      await writeFile(texPath, 'before\n', 'utf8')
+      const base = (await stat(texPath)).mtimeMs
+      const outcome = await savePaperSourceFile(texPath, 'after\n', base)
+      expect(outcome.kind).toBe('saved')
+      expect(await readFile(texPath, 'utf8')).toBe('after\n')
+      expect((await stat(texPath)).mtimeMs).toBe((outcome as { mtimeMs: number }).mtimeMs)
+    })
+
+    it('reports a conflict and leaves the file untouched when the mtime moved', async () => {
+      await writeFile(texPath, 'v1\n', 'utf8')
+      const base = (await stat(texPath)).mtimeMs
+      // A third party (the agent's file tools) lands a change the draft never saw.
+      await writeFile(texPath, 'v2\n', 'utf8')
+      const displaced = (await stat(texPath)).mtimeMs
+      const outcome = await savePaperSourceFile(texPath, 'stale draft\n', base)
+      expect(outcome).toEqual({ kind: 'conflict', currentMtimeMs: displaced })
+      expect(await readFile(texPath, 'utf8')).toBe('v2\n')
+    })
+
+    it('accepts a follow-up save based on the mtime a conflict reported', async () => {
+      await writeFile(texPath, 'v1\n', 'utf8')
+      const first = await savePaperSourceFile(texPath, 'v2\n', (await stat(texPath)).mtimeMs)
+      expect(first.kind).toBe('saved')
+      const second = await savePaperSourceFile(
+        texPath, 'v3\n', (first as { mtimeMs: number }).mtimeMs,
+      )
+      expect(second.kind).toBe('saved')
+      expect(await readFile(texPath, 'utf8')).toBe('v3\n')
+    })
+  })
+})
