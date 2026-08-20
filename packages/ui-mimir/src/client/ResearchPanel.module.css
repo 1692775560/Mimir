@@ -698,27 +698,85 @@
   user-select: none;
 }
 
-.editor {
-  box-sizing: border-box;
+.editorStack {
+  position: relative;
+  display: flex;
   flex: 1;
   min-height: 0;
   width: 100%;
+}
+
+/* Shared text geometry: the textarea and its highlight overlay MUST agree
+   glyph for glyph, or the overlay shows up as a ghost. */
+.editor,
+.editorHighlight {
+  box-sizing: border-box;
   padding: 10px 12px;
   border: none;
-  background: transparent;
-  color: var(--dsw-alias-label-primary, #17233d);
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 13px;
   line-height: 19px;
+  tab-size: 8;
+  white-space: pre;
+}
+
+.editor {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #17233d);
   resize: none;
   /* No soft wrap: one visual row must stay one logical line, or the gutter
      numbers and the click-to-jump scroll/selection math drift apart. */
-  white-space: pre;
-  overflow-x: auto;
+  overflow: auto;
+}
+
+/* With the overlay on, the textarea paints only the caret and the selection;
+   the colored glyphs come from the pre underneath. */
+.editor[data-highlighted] {
+  color: transparent;
+  caret-color: var(--dsw-alias-label-primary, #17233d);
 }
 
 .editor:disabled {
   color: var(--dsw-alias-label-tertiary, #5b6474);
+}
+
+.editorHighlight {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #17233d);
+  pointer-events: none;
+  user-select: none;
+}
+
+.editorHighlight [data-tok='command'] {
+  color: var(--mimir-tok-command, #1d4ed8);
+}
+
+.editorHighlight [data-tok='comment'] {
+  color: var(--mimir-tok-comment, #6b7f6e);
+  font-style: italic;
+}
+
+.editorHighlight [data-tok='math'] {
+  color: var(--mimir-tok-math, #7c3aed);
+}
+
+.editorHighlight [data-tok='brace'],
+.editorHighlight [data-tok='bracket'] {
+  color: var(--mimir-tok-brace, #4b5563);
+}
+
+.editorHighlight [data-tok='env'] {
+  color: var(--mimir-tok-env, #0e7490);
 }
 
 .compileRow {

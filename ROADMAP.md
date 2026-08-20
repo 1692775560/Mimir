@@ -25,6 +25,11 @@ polish round every few iterations.
       Remote; tag pills, project badges, inline editor, tag/current-project
       filter bar; PaperRecord grew `tags`/`projectIds` with zod defaults, no
       wiki version bump)
+- [x] LaTeX syntax highlighting in the editor: zero-dependency overlay
+      (transparent-text textarea over a token-rendered `pre`); single-pass
+      tokenizer with plain/comment/command/math/brace/bracket/env tokens,
+      escape-safe (`\%` stays plain), same-line `$…$` pairing; degrades to
+      plain text past 200 KB
 
 ## Queue
 
@@ -35,8 +40,6 @@ polish round every few iterations.
 
 ### Writing experience
 
-- [ ] LaTeX syntax highlighting in the editor (lightweight self-drawn
-      highlight overlay, no new dependency)
 - [ ] BibTeX management: edit `refs.bib` in the panel, generate entries from
       the literature library in one click
 - [ ] Outline drag-to-reorder sections (rewrites `main.tex` section order)

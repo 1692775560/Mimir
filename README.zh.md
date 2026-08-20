@@ -26,15 +26,15 @@
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、论断、实验、项目） |
 | `latex_compile` | 编译 `main.tex` 并解析出带文件/行号的诊断；多引擎：`latexmk` 或 `tectonic`（自动探测或显式二进制路径） |
 
-**Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：**总览**（流水线阶段进度、统计芯片、工件清单）、**论文**（可折叠可跳行的大纲栏、自动保存的 `main.tex` 编辑器（同步行号）、一键编译（状态行标注引擎）、点击跳源码行的错误列表、内嵌 PDF 预览）、**文献**（已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏；面板内 arXiv 搜索 + 一键导入 wiki，卡片可删除）、**实验**（运行记录：共享数值指标的内联 SVG 对比条形图、逐 run 可展开指标、行删除，以及 `EXPERIMENT_LOG.md`）、**图表**（论文目录图片网格：放大预览、上传、删除、复制 LaTeX 引用）、**服务器**（登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取，含利用率/显存条）。
+**Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：**总览**（流水线阶段进度、统计芯片、工件清单）、**论文**（可折叠可跳行的大纲栏、自动保存的 `main.tex` 编辑器（同步行号 + 零依赖 LaTeX 语法高亮）、一键编译（状态行标注引擎）、点击跳源码行的错误列表、内嵌 PDF 预览）、**文献**（已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏；面板内 arXiv 搜索 + 一键导入 wiki，卡片可删除）、**实验**（运行记录：共享数值指标的内联 SVG 对比条形图、逐 run 可展开指标、行删除，以及 `EXPERIMENT_LOG.md`）、**图表**（论文目录图片网格：放大预览、上传、删除、复制 LaTeX 引用）、**服务器**（登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取，含利用率/显存条）。
 
 | 总览 | 文献 | 文献：arXiv 搜索 |
 | --- | --- | --- |
 | ![总览](docs/screenshots/tab-overview.png) | ![文献](docs/screenshots/tab-papers.png) | ![文献：arXiv 搜索](docs/screenshots/tab-papers-search.png) |
 
-| 论文 | 论文：编译问题 | 论文：点击跳源码行 |
+| 论文：语法高亮 | 论文：编译问题 | 论文：点击跳源码行 |
 | --- | --- | --- |
-| ![论文](docs/screenshots/tab-paper.png) | ![论文：编译问题](docs/screenshots/tab-paper-issues.png) | ![论文：点击跳源码行](docs/screenshots/tab-paper-issue-jump.png) |
+| ![论文：语法高亮](docs/screenshots/tab-paper-highlight.png) | ![论文：编译问题](docs/screenshots/tab-paper-issues.png) | ![论文：点击跳源码行](docs/screenshots/tab-paper-issue-jump.png) |
 
 | 实验 | 图表 | 服务器 |
 | --- | --- | --- |

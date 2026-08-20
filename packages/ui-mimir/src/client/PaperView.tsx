@@ -1,17 +1,20 @@
 /**
  * The paper view: the Overleaf-style editing surface — a clickable outline
- * rail, the `main.tex` editor with a synced line-number gutter and the
+ * rail, the `main.tex` editor with a synced line-number gutter, a dependency-
+ * free LaTeX syntax-highlight overlay (transparent-text textarea over a
+ * token-rendered pre, degrading to plain past HIGHLIGHT_MAX_LENGTH), the
  * autosave status pill, the compile row with the severity-colored issue list
  * (click jumps the editor to the line), and the iframe PDF preview.
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OutlineNode } from 'dsh-mimir/types'
 import type {
   ResearchCompileView, ResearchOutlineView, ResearchSaveState, ResearchSourceView,
 } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
+import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import { failureCopy, lineRangeOf } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
 import css from './ResearchPanel.module.css'
@@ -71,11 +74,23 @@ export function PaperView({
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
+  const highlightRef = useRef<HTMLPreElement>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The outline rail collapses to a slim strip so the editor can widen.
   const [railCollapsed, setRailCollapsed] = useState(false)
   // Gutter row flashed after a jump (issue list or outline click).
   const [flashLine, setFlashLine] = useState<number | null>(null)
+
+  /** Sync the gutter and the highlight overlay to the textarea's viewport. */
+  const syncEditorScroll = (): void => {
+    const editor = editorRef.current
+    if (editor === null) return
+    if (gutterRef.current !== null) gutterRef.current.scrollTop = editor.scrollTop
+    if (highlightRef.current !== null) {
+      highlightRef.current.scrollTop = editor.scrollTop
+      highlightRef.current.scrollLeft = editor.scrollLeft
+    }
+  }
 
   // Cancel a pending gutter flash on unmount.
   useEffect(() => () => {
@@ -96,7 +111,7 @@ export function PaperView({
     editor.focus()
     editor.setSelectionRange(range.start, range.end)
     editor.scrollTop = Math.max(0, (line - 3) * EDITOR_LINE_HEIGHT)
-    if (gutterRef.current !== null) gutterRef.current.scrollTop = editor.scrollTop
+    syncEditorScroll()
     setFlashLine(line)
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
     flashTimerRef.current = setTimeout(() => { setFlashLine(null) }, GUTTER_FLASH_MS)
@@ -123,6 +138,15 @@ export function PaperView({
       + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
     : null
   const lineCount = currentSource === null ? 1 : currentSource.content.split('\n').length
+  // The highlight overlay's tokens; oversized sources degrade to plain text.
+  const highlightTokens = useMemo(() => {
+    const content = currentSource?.content ?? ''
+    return content.length > 0 && content.length <= HIGHLIGHT_MAX_LENGTH ? tokenizeLatex(content) : null
+  }, [currentSource?.content])
+
+  // The overlay remounts when highlighting toggles; re-sync its scroll after
+  // every token recompute so it never lags the textarea.
+  useEffect(() => { syncEditorScroll() }, [highlightTokens])
 
   return (
     <div className={css.paperLayout}>
@@ -201,20 +225,29 @@ export function PaperView({
               <div key={index} data-flash={index + 1 === flashLine || undefined}>{index + 1}</div>
             ))}
           </div>
-          <textarea
-            ref={editorRef}
-            className={css.editor}
-            spellCheck={false}
-            value={currentSource?.content ?? ''}
-            disabled={projectId === null || currentSource === null
-              || currentSource.status !== 'ready' || currentSource.saveState === 'conflict'}
-            onChange={(event) => { editSource(event.target.value) }}
-            onScroll={(event) => {
-              if (gutterRef.current !== null) {
-                gutterRef.current.scrollTop = event.currentTarget.scrollTop
-              }
-            }}
-          />
+          <div className={css.editorStack}>
+            {highlightTokens !== null && (
+              <pre ref={highlightRef} className={css.editorHighlight} aria-hidden>
+                {highlightTokens.map((token, index) => token.type === 'plain'
+                  ? token.text
+                  : <span key={index} data-tok={token.type}>{token.text}</span>)}
+                {/* A trailing newline keeps the pre as tall as the textarea
+                    when the source ends with one. */}
+                {'\n'}
+              </pre>
+            )}
+            <textarea
+              ref={editorRef}
+              className={css.editor}
+              data-highlighted={highlightTokens !== null || undefined}
+              spellCheck={false}
+              value={currentSource?.content ?? ''}
+              disabled={projectId === null || currentSource === null
+                || currentSource.status !== 'ready' || currentSource.saveState === 'conflict'}
+              onChange={(event) => { editSource(event.target.value) }}
+              onScroll={syncEditorScroll}
+            />
+          </div>
         </div>
       </section>
       <section className={css.previewPane}>
