@@ -5,17 +5,24 @@
  * token-rendered pre, degrading to plain past HIGHLIGHT_MAX_LENGTH), the
  * autosave status pill, the compile row with the severity-colored issue list
  * (click jumps the editor to the line), the iframe PDF preview, and the
- * bibliography panel that replaces the preview while open.
+ * bibliography panel that replaces the preview while open. The three panes
+ * are resizable through drag handles (the widths persist to localStorage) and
+ * the editor/preview panes can each take the full content area.
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { OutlineNode } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
+import {
+  editorShareFromDrag, loadPaperLayout, PAPER_LAYOUT_DEFAULT, PAPER_LAYOUT_STORAGE_KEY,
+  railWidthFromDrag, serializePaperLayout, type PaperLayout,
+} from './paper-layout.ts'
+import type { PaperFullscreen } from './store.ts'
 import { failureCopy, lineRangeOf, SAVE_KEYS } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
@@ -26,6 +33,18 @@ const EDITOR_LINE_HEIGHT = 19
 
 /** How long the jumped-to gutter row stays flashed. */
 const GUTTER_FLASH_MS = 1200
+
+/** 16×16 pane-fullscreen icons: diagonal arrows out (enter) / in (exit). */
+const EXPAND_ICON: ReactNode = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
+  </svg>
+)
+const COMPRESS_ICON: ReactNode = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13.5 9.5h-4v4M9.5 13.5 13 10M2.5 6.5h4v-4M6.5 2.5 3 6" />
+  </svg>
+)
 
 /** One outline subtree, recursing through children; click jumps the editor. */
 function OutlineTree({ nodes, onJump }: {
@@ -54,7 +73,7 @@ function OutlineTree({ nodes, onJump }: {
 export function PaperView({
   outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
-  ensurePapers, t,
+  ensurePapers, fullscreen, setFullscreen, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -74,22 +93,95 @@ export function PaperView({
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly ensurePapers: () => void
+  /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
+  readonly fullscreen: PaperFullscreen | null
+  readonly setFullscreen: (pane: PaperFullscreen | null) => void
   readonly t: ResearchT
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
   const highlightRef = useRef<HTMLPreElement>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const editorPaneRef = useRef<HTMLElement>(null)
+  const previewPaneRef = useRef<HTMLElement>(null)
   // The outline rail collapses to a slim strip so the editor can widen.
   const [railCollapsed, setRailCollapsed] = useState(false)
   // Gutter row flashed after a jump (issue list or outline click).
   const [flashLine, setFlashLine] = useState<number | null>(null)
   // The bibliography panel replaces the PDF preview while open.
   const [bibOpen, setBibOpen] = useState(false)
+  // Pane widths; restored from localStorage, written back on every settle.
+  const [layout, setLayout] = useState<PaperLayout>(() => loadPaperLayout(key => localStorage.getItem(key)))
+  // Which drag handle is mid-gesture (drives the container's data-dragging).
+  const [dragging, setDragging] = useState<'rail' | 'split' | null>(null)
 
-  // A project switch closes the bib panel; it reloads for the new project on
-  // the next open.
-  useEffect(() => { setBibOpen(false) }, [projectId])
+  // A project switch closes the bib panel and exits fullscreen; both reload
+  // for the new project on the next open.
+  useEffect(() => {
+    setBibOpen(false)
+    setFullscreen(null)
+  }, [projectId, setFullscreen])
+
+  // Persist the pane widths so a reopen restores them.
+  useEffect(() => {
+    try {
+      localStorage.setItem(PAPER_LAYOUT_STORAGE_KEY, serializePaperLayout(layout))
+    } catch {
+      // A full/blocked localStorage drops persistence; the layout still works.
+    }
+  }, [layout])
+
+  /**
+   * Start one drag on the rail handle: pointer-captured move events resize
+   * the rail until pointerup/pointercancel.
+   */
+  const onRailHandleDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const startX = event.clientX
+    const startRail = railCollapsed || layout.rail === 0 ? 0 : layout.rail
+    if (startRail === 0) setRailCollapsed(false)
+    setDragging('rail')
+    const onMove = (move: PointerEvent): void => {
+      setLayout(prev => ({ ...prev, rail: railWidthFromDrag(startRail, move.clientX - startX) }))
+    }
+    const onUp = (): void => {
+      setDragging(null)
+      handle.removeEventListener('pointermove', onMove)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp, { once: true })
+    handle.addEventListener('pointercancel', onUp, { once: true })
+  }
+
+  /**
+   * Start one drag on the editor/preview split handle: the measured pane
+   * widths at drag start pin the px↔share conversion for the whole gesture.
+   */
+  const onSplitHandleDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const startX = event.clientX
+    const startEditor = editorPaneRef.current?.getBoundingClientRect().width ?? 0
+    const available = startEditor + (previewPaneRef.current?.getBoundingClientRect().width ?? 0)
+    if (available <= 0) return
+    setDragging('split')
+    const onMove = (move: PointerEvent): void => {
+      setLayout(prev => ({
+        ...prev,
+        editor: editorShareFromDrag(startEditor + move.clientX - startX, available),
+      }))
+    }
+    const onUp = (): void => {
+      setDragging(null)
+      handle.removeEventListener('pointermove', onMove)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp, { once: true })
+    handle.addEventListener('pointercancel', onUp, { once: true })
+  }
 
   /** Sync the gutter and the highlight overlay to the textarea's viewport. */
   const syncEditorScroll = (): void => {
@@ -158,15 +250,33 @@ export function PaperView({
   // every token recompute so it never lags the textarea.
   useEffect(() => { syncEditorScroll() }, [highlightTokens])
 
+  // The rail renders collapsed either by its own toggle or by a drag to 0.
+  const railGone = railCollapsed || layout.rail === 0
+  /** Expand the collapsed rail, restoring the default width after a drag-to-0. */
+  const expandRail = (): void => {
+    setRailCollapsed(false)
+    if (layout.rail === 0) {
+      setLayout(prev => ({ ...prev, rail: PAPER_LAYOUT_DEFAULT.rail }))
+    }
+  }
+
   return (
-    <div className={css.paperLayout}>
-      <aside className={css.outlineRail} data-collapsed={railCollapsed || undefined}>
-        {railCollapsed ? (
+    <div
+      className={css.paperLayout}
+      data-fullscreen={fullscreen ?? undefined}
+      data-dragging={dragging ?? undefined}
+    >
+      <aside
+        className={css.outlineRail}
+        data-collapsed={railGone || undefined}
+        style={{ flexBasis: railGone ? 44 : layout.rail }}
+      >
+        {railGone ? (
           <button
             type="button"
             className={css.railToggle}
             aria-label={t('outline.expand')}
-            onClick={() => { setRailCollapsed(false) }}
+            onClick={expandRail}
           >
             »
           </button>
@@ -205,14 +315,37 @@ export function PaperView({
           </>
         )}
       </aside>
-      <section className={css.editorPane}>
+      <div
+        className={css.splitHandle}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('pane.resize')}
+        data-active={dragging === 'rail' || undefined}
+        onPointerDown={onRailHandleDown}
+      />
+      <section
+        ref={editorPaneRef}
+        className={css.editorPane}
+        style={fullscreen === null ? { flexGrow: layout.editor, flexBasis: 0 } : undefined}
+      >
         <div className={css.editorHead}>
           <h3 className={css.sectionTitle}>{t('editor.title')}</h3>
-          {currentSource !== null && currentSource.status === 'ready' && (
-            <span className={css.savePill} data-state={currentSource.saveState} role="status">
-              {t(SAVE_KEYS[currentSource.saveState])}
-            </span>
-          )}
+          <div className={css.paneHeadActions}>
+            {currentSource !== null && currentSource.status === 'ready' && (
+              <span className={css.savePill} data-state={currentSource.saveState} role="status">
+                {t(SAVE_KEYS[currentSource.saveState])}
+              </span>
+            )}
+            <button
+              type="button"
+              className={css.iconButton}
+              title={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+              aria-label={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+              onClick={() => { setFullscreen(fullscreen === 'editor' ? null : 'editor') }}
+            >
+              {fullscreen === 'editor' ? COMPRESS_ICON : EXPAND_ICON}
+            </button>
+          </div>
         </div>
         {currentSource !== null && currentSource.saveState === 'conflict' && (
           <p className={css.conflictBanner} role="alert">
@@ -260,7 +393,19 @@ export function PaperView({
           </div>
         </div>
       </section>
-      <section className={css.previewPane}>
+      <div
+        className={css.splitHandle}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('pane.resize')}
+        data-active={dragging === 'split' || undefined}
+        onPointerDown={onSplitHandleDown}
+      />
+      <section
+        ref={previewPaneRef}
+        className={css.previewPane}
+        style={fullscreen === null ? { flexGrow: 1 - layout.editor, flexBasis: 0 } : undefined}
+      >
         <div className={css.compileRow}>
           <button
             type="button"
@@ -281,6 +426,15 @@ export function PaperView({
             onClick={() => { setBibOpen(prev => !prev) }}
           >
             {bibOpen ? t('bib.close') : t('bib.open')}
+          </button>
+          <button
+            type="button"
+            className={css.iconButton}
+            title={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+            aria-label={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+            onClick={() => { setFullscreen(fullscreen === 'preview' ? null : 'preview') }}
+          >
+            {fullscreen === 'preview' ? COMPRESS_ICON : EXPAND_ICON}
           </button>
         </div>
         {compileView.issues.length > 0 && (

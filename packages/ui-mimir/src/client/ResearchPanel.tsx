@@ -122,6 +122,7 @@ export function ResearchPanel({
   const open = useStore(state => state.open)
   const selectedProjectId = useStore(state => state.selectedProjectId)
   const activeTab = useStore(state => state.activeTab)
+  const paperFullscreen = useStore(state => state.paperFullscreen)
   const dark = useChrome(chrome => chrome.dark)
   const locale = useChrome(chrome => chrome.locale)
   const projects = useResearch(view => view.projects)
@@ -174,8 +175,10 @@ export function ResearchPanel({
   }, [open, activeTab, selectedProjectId, loadFigures])
 
   // Workbench keyboard shortcuts, live only while the panel is open: digits
-  // pick the rail tab, Escape closes, ⌘/Ctrl+Enter compiles in the paper
-  // view. Text-entry surfaces keep their keystrokes (shortcutFor's guard).
+  // pick the rail tab, Escape exits a fullscreened pane first and closes the
+  // panel only when nothing is fullscreened, ⌘/Ctrl+Enter compiles in the
+  // paper view. Text-entry surfaces keep their keystrokes (shortcutFor's
+  // guard).
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -185,16 +188,18 @@ export function ResearchPanel({
         ctrlKey: event.ctrlKey,
         altKey: event.altKey,
         editable: isEditableTarget(event.target),
+        fullscreen: paperFullscreen !== null,
       })
       if (action === null) return
       event.preventDefault()
       if (action.type === 'tab') actions.setTab(action.tab)
+      else if (action.type === 'exit-fullscreen') actions.setPaperFullscreen(null)
       else if (action.type === 'close') actions.setOpen(false)
       else if (activeTab === 'paper' && selectedProjectId !== null) compile(selectedProjectId)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [open, activeTab, selectedProjectId, actions, compile])
+  }, [open, activeTab, selectedProjectId, paperFullscreen, actions, compile])
 
   if (!open) return null
 
@@ -313,6 +318,8 @@ export function ResearchPanel({
             deleteBibEntry={deleteBibEntry}
             importPapersToBib={importPapersToBib}
             ensurePapers={ensurePapers}
+            fullscreen={paperFullscreen}
+            setFullscreen={actions.setPaperFullscreen}
             t={t}
           />
         )}

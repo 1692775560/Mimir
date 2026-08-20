@@ -28,12 +28,15 @@ export interface ShortcutInput {
   altKey: boolean
   /** Whether the event target is a text-entry surface (input, textarea, contenteditable). */
   editable: boolean
+  /** Whether a paper-view pane currently holds fullscreen (Esc exits it before closing). */
+  fullscreen: boolean
 }
 
 /** What one keydown asks the workbench to do. */
 export type ShortcutAction =
   | { type: 'tab'; tab: ResearchTab }
   | { type: 'close' }
+  | { type: 'exit-fullscreen' }
   | { type: 'compile' }
 
 /**
@@ -41,8 +44,9 @@ export type ShortcutAction =
  * open; the mapping itself refuses every combo while a text-entry surface
  * holds focus, so the editor's own keystrokes (and the browser's alt-menu
  * accelerators) pass through untouched. `1`–`6` pick the rail tab in
- * {@link TABS} order, `Escape` closes the panel, ⌘/Ctrl+Enter asks for a
- * compile (the caller gates on the paper view and a selected project).
+ * {@link TABS} order, `Escape` exits a fullscreened pane first and closes the
+ * panel only when nothing is fullscreened, ⌘/Ctrl+Enter asks for a compile
+ * (the caller gates on the paper view and a selected project).
  * @param input - the keydown fields.
  * @returns the action, or null when the keydown is not a workbench shortcut.
  */
@@ -51,7 +55,7 @@ export function shortcutFor(input: ShortcutInput): ShortcutAction | null {
   if (input.metaKey || input.ctrlKey) {
     return input.key === 'Enter' ? { type: 'compile' } : null
   }
-  if (input.key === 'Escape') return { type: 'close' }
+  if (input.key === 'Escape') return input.fullscreen ? { type: 'exit-fullscreen' } : { type: 'close' }
   if (input.key.length === 1 && input.key >= '1' && input.key <= String(TABS.length)) {
     const tab = TABS[Number(input.key) - 1]
     if (tab !== undefined) return { type: 'tab', tab }

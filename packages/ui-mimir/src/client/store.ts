@@ -11,6 +11,9 @@ import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-run
 /** The workbench's six view tabs. */
 export type ResearchTab = 'overview' | 'paper' | 'papers' | 'experiments' | 'figures' | 'servers'
 
+/** The paper-view pane holding fullscreen, or null. */
+export type PaperFullscreen = 'editor' | 'preview'
+
 /** Shared panel viewing state. */
 export interface ResearchPanelState {
   /** Whether the overlay panel is on screen. */
@@ -19,6 +22,8 @@ export interface ResearchPanelState {
   selectedProjectId: string | null
   /** The active workbench view. */
   activeTab: ResearchTab
+  /** The paper-view pane holding fullscreen, or null when split. */
+  paperFullscreen: PaperFullscreen | null
 }
 
 /**
@@ -30,6 +35,7 @@ type ResearchPanelActions = {
   setOpen: (draft: ResearchPanelState, open: boolean) => void
   select: (draft: ResearchPanelState, projectId: string | null) => void
   setTab: (draft: ResearchPanelState, tab: ResearchTab) => void
+  setPaperFullscreen: (draft: ResearchPanelState, pane: PaperFullscreen | null) => void
 }
 
 /**
@@ -38,12 +44,15 @@ type ResearchPanelActions = {
  */
 export function createResearchPanelStore(): EngineStoreHandle<ResearchPanelState, ResearchPanelActions> {
   return defineStore({
-    init: (): ResearchPanelState => ({ open: false, selectedProjectId: null, activeTab: 'overview' }),
+    init: (): ResearchPanelState => ({
+      open: false, selectedProjectId: null, activeTab: 'overview', paperFullscreen: null,
+    }),
     actions: {
       toggleOpen: (d) => { d.open = !d.open },
       setOpen: (d, open: boolean) => { d.open = open },
       select: (d, projectId: string | null) => { d.selectedProjectId = projectId },
       setTab: (d, tab: ResearchTab) => { d.activeTab = tab },
+      setPaperFullscreen: (d, pane: PaperFullscreen | null) => { d.paperFullscreen = pane },
     },
   })
 }

@@ -9,6 +9,12 @@ polish round every few iterations.
 
 ## Done
 
+- [x] Paper view layout: drag handles between outline/editor/preview resize
+      the panes (pure `railWidthFromDrag`/`editorShareFromDrag` clamp math,
+      rail snaps to collapsed below 60px, editor ≥320px / preview ≥280px),
+      widths persist to localStorage (`mimir.paperLayout`); editor and preview
+      each go fullscreen from a head button, and Esc exits fullscreen before
+      closing the panel (`shortcutFor` takes the fullscreen flag)
 - [x] BibTeX management: the paper view's bibliography panel reads the
       project's `references.bib` (tolerant dependency-free parser with a
       parse∘serialize round-trip invariant), lists entries with delete, and
@@ -58,7 +64,6 @@ polish round every few iterations.
 ### Writing experience
 
 - [ ] Outline drag-to-reorder sections (rewrites `main.tex` section order)
-- [ ] Paper view layout: draggable editor/preview splitter, editor fullscreen
 
 ### Servers
 

@@ -1,15 +1,15 @@
 /**
  * Behavior tests for the workbench-chrome pure logic: the keyboard-shortcut
- * mapping (tab digits, Escape, ⌘/Ctrl+Enter, the editable-target guard) and
- * the theme/locale toggle targets.
+ * mapping (tab digits, Escape with the fullscreen-first priority, ⌘/Ctrl+Enter,
+ * the editable-target guard) and the theme/locale toggle targets.
  */
 
 import { describe, expect, it } from 'vitest'
 import { nextColorScheme, nextLocale, shortcutFor, TABS } from '../src/client/shortcuts.ts'
 
-/** A plain keydown with no modifiers and no editable focus. */
+/** A plain keydown with no modifiers, no editable focus, and no fullscreened pane. */
 function key(keyValue: string, patch: Partial<Parameters<typeof shortcutFor>[0]> = {}) {
-  return { key: keyValue, metaKey: false, ctrlKey: false, altKey: false, editable: false, ...patch }
+  return { key: keyValue, metaKey: false, ctrlKey: false, altKey: false, editable: false, fullscreen: false, ...patch }
 }
 
 describe('shortcutFor', () => {
@@ -30,6 +30,13 @@ describe('shortcutFor', () => {
 
   it('maps Escape to close', () => {
     expect(shortcutFor(key('Escape'))).toEqual({ type: 'close' })
+  })
+
+  it('maps Escape to exit-fullscreen while a pane holds fullscreen', () => {
+    expect(shortcutFor(key('Escape', { fullscreen: true }))).toEqual({ type: 'exit-fullscreen' })
+    // Other shortcuts are unaffected by the fullscreen flag.
+    expect(shortcutFor(key('3', { fullscreen: true }))).toEqual({ type: 'tab', tab: 'papers' })
+    expect(shortcutFor(key('Enter', { metaKey: true, fullscreen: true }))).toEqual({ type: 'compile' })
   })
 
   it('maps ⌘/Ctrl+Enter to compile, either modifier', () => {

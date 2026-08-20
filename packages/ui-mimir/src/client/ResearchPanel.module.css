@@ -657,13 +657,67 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
-/* Editor gets 3 shares, preview 2 — the source is the primary surface. */
+/* Editor gets 3 shares, preview 2 — the source is the primary surface. The
+   inline flexGrow/flexBasis from the persisted layout overrides these. */
 .editorPane {
   flex: 3;
 }
 
 .previewPane {
   flex: 2;
+}
+
+/* Drag handles between the three panes: an 8px hit area centered on the 12px
+   gap (negative margins make it layout-neutral), a 2px grip line that lights
+   up on hover/drag. */
+.splitHandle {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 8px;
+  margin: 0 -10px;
+  border-radius: 4px;
+  cursor: col-resize;
+}
+
+.splitHandle::after {
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 1px;
+  background: var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  content: '';
+  transition: background-color 0.15s ease;
+}
+
+.splitHandle:hover::after,
+.splitHandle[data-active]::after {
+  background: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+/* While a handle is mid-drag: keep the resize cursor everywhere, suppress
+   text selection, and keep the PDF iframe from swallowing pointer events. */
+.paperLayout[data-dragging] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.paperLayout[data-dragging] .previewFrame {
+  pointer-events: none;
+}
+
+/* Fullscreen: the named pane takes the whole content area; the other panes
+   and both drag handles hide. */
+.paperLayout[data-fullscreen='editor'] .outlineRail,
+.paperLayout[data-fullscreen='editor'] .previewPane,
+.paperLayout[data-fullscreen='preview'] .outlineRail,
+.paperLayout[data-fullscreen='preview'] .editorPane,
+.paperLayout[data-fullscreen] .splitHandle {
+  display: none;
+}
+
+.paneHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .editorHead {
