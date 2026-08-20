@@ -327,3 +327,39 @@ export type ResearchImportBibResult = ResearchResult<{
   readonly added: readonly string[]
   readonly skipped: readonly string[]
 }>
+
+/** The six research-wiki tables, in domain order. */
+export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers'
+
+/** One wiki export snapshot's table payload. */
+export interface ResearchWikiSnapshotTables {
+  readonly papers: readonly PaperRecord[]
+  readonly ideas: readonly IdeaRecord[]
+  readonly claims: readonly ClaimRecord[]
+  readonly projects: readonly ProjectRecord[]
+  readonly experiments: readonly ExperimentRecord[]
+  readonly servers: readonly ServerRecord[]
+}
+
+/**
+ * One wiki backup snapshot: every record of all six tables under a format
+ * envelope (`format`/`version` guard against importing foreign JSON).
+ */
+export interface ResearchWikiSnapshot {
+  readonly format: 'mimir-wiki'
+  readonly version: 2
+  readonly exportedAt: string
+  readonly tables: ResearchWikiSnapshotTables
+}
+
+/** `exportWiki` result: the full snapshot. */
+export type ResearchExportWikiResult = ResearchResult<{ readonly snapshot: ResearchWikiSnapshot }>
+
+/** `importWiki` mode: merge upserts only absent keys; replace wipes first. */
+export type ResearchImportWikiMode = 'merge' | 'replace'
+
+/** `importWiki` result: per-table imported/skipped row counts. */
+export type ResearchImportWikiResult = ResearchResult<{
+  readonly imported: Record<ResearchWikiTableName, number>
+  readonly skipped: Record<ResearchWikiTableName, number>
+}>

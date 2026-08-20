@@ -323,6 +323,8 @@ describe('ResearchService.importPaper / removePaper', () => {
       summary: 'old',
       url: 'https://arxiv.org/abs/2103.00020v2',
       notes: 'keep me',
+      tags: [],
+      projectIds: [],
       addedAt: '2026-01-01T00:00:00.000Z',
     }
     await domain.table('papers').put(existing.arxivId, existing)

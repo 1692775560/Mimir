@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, SectionMove, ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -192,6 +192,24 @@ export interface ResearchPanelInjected {
     moves: readonly SectionMove[],
     baseOutline: readonly string[],
   ) => Promise<ResearchFailureView | null>
+  /**
+   * Export the whole wiki as one snapshot (the download button).
+   * @returns the snapshot, or the settled failure view.
+   */
+  exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
+  /**
+   * Import one parsed snapshot; a successful import re-fetches every loaded
+   * slice before resolving.
+   * @param snapshot - the parsed export JSON (revalidated host-side).
+   * @param mode - `merge` skips existing keys; `replace` wipes first.
+   * @param confirmReplace - must be true for `replace`.
+   * @returns the per-table counts, or the settled failure view.
+   */
+  importWiki: (
+    snapshot: unknown,
+    mode: ResearchImportWikiMode,
+    confirmReplace: boolean,
+  ) => Promise<{ imported: Record<string, number>; skipped: Record<string, number> } | ResearchFailureView>
 }
 
 /** Full props of the sidebar-footer research toggle. */

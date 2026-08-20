@@ -2425,3 +2425,28 @@ li.dropIndicator {
 .experimentLog a:hover {
   text-decoration: underline;
 }
+
+/* The overview's data section: wiki snapshot export and the import flow. */
+.dataSection {
+  padding: 24px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 4px 16px rgb(0 0 0 / 4%);
+}
+
+.dataActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dataSummary {
+  margin-top: 16px;
+}
+
+.dataWarning {
+  margin: 8px 0;
+  color: var(--dsw-alias-state-error-primary, #d93026);
+  font-size: 13px;
+}

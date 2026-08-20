@@ -28,10 +28,13 @@ import type {
   ResearchDeleteFigureResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
+  ResearchExportWikiResult,
   ResearchFailure,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchImportWikiMode,
+  ResearchImportWikiResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -45,6 +48,7 @@ import type {
   ResearchSearchArxivResult,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
+  ResearchWikiSnapshot,
   SectionMove,
   ServerInput,
   ServerRecord,
@@ -52,7 +56,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The twenty-five Remote calls this controller needs, exactly as the
+ * The twenty-seven Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -108,6 +112,12 @@ export interface ResearchRemote {
     baseOutline: string[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
+  exportWiki: () => Promise<RemoteResult<ResearchExportWikiResult>>
+  importWiki: (request: {
+    snapshot: ResearchWikiSnapshot
+    mode: ResearchImportWikiMode
+    confirmReplace?: boolean
+  }) => Promise<RemoteResult<ResearchImportWikiResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -316,6 +326,64 @@ export class ResearchController implements HostObservable<ResearchView> {
   resync(): void {
     if (this.view.projectsStatus === 'cold') return
     this.loadPromise ??= this.loadProjects().finally(() => { this.loadPromise = null })
+  }
+
+  /**
+   * Export the whole wiki as one snapshot (the overview data section's
+   * download button).
+   * @returns the snapshot, or the settled failure view.
+   */
+  async exportWiki(): Promise<ResearchWikiSnapshot | ResearchFailureView> {
+    try {
+      const carried = await this.remote.exportWiki()
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      return result.value.snapshot
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Import one parsed snapshot in the given mode, then re-fetch every loaded
+   * slice so the panel reflects the new wiki without a reopen.
+   * @param snapshot - the parsed export JSON (revalidated host-side).
+   * @param mode - `merge` skips existing keys; `replace` wipes first.
+   * @param confirmReplace - must be true for `replace`.
+   * @returns the per-table counts, or the settled failure view.
+   */
+  async importWiki(
+    snapshot: unknown,
+    mode: ResearchImportWikiMode,
+    confirmReplace: boolean,
+  ): Promise<{ imported: Record<string, number>; skipped: Record<string, number> } | ResearchFailureView> {
+    try {
+      // The boundary type is the snapshot shape; the parsed file is unknown
+      // here and revalidated row-by-row host-side before any write.
+      const carried = await this.remote.importWiki({ snapshot: snapshot as ResearchWikiSnapshot, mode, confirmReplace })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.reloadAll()
+      return result.value
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /** Re-fetch every loaded slice (the post-import repaint). */
+  reloadAll(): void {
+    if (this.view.projectsStatus !== 'cold') void this.loadProjects()
+    if (this.view.papers.status !== 'cold') void this.loadPapers()
+    if (this.view.servers.status !== 'cold') void this.loadServers()
+    const projectId = this.view.outline?.projectId ?? null
+    if (projectId === null) return
+    this.select(projectId)
+    if (this.view.figures !== null) this.loadFigures(projectId, true)
+    const artifact = this.view.artifact
+    if (artifact !== null) this.loadArtifact(artifact.projectId, artifact.name, true)
+    if (this.view.bib !== null) this.reloadBibliography()
   }
 
   /** Load the literature list once, on the papers view's first open. */

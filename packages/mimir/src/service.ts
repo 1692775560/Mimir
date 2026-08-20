@@ -21,6 +21,10 @@ import { parseTexOutline, reorderSections } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
+import {
+  snapshotEnvelopeError, tableRowsError, WIKI_SNAPSHOT_FORMAT, WIKI_SNAPSHOT_VERSION,
+  WIKI_TABLE_KEY, WIKI_TABLE_NAMES,
+} from './wiki-snapshot.ts'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
@@ -29,8 +33,11 @@ import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
   BibEntry,
+  ClaimRecord,
   ExperimentRecord,
+  IdeaRecord,
   PaperRecord,
+  ProjectRecord,
   ResearchArtifactResult,
   ResearchBibliographyResult,
   ResearchCheckServerResult,
@@ -41,10 +48,13 @@ import type {
   ResearchDeleteFigureResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
+  ResearchExportWikiResult,
   ResearchFailure,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchImportWikiMode,
+  ResearchImportWikiResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -60,6 +70,8 @@ import type {
   ResearchSuccess,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
+  ResearchWikiSnapshot,
+  ResearchWikiTableName,
   SectionMove,
   ServerGpuView,
   ServerInput,
@@ -1001,6 +1013,95 @@ export class ResearchService extends TypertRemoteService {
       checkedAt: new Date().toISOString(),
       message: gpu.ok ? null : `gpu probe failed: ${gpu.message}`,
     })
+  }
+
+  /**
+   * Export the whole wiki as one snapshot: every record of all six tables
+   * under the format envelope (backup/migration).
+   * @returns the snapshot; the table arrays carry each record with its
+   * primary-key field (`arxivId`/`id`).
+   */
+  @Remote('exportWiki')
+  exportWiki(): Promise<ResearchExportWikiResult> {
+    const rows = (name: ResearchWikiTableName): readonly unknown[] =>
+      [...this.domain.table(name).entries()].map(([, record]) => record)
+    return Promise.resolve(success({
+      snapshot: {
+        format: WIKI_SNAPSHOT_FORMAT,
+        version: WIKI_SNAPSHOT_VERSION,
+        exportedAt: new Date().toISOString(),
+        tables: {
+          papers: Object.freeze(rows('papers')) as readonly PaperRecord[],
+          ideas: Object.freeze(rows('ideas')) as readonly IdeaRecord[],
+          claims: Object.freeze(rows('claims')) as readonly ClaimRecord[],
+          projects: Object.freeze(rows('projects')) as readonly ProjectRecord[],
+          experiments: Object.freeze(rows('experiments')) as readonly ExperimentRecord[],
+          servers: Object.freeze(rows('servers')) as readonly ServerRecord[],
+        },
+      },
+    }))
+  }
+
+  /**
+   * Import one wiki snapshot. Every row is validated against its table's
+   * schema BEFORE any write, so a bad snapshot changes nothing. `merge`
+   * upserts only absent primary keys — existing records are never
+   * overwritten, just counted as skipped (conservative first). `replace`
+   * wipes all six tables first, so it additionally requires
+   * `confirmReplace: true` (`invalid-input` otherwise).
+   * @param request - the parsed snapshot JSON, the mode, and the replace
+   * confirmation flag.
+   * @returns per-table imported/skipped row counts.
+   */
+  @Remote('importWiki')
+  async importWiki(request: {
+    snapshot: ResearchWikiSnapshot
+    mode: ResearchImportWikiMode
+    confirmReplace?: boolean
+  }): Promise<ResearchImportWikiResult> {
+    // Widened to string so the runtime guard is not linted away: remote
+    // callers bypass the ResearchImportWikiMode type.
+    const rawMode: string = request.mode
+    if (rawMode !== 'merge' && rawMode !== 'replace') {
+      return rejected({ code: 'invalid-input', message: `unknown import mode: ${rawMode}` })
+    }
+    if (request.mode === 'replace' && request.confirmReplace !== true) {
+      return rejected({ code: 'invalid-input', message: 'replace mode requires confirmReplace: true' })
+    }
+    const envelopeError = snapshotEnvelopeError(request.snapshot)
+    if (envelopeError !== null) return rejected({ code: 'invalid-input', message: envelopeError })
+    const snapshot = request.snapshot
+    for (const name of WIKI_TABLE_NAMES) {
+      const rowError = tableRowsError(name, snapshot.tables[name])
+      if (rowError !== null) return rejected({ code: 'invalid-input', message: rowError })
+    }
+    const zeroCounts = (): Record<ResearchWikiTableName, number> => ({
+      papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0,
+    })
+    const imported = zeroCounts()
+    const skipped = zeroCounts()
+    for (const name of WIKI_TABLE_NAMES) {
+      const table = this.domain.table(name) as {
+        get: (key: string) => unknown
+        put: (key: string, value: unknown) => Promise<void>
+        delete: (key: string) => Promise<boolean>
+        entries: () => IterableIterator<[string, unknown]>
+      }
+      const keyField = WIKI_TABLE_KEY[name]
+      if (request.mode === 'replace') {
+        for (const [key] of [...table.entries()]) await table.delete(key)
+      }
+      for (const row of snapshot.tables[name]) {
+        const key = (row as unknown as Record<string, unknown>)[keyField] as string
+        if (request.mode === 'merge' && table.get(key) !== undefined) {
+          skipped[name] += 1
+          continue
+        }
+        await table.put(key, row)
+        imported[name] += 1
+      }
+    }
+    return success({ imported, skipped })
   }
 }
 

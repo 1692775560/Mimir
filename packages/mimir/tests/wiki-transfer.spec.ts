@@ -1,0 +1,249 @@
+/**
+ * Behavior tests for the wiki export/import remotes: exportWiki snapshot
+ * completeness (all six tables, envelope fields, records with their keys),
+ * importWiki merge (absent keys upsert, existing records skipped untouched),
+ * replace (wipes first, requires confirmReplace), invalid-record rejection
+ * before any write, and the format/version envelope checks — plus the pure
+ * validators in wiki-snapshot.ts. Memory-backed domain, no mocks.
+ */
+
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
+import { researchWikiDomainSpec } from '../src/store.ts'
+import { ResearchService } from '../src/service.ts'
+import {
+  snapshotEnvelopeError, tableRowsError, WIKI_SNAPSHOT_FORMAT, WIKI_SNAPSHOT_VERSION,
+} from '../src/wiki-snapshot.ts'
+import type {
+  ExperimentRecord, PaperRecord, ProjectRecord, ResearchWikiSnapshot, ServerRecord,
+} from '../src/types.ts'
+
+/** Boot a service over a memory-backed domain and a fresh temp workspace. */
+async function harness() {
+  const ctx = new Context()
+  await ctx.plugin(Storage)
+  const backend = new MemoryStorageBackend(new MemoryMediaPool())
+  ctx.storage.backend.register('memory', backend)
+  ctx.provide(storageBackendServiceKey('memory'), backend)
+  const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', facility)
+  const domain = await facility.open(researchWikiDomainSpec)
+  const workspaceDir = await mkdtemp(join(tmpdir(), 'mimir-wiki-'))
+  const service = new ResearchService(ctx, {
+    workspaceDir,
+    domain,
+    latex: { engine: 'auto', timeoutMs: 1000 },
+  })
+  return { ctx, domain, service }
+}
+
+const PAPER: PaperRecord = {
+  arxivId: '2401.00001',
+  title: 'Paper One',
+  authors: ['A. One'],
+  summary: 'summary',
+  url: 'https://arxiv.org/abs/2401.00001',
+  notes: 'curated note',
+  tags: ['baseline'],
+  projectIds: ['p1'],
+  addedAt: '2026-08-01T00:00:00.000Z',
+}
+
+const PROJECT: ProjectRecord = {
+  id: 'p1',
+  title: 'Project',
+  stage: 'writing',
+  artifacts: [],
+  reviewRounds: 0,
+  updatedAt: '2026-08-20T00:00:00.000Z',
+}
+
+const EXPERIMENT: ExperimentRecord = {
+  id: 'e1',
+  projectId: 'p1',
+  name: 'run one',
+  status: 'success',
+  metrics: { mpjpe: 82.9 },
+  updatedAt: '2026-08-20T00:00:00.000Z',
+}
+
+const SERVER: ServerRecord = {
+  id: 's1',
+  name: 'gpu01',
+  host: '127.0.0.1',
+  port: 22,
+  username: 'ops',
+  note: '',
+  tags: [],
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z',
+}
+
+/** Seed one record into four of the six tables. */
+async function seed(domain: Awaited<ReturnType<typeof harness>>['domain']): Promise<void> {
+  await domain.table('papers').put(PAPER.arxivId, PAPER)
+  await domain.table('projects').put(PROJECT.id, PROJECT)
+  await domain.table('experiments').put(EXPERIMENT.id, EXPERIMENT)
+  await domain.table('servers').put(SERVER.id, SERVER)
+}
+
+/** Export through the service and assert the envelope; returns the snapshot. */
+async function exportOk(service: ResearchService): Promise<ResearchWikiSnapshot> {
+  const outcome = await service.exportWiki()
+  expect(outcome.ok).toBe(true)
+  if (!outcome.ok) throw new Error('unreachable')
+  const { snapshot } = outcome.value
+  expect(snapshot.format).toBe(WIKI_SNAPSHOT_FORMAT)
+  expect(snapshot.version).toBe(WIKI_SNAPSHOT_VERSION)
+  expect(typeof snapshot.exportedAt).toBe('string')
+  return snapshot
+}
+
+describe('exportWiki', () => {
+  it('snapshots all six tables with every record', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    expect(snapshot.tables.papers).toEqual([PAPER])
+    expect(snapshot.tables.projects).toEqual([PROJECT])
+    expect(snapshot.tables.experiments).toEqual([EXPERIMENT])
+    expect(snapshot.tables.servers).toEqual([SERVER])
+    expect(snapshot.tables.ideas).toEqual([])
+    expect(snapshot.tables.claims).toEqual([])
+  })
+
+  it('round-trips through JSON (the download/upload path)', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    const parsed: unknown = JSON.parse(JSON.stringify(snapshot))
+    expect(snapshotEnvelopeError(parsed)).toBeNull()
+  })
+})
+
+describe('importWiki merge', () => {
+  it('upserts absent keys and skips existing records untouched', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    const fresh: PaperRecord = { ...PAPER, arxivId: '2401.00002', title: 'Paper Two' }
+    const clone: ResearchWikiSnapshot = {
+      ...(JSON.parse(JSON.stringify(snapshot)) as ResearchWikiSnapshot),
+      // An edited copy of the existing paper must NOT overwrite the original.
+      tables: { ...snapshot.tables, papers: [{ ...PAPER, title: 'Overwritten', notes: '' }, fresh] },
+    }
+    const outcome = await service.importWiki({ snapshot: clone, mode: 'merge' })
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        imported: { papers: 1, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0 },
+        skipped: { papers: 1, ideas: 0, claims: 0, projects: 1, experiments: 1, servers: 1 },
+      },
+    })
+    expect(domain.table('papers').get(PAPER.arxivId)).toEqual(PAPER)
+    expect(domain.table('papers').get(fresh.arxivId)).toEqual(fresh)
+  })
+})
+
+describe('importWiki replace', () => {
+  it('requires confirmReplace: true', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    const outcome = await service.importWiki({ snapshot, mode: 'replace' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) throw new Error('unreachable')
+    expect(outcome.error.code).toBe('invalid-input')
+    // Nothing was wiped.
+    expect(domain.table('papers').get(PAPER.arxivId)).toEqual(PAPER)
+  })
+
+  it('wipes all six tables and writes the snapshot', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    const clone: ResearchWikiSnapshot = {
+      ...(JSON.parse(JSON.stringify(snapshot)) as ResearchWikiSnapshot),
+      tables: { ...snapshot.tables, papers: [], experiments: [] },
+    }
+    const outcome = await service.importWiki({ snapshot: clone, mode: 'replace', confirmReplace: true })
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        imported: { papers: 0, ideas: 0, claims: 0, projects: 1, experiments: 0, servers: 1 },
+        skipped: { papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0 },
+      },
+    })
+    expect(domain.table('papers').get(PAPER.arxivId)).toBeUndefined()
+    expect(domain.table('experiments').get(EXPERIMENT.id)).toBeUndefined()
+    expect(domain.table('projects').get(PROJECT.id)).toEqual(PROJECT)
+  })
+})
+
+describe('importWiki validation', () => {
+  it('rejects a foreign format', async () => {
+    const { service } = await harness()
+    const bad = { format: 'other', version: 2 } as unknown as ResearchWikiSnapshot
+    const outcome = await service.importWiki({ snapshot: bad, mode: 'merge' })
+    expect(outcome).toEqual({ ok: false, error: { code: 'invalid-input', message: 'format must be "mimir-wiki"' } })
+  })
+
+  it('rejects a wrong version', async () => {
+    const { service } = await harness()
+    const snapshot = { format: WIKI_SNAPSHOT_FORMAT, version: 1, exportedAt: 'x', tables: {} } as unknown as ResearchWikiSnapshot
+    const outcome = await service.importWiki({ snapshot, mode: 'merge' })
+    expect(outcome).toEqual({ ok: false, error: { code: 'invalid-input', message: 'version must be 2' } })
+  })
+
+  it('rejects an unknown mode', async () => {
+    const { service } = await harness()
+    const outcome = await service.importWiki({ snapshot: {} as ResearchWikiSnapshot, mode: 'append' as 'merge' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) throw new Error('unreachable')
+    expect(outcome.error.code).toBe('invalid-input')
+  })
+
+  it('rejects one invalid row before writing anything', async () => {
+    const { domain, service } = await harness()
+    await seed(domain)
+    const snapshot = await exportOk(service)
+    const badRow = { ...PAPER, arxivId: '2401.00009', tags: 'not-an-array' }
+    const clone: ResearchWikiSnapshot = {
+      ...(JSON.parse(JSON.stringify(snapshot)) as ResearchWikiSnapshot),
+      tables: { ...snapshot.tables, papers: [badRow as unknown as PaperRecord] },
+    }
+    const outcome = await service.importWiki({ snapshot: clone, mode: 'merge' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) throw new Error('unreachable')
+    if (outcome.error.code !== 'invalid-input') throw new Error('unreachable')
+    expect(outcome.error.message).toContain('tables.papers[0]')
+    // The valid tables in the same snapshot were NOT written.
+    expect([...domain.table('ideas').entries()]).toEqual([])
+  })
+})
+
+describe('wiki-snapshot validators', () => {
+  it('rejects malformed envelopes', () => {
+    expect(snapshotEnvelopeError(null)).toBe('snapshot must be an object')
+    expect(snapshotEnvelopeError({ format: WIKI_SNAPSHOT_FORMAT, version: 2, exportedAt: 'x', tables: { papers: 'x' } }))
+      .toBe('tables.papers must be an array')
+  })
+
+  it('rejects duplicate primary keys within one table', () => {
+    expect(tableRowsError('papers', [PAPER, PAPER])).toContain('duplicates arxivId')
+  })
+
+  it('rejects a row missing its primary key', () => {
+    expect(tableRowsError('servers', [{ ...SERVER, id: '' }])).toContain('has no id')
+  })
+
+  it('accepts a clean table', () => {
+    expect(tableRowsError('experiments', [EXPERIMENT])).toBeNull()
+  })
+})

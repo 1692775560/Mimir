@@ -3,14 +3,16 @@
  * pipeline progress (idea→plan→experiment→writing→done), review-round count,
  * paper directory, artifact list, and the last-updated timestamp — preceded
  * by the stat chips (papers/experiments/figures counts gathered from the
- * other views).
+ * other views) and followed by the data section (wiki export/import).
  * @module dsh-client-ui-mimir/client/OverviewView
  */
 
-import type { ResearchProjectView } from 'dsh-mimir/types'
+import type { ResearchImportWikiMode, ResearchProjectView, ResearchWikiSnapshot } from 'dsh-mimir/types'
 import type { ResearchKey } from './locales.ts'
+import type { ResearchFailureView } from './controller.ts'
 import { STAGE_KEYS, STAGES } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
+import { DataSection } from './DataSection.tsx'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -25,12 +27,19 @@ export interface OverviewStats {
 
 /**
  * @param props - the selected project row (undefined before selection), the
- * stat-chip counts gathered from the other views, and copy.
+ * stat-chip counts gathered from the other views, the wiki export/import
+ * verbs, and copy.
  * @returns the overview card, or the no-selection hint.
  */
-export function OverviewView({ project, stats, t }: {
+export function OverviewView({ project, stats, exportWiki, importWiki, t }: {
   readonly project: ResearchProjectView | undefined
   readonly stats: OverviewStats
+  readonly exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
+  readonly importWiki: (
+    snapshot: unknown,
+    mode: ResearchImportWikiMode,
+    confirmReplace: boolean,
+  ) => Promise<{ imported: Record<string, number>; skipped: Record<string, number> } | ResearchFailureView>
   readonly t: ResearchT
 }) {
   if (project === undefined) {
@@ -91,6 +100,7 @@ export function OverviewView({ project, stats, t }: {
             </ul>
           )}
       </div>
+      <DataSection exportWiki={exportWiki} importWiki={importWiki} t={t} />
     </div>
   )
 }

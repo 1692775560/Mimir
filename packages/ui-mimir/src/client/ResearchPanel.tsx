@@ -117,6 +117,7 @@ export function ResearchPanel({
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, updateExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
+  exportWiki, importWiki,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -301,7 +302,9 @@ export function ResearchPanel({
         <p className={css.sideFoot}>{t('shortcuts.hint')}</p>
       </aside>
       <main className={css.content}>
-        {activeTab === 'overview' && <OverviewView project={selectedProject} stats={overviewStats} t={t} />}
+        {activeTab === 'overview' && (
+          <OverviewView project={selectedProject} stats={overviewStats} exportWiki={exportWiki} importWiki={importWiki} t={t} />
+        )}
         {activeTab === 'paper' && (
           <PaperView
             outline={outline}

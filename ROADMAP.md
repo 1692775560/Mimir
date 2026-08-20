@@ -95,6 +95,18 @@ polish round every few iterations.
       keeps the host app's own file-drop overlay off), and
       `filterDropFiles` reports files outside the accept list instead of
       silently ignoring them.
+- [x] Wiki export/import (backup & migration): new `exportWiki` /
+      `importWiki` Remotes (27 research methods total) snapshot all six wiki
+      tables into one dated JSON envelope (`format: "mimir-wiki"`,
+      `version: 2`); import revalidates the envelope and every row against
+      its table's zod schema BEFORE any write (a bad snapshot changes
+      nothing), `merge` upserts only absent primary keys (existing records
+      are skipped, never overwritten — conservative first), `replace` wipes
+      all six tables first and therefore requires `confirmReplace: true`.
+      The overview's new data section downloads the export and walks imports
+      through a summary card (per-table row counts), a merge/replace choice
+      (replace arms a red second confirm), and the settled imported/skipped
+      counts, then re-fetches every loaded slice.
 
 ## Queue
 
