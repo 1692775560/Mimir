@@ -26,7 +26,7 @@ English | [中文](README.zh.md)
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
 
-**Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay: **Overview** (pipeline stage progress, stat chips, artifacts), **Paper** (collapsible clickable outline, auto-saving `main.tex` editor with sync line numbers and dependency-free LaTeX syntax highlighting, one-click compile with engine label, error list that jumps to source lines, inline PDF preview), **Library** (remembered papers with editable tags, per-project links, and a tag/current-project filter bar; in-panel arXiv search with one-click import into the wiki, card delete), **Experiments** (run records: metric-comparison bar charts over shared numeric metrics as inline SVG, per-run expandable metrics, row delete, plus `EXPERIMENT_LOG.md`), **Figures** (paper-directory image grid with preview, upload, delete, and copy-LaTeX-reference card actions), **Servers** (remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars).
+**Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay: **Overview** (pipeline stage progress, stat chips, artifacts), **Paper** (collapsible clickable outline, auto-saving `main.tex` editor with sync line numbers and dependency-free LaTeX syntax highlighting, one-click compile with engine label, error list that jumps to source lines, inline PDF preview), **Library** (remembered papers with editable tags, per-project links, and a tag/current-project filter bar; in-panel arXiv search with one-click import into the wiki, card delete), **Experiments** (run records: metric-comparison bar charts over shared numeric metrics as inline SVG, per-run expandable metrics, row delete, plus `EXPERIMENT_LOG.md`), **Figures** (paper-directory image grid with preview, upload, delete, and copy-LaTeX-reference card actions), **Servers** (remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars). The panel header carries a light/dark theme toggle and a 中/EN language switch (both ride the durable host preferences), and the workbench answers keyboard shortcuts: `1–6` switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles in the paper view.
 
 | Overview | Library | Library: arXiv search |
 | --- | --- | --- |
@@ -35,6 +35,10 @@ English | [中文](README.zh.md)
 | Paper: syntax highlighting | Paper: compile issues | Paper: click-to-jump |
 | --- | --- | --- |
 | ![Paper: syntax highlighting](docs/screenshots/tab-paper-highlight.png) | ![Paper: compile issues](docs/screenshots/tab-paper-issues.png) | ![Paper: click-to-jump](docs/screenshots/tab-paper-issue-jump.png) |
+
+| Dark mode: overview | Dark mode: paper (syntax colors re-tinted) |
+| --- | --- |
+| ![Dark mode: overview](docs/screenshots/dark-overview.png) | ![Dark mode: paper](docs/screenshots/dark-paper.png) |
 
 | Experiments | Figures | Servers |
 | --- | --- | --- |

@@ -14,6 +14,7 @@
 import { useEffect, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
+import { shortcutFor, TABS } from './shortcuts.ts'
 import type { ResearchPanelProps } from './slots.ts'
 import { OverviewView } from './OverviewView.tsx'
 import { PaperView } from './PaperView.tsx'
@@ -22,9 +23,6 @@ import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
 import { ServersView } from './ServersView.tsx'
 import css from './ResearchPanel.module.css'
-
-/** The six view tabs in rail order. */
-const TABS: readonly ResearchTab[] = ['overview', 'paper', 'papers', 'experiments', 'figures', 'servers']
 
 /** Locale key of one tab label. */
 const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
@@ -84,20 +82,47 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
 /** The artifact shown by the experiments view's log section. */
 const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
 
+/** 14×14 header glyphs for the theme and language switches. */
+const MOON_ICON = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13.5 10A6 6 0 0 1 6 2.5a5 5 0 1 0 7.5 7.5z" />
+  </svg>
+)
+const SUN_ICON = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="8" cy="8" r="3" />
+    <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" />
+  </svg>
+)
+
+/**
+ * Whether one keydown target is a text-entry surface; such keydowns are never
+ * workbench shortcuts.
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
 /**
  * The frame-level research workbench entry.
  * @param props - the shared panel store, the injected research face, and copy.
  * @returns the workbench while open, or null while closed.
  */
 export function ResearchPanel({
-  useStore, actions, useResearch,
+  useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
+  deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
   const selectedProjectId = useStore(state => state.selectedProjectId)
   const activeTab = useStore(state => state.activeTab)
+  const dark = useChrome(chrome => chrome.dark)
+  const locale = useChrome(chrome => chrome.locale)
   const projects = useResearch(view => view.projects)
   const projectsStatus = useResearch(view => view.projectsStatus)
   const outline = useResearch(view => view.outline)
@@ -146,6 +171,29 @@ export function ResearchPanel({
     }
   }, [open, activeTab, selectedProjectId, loadFigures])
 
+  // Workbench keyboard shortcuts, live only while the panel is open: digits
+  // pick the rail tab, Escape closes, ⌘/Ctrl+Enter compiles in the paper
+  // view. Text-entry surfaces keep their keystrokes (shortcutFor's guard).
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const action = shortcutFor({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        editable: isEditableTarget(event.target),
+      })
+      if (action === null) return
+      event.preventDefault()
+      if (action.type === 'tab') actions.setTab(action.tab)
+      else if (action.type === 'close') actions.setOpen(false)
+      else if (activeTab === 'paper' && selectedProjectId !== null) compile(selectedProjectId)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [open, activeTab, selectedProjectId, actions, compile])
+
   if (!open) return null
 
   const selectedProject = selectedProjectId === null
@@ -172,9 +220,29 @@ export function ResearchPanel({
       <aside className={css.side}>
         <div className={css.sideHead}>
           <span className={css.title}>{t('panel.title')}</span>
-          <button type="button" className={css.close} onClick={() => { actions.setOpen(false) }}>
-            {t('panel.close')}
-          </button>
+          <div className={css.headActions}>
+            <button
+              type="button"
+              className={css.iconButton}
+              title={t('panel.theme')}
+              aria-label={t('panel.theme')}
+              onClick={toggleTheme}
+            >
+              {dark ? SUN_ICON : MOON_ICON}
+            </button>
+            <button
+              type="button"
+              className={css.iconButton}
+              title={t('panel.language')}
+              aria-label={t('panel.language')}
+              onClick={toggleLocale}
+            >
+              {locale === 'zh' ? '中' : 'EN'}
+            </button>
+            <button type="button" className={css.close} onClick={() => { actions.setOpen(false) }}>
+              {t('panel.close')}
+            </button>
+          </div>
         </div>
         <nav className={css.nav}>
           {TABS.map(tab => (
@@ -222,6 +290,7 @@ export function ResearchPanel({
             </div>
           )}
         </div>
+        <p className={css.sideFoot}>{t('shortcuts.hint')}</p>
       </aside>
       <main className={css.content}>
         {activeTab === 'overview' && <OverviewView project={selectedProject} stats={overviewStats} t={t} />}

@@ -91,6 +91,40 @@
   color: var(--dsw-alias-label-secondary, #3c4557);
 }
 
+/* Header switches: theme (sun/moon glyph) and language (中/EN). */
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.iconButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+.iconButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-secondary, #3c4557);
+}
+
 .nav {
   display: flex;
   flex-direction: column;
@@ -285,6 +319,16 @@
   padding: 12px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
   background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+/* The rail's bottom line: the keyboard-shortcut hint. */
+.sideFoot {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .sectionTitle {
@@ -1880,4 +1924,25 @@
 .serverFormActions {
   display: flex;
   gap: 8px;
+}
+
+/* Dark palette: the host theme presenter flips `body[data-ds-dark-theme]` and
+   every `--dsw-*` alias above follows the dark base palette on its own — only
+   the panel-private tokens (the LaTeX syntax colors) and the dimmer need a
+   dark value. The editor's dark ground is the theme's bluish-900 well, so the
+   syntax colors are picked for it (all ≥ 4.5:1 against it). */
+:global(body[data-ds-dark-theme]) .workbench {
+  --mimir-tok-command: #8ab0f8;
+  --mimir-tok-comment: #8ba091;
+  --mimir-tok-math: #b79dfa;
+  --mimir-tok-brace: #9aa3b2;
+  --mimir-tok-env: #55c2d8;
+  /* The dark base palette makes error-secondary a SOLID red-400 (a stroke
+     token); this panel uses it as a fill tint behind error-primary text, so
+     re-tint it locally or the text goes red-on-red. */
+  --dsw-alias-state-error-secondary: rgb(242 90 90 / 16%);
+}
+
+:global(body[data-ds-dark-theme]) .backdrop {
+  background: rgb(0 0 0 / 40%);
 }

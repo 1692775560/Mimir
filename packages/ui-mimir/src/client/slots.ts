@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from './locales.ts'
 import type { ArxivEntry, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchView } from './controller.ts'
+import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
 
 /** Store handle type shared by both registrations. */
@@ -30,7 +31,13 @@ export interface ResearchPanelInjected {
   hooks: {
     /** The panel's data view: projects, selected outline, compile status. */
     research: HostObservable<ResearchView>
+    /** The header chrome snapshot: resolved color scheme and active locale. */
+    chrome: HostObservable<WorkbenchChrome>
   }
+  /** Toggle the host theme between light and dark (durable via Host settings). */
+  toggleTheme: () => void
+  /** Toggle the host locale between Chinese and English (durable via Host settings). */
+  toggleLocale: () => void
   /** Load the project list once, on first open. */
   ensure: () => void
   /**

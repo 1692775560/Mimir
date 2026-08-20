@@ -36,7 +36,8 @@
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-sidebar"
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-theme"
       ],
       "platform": "web"
     }
@@ -52,6 +53,7 @@
     "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-theme": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.8",
     "@deepseek-ai/dsh-typert-protocol": ">=0.1.0-rc.8",
     "dsh-mimir": ">=0.1.0"
@@ -64,6 +66,7 @@
     "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-sidebar": "0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-theme": "0.0.1-rc.1",
     "@deepseek-ai/dsh-invariants": "0.1.0-rc.8",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.8",
     "@types/react": "~18.3.1",

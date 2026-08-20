@@ -18,10 +18,13 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from 'dsh-mimir/remote'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the theme plugin's Context merge (ctx.theme).
+import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { ResearchController } from './controller.ts'
 import { ResearchPanel } from './ResearchPanel.tsx'
 import { ResearchToggle } from './ResearchToggle.tsx'
 import type { ResearchPanelInjected } from './slots.ts'
+import { nextColorScheme, nextLocale, type WorkbenchChrome } from './shortcuts.ts'
 import { createResearchPanelStore } from './store.ts'
 import { en, zh } from './locales.ts'
 
@@ -35,13 +38,14 @@ export type {
 } from './slots.ts'
 export type { ResearchPanelState, ResearchTab } from './store.ts'
 export { createResearchPanelStore } from './store.ts'
+export type { WorkbenchChrome } from './shortcuts.ts'
 export type { ResearchKey } from './locales.ts'
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'research'
 
-/** Required services: the slot registry, the Remote namespace, and the copy. */
-export const inject = ['slots', 'remote', 'remote.research', 'locale']
+/** Required services: the slot registry, the Remote namespace, the copy, and the theme preference. */
+export const inject = ['slots', 'remote', 'remote.research', 'locale', 'theme']
 
 /**
  * Upload one figure file through the host's upload route. The route answers
@@ -72,6 +76,34 @@ export function apply(ctx: ClientContext): void {
   const panel = createResearchPanelStore()
   const controller = new ResearchController(ctx.remote.research)
 
+  // The header chrome snapshot adapts the host theme/locale services into one
+  // HostObservable. Both services emit change events on this context's root;
+  // the snapshot keeps reference identity while neither value moved, so the
+  // selector hook never re-renders on an unrelated theme registry bump.
+  let chromeSnapshot: WorkbenchChrome = {
+    dark: ctx.theme.getTheme().active.colorScheme === 'dark',
+    locale: ctx.locale.getLocale().active,
+  }
+  const chromeListeners = new Set<() => void>()
+  const onChromeChange = (): void => {
+    const next: WorkbenchChrome = {
+      dark: ctx.theme.getTheme().active.colorScheme === 'dark',
+      locale: ctx.locale.getLocale().active,
+    }
+    if (next.dark === chromeSnapshot.dark && next.locale === chromeSnapshot.locale) return
+    chromeSnapshot = Object.freeze(next)
+    for (const listener of [...chromeListeners]) listener()
+  }
+  ctx.on('theme/change', onChromeChange)
+  ctx.on('locale/change', onChromeChange)
+  const chrome = {
+    getSnapshot: (): WorkbenchChrome => chromeSnapshot,
+    subscribe: (listener: () => void): (() => void) => {
+      chromeListeners.add(listener)
+      return () => { chromeListeners.delete(listener) }
+    },
+  }
+
   // A reconnect can only invalidate what was already read; a cold panel stays
   // cold until the first open asks for it.
   ctx.on('connection/reset', () => { controller.resync() })
@@ -92,7 +124,9 @@ export function apply(ctx: ClientContext): void {
     store: panel,
     locale: NS,
     inject: (actions): ResearchPanelInjected => ({
-      hooks: { research: controller },
+      hooks: { research: controller, chrome },
+      toggleTheme: () => { ctx.theme.setTheme(nextColorScheme(chromeSnapshot.dark)) },
+      toggleLocale: () => { ctx.locale.setLocale(nextLocale(chromeSnapshot.locale)) },
       ensure: () => { controller.ensure() },
       // The row click is the single selection entry: it writes the shared
       // store and fetches the outline + compile status in one gesture.

@@ -30,6 +30,16 @@ polish round every few iterations.
       tokenizer with plain/comment/command/math/brace/bracket/env tokens,
       escape-safe (`\%` stays plain), same-line `$…$` pairing; degrades to
       plain text past 200 KB
+- [x] UI polish round: dark mode + language switch + keyboard shortcuts. Both
+      toggles ride the host services (`ctx.theme` / `ctx.locale`, durable via
+      Host settings — no panel-local localStorage): the header has sun/moon
+      and 中/EN buttons; the panel only re-tints its private `--mimir-tok-*`
+      syntax colors plus `error-secondary` (a stroke token in the dark base
+      palette, used here as a fill) under `body[data-ds-dark-theme]`.
+      Shortcuts (pure `shortcutFor` mapping, guarded while typing): `1–6`
+      switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; a hint line sits at
+      the rail bottom. (Opening the panel by shortcut was skipped — the host
+      sidebar owns that surface.)
 
 ## Queue
 
@@ -54,9 +64,6 @@ polish round every few iterations.
 
 ### UI/UX polish rounds
 
-- [ ] Dark mode toggle
-- [ ] Language switch (zh/en) in the panel header
-- [ ] Keyboard shortcuts (toggle panel, switch tabs, compile)
 - [ ] Narrow-width layout adaptation
 
 ## Blocked (needs user input)
