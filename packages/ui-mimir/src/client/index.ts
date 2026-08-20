@@ -156,6 +156,7 @@ export function apply(ctx: ClientContext): void {
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
       deleteExperiment: (id) => controller.deleteExperiment(id),
+      updateExperiment: (id, serverId) => controller.updateExperiment(id, serverId),
       ensureServers: () => { controller.ensureServers() },
       saveServer: (server) => controller.saveServer(server),
       deleteServer: (id) => controller.deleteServer(id),

@@ -12,7 +12,7 @@ import type { ServerInput, ServerRecord } from 'dsh-mimir/types'
 import type {
   ResearchFailureView, ResearchServersView, ServerCheckState,
 } from './controller.ts'
-import { failureCopy, relativeTime, type ResearchT } from './view-common.ts'
+import { collectServerTags, failureCopy, filterServers, relativeTime, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -24,10 +24,11 @@ interface ServerFormState {
   readonly port: string
   readonly username: string
   readonly note: string
+  readonly tags: readonly string[]
 }
 
 /** The blank form the add button opens. */
-const EMPTY_FORM: ServerFormState = { name: '', host: '', port: '22', username: '', note: '' }
+const EMPTY_FORM: ServerFormState = { name: '', host: '', port: '22', username: '', note: '', tags: [] }
 
 /** Form state of one existing record (the edit path's refill). */
 function formOf(record: ServerRecord): ServerFormState {
@@ -37,6 +38,7 @@ function formOf(record: ServerRecord): ServerFormState {
     port: String(record.port),
     username: record.username,
     note: record.note,
+    tags: [...record.tags],
   }
 }
 
@@ -70,6 +72,8 @@ export function ServersView({
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [tagInput, setTagInput] = useState('')
 
   // The view mounts only while its tab is active: load the list once, then
   // probe every listed server exactly once (a settled or in-flight probe
@@ -86,19 +90,30 @@ export function ServersView({
     setEditing('new')
     setForm(EMPTY_FORM)
     setFormError(null)
+    setTagInput('')
   }
   const openEdit = (record: ServerRecord): void => {
     setEditing(record.id)
     setForm(formOf(record))
     setFormError(null)
+    setTagInput('')
   }
   const patchForm = (patch: Partial<ServerFormState>): void => {
     setForm(current => ({ ...current, ...patch }))
+  }
+  const addTag = (): void => {
+    const tag = tagInput.trim()
+    if (tag === '') return
+    patchForm({ tags: form.tags.includes(tag) ? form.tags : [...form.tags, tag] })
+    setTagInput('')
   }
   const submit = (): void => {
     if (saving) return
     setSaving(true)
     setFormError(null)
+    // A tag typed but not yet committed with Enter rides along.
+    const pending = tagInput.trim()
+    const tags = pending === '' || form.tags.includes(pending) ? form.tags : [...form.tags, pending]
     const server: ServerInput = {
       id: editing === 'new' || editing === null ? undefined : editing,
       name: form.name,
@@ -106,6 +121,7 @@ export function ServersView({
       port: Number(form.port),
       username: form.username,
       note: form.note,
+      tags: [...tags],
     }
     void saveServer(server)
       .then((failure) => {
@@ -127,6 +143,8 @@ export function ServersView({
   const editingRecord = editing === null || editing === 'new'
     ? undefined
     : servers.list.find(server => server.id === editing)
+  const allTags = collectServerTags(servers.list)
+  const visible = filterServers(servers.list, activeTag)
 
   return (
     <div className={css.servers}>
@@ -197,6 +215,36 @@ export function ServersView({
                 onChange={event => { patchForm({ note: event.target.value }) }}
               />
             </label>
+            <div className={css.field} data-wide>
+              <span className={css.fieldLabel}>{t('servers.form.tags')}</span>
+              <div className={css.tagEditor}>
+                {form.tags.map(tag => (
+                  <span key={tag} className={css.tagPill} data-static>
+                    {tag}
+                    <button
+                      type="button"
+                      className={css.tagRemove}
+                      aria-label={`${t('servers.removeTag')} ${tag}`}
+                      onClick={() => { patchForm({ tags: form.tags.filter(item => item !== tag) }) }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  className={css.input}
+                  value={tagInput}
+                  placeholder={t('servers.form.tagInputPlaceholder')}
+                  onChange={event => { setTagInput(event.target.value) }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ',') {
+                      event.preventDefault()
+                      addTag()
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
           {formError !== null && (
             <p className={css.failure} role="alert">{formError}</p>
@@ -211,6 +259,21 @@ export function ServersView({
           </div>
         </div>
       )}
+      {servers.status === 'ready' && allTags.length > 0 && (
+        <div className={css.papersFilters}>
+          {allTags.map(tag => (
+            <button
+              key={tag}
+              type="button"
+              className={css.tagPill}
+              data-active={activeTag === tag || undefined}
+              onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
       {servers.status === 'cold' || servers.status === 'loading' ? (
         <p className={css.hint}>{t('servers.loading')}</p>
       ) : servers.status === 'error' ? (
@@ -222,9 +285,11 @@ export function ServersView({
         </p>
       ) : servers.list.length === 0 ? (
         <EmptyState glyph="🖥️">{t('servers.empty')}</EmptyState>
+      ) : visible.length === 0 ? (
+        <p className={css.hint}>{t('servers.noMatch')}</p>
       ) : (
         <div className={css.serversGrid}>
-          {servers.list.map((record) => {
+          {visible.map((record) => {
             const check = checks[record.id]
             const checking = check === 'checking'
             const settled = check !== undefined && check !== 'checking' ? check : null
@@ -248,6 +313,21 @@ export function ServersView({
                   </span>
                 </div>
                 {record.note !== '' && <p className={css.serverNote}>{record.note}</p>}
+                {record.tags.length > 0 && (
+                  <p className={css.paperTags}>
+                    {record.tags.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className={css.tagPill}
+                        data-active={activeTag === tag || undefined}
+                        onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </p>
+                )}
                 <p className={css.serverProbe}>
                   {settled === null
                     ? checking ? t('servers.state.checking') : t('servers.neverChecked')

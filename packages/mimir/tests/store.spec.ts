@@ -10,7 +10,7 @@ import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
-import type { IdeaRecord, PaperRecord } from '../src/types.ts'
+import type { ExperimentRecord, IdeaRecord, PaperRecord, ServerRecord } from '../src/types.ts'
 
 /** Boot a context with the storage hub, one memory backend, and a domain facility over it. */
 async function harness(pool?: MemoryMediaPool) {
@@ -97,6 +97,53 @@ describe('researchWikiDomainSpec', () => {
     const { facility } = await harness(pool)
     const reopened = await facility.open(researchWikiDomainSpec)
     expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
+  })
+
+  it('loads a server record predating tags with tags defaulted empty', async () => {
+    const server: ServerRecord = {
+      id: 'srv-1',
+      name: 'gpu01',
+      host: '10.0.0.1',
+      port: 22,
+      username: 'root',
+      note: '',
+      tags: [],
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    }
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('servers').put(server.id, server)
+    }
+    // Simulate a v2 store written before the tags field existed.
+    const legacy: Record<string, unknown> = { ...server }
+    delete legacy['tags']
+    pool.media.get('research_wiki')!.tables.get('servers')!.set(server.id, legacy)
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    expect(reopened.table('servers').get(server.id)).toEqual(server)
+  })
+
+  it('loads an experiment record predating serverId with the link absent', async () => {
+    const experiment: ExperimentRecord = {
+      id: 'exp-1',
+      projectId: 'p1',
+      name: 'baseline',
+      status: 'success',
+      metrics: { acc: 0.9 },
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    }
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('experiments').put(experiment.id, experiment)
+    }
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    const stored = reopened.table('experiments').get(experiment.id)
+    expect(stored).toEqual(experiment)
+    expect(stored?.serverId).toBeUndefined()
   })
 
   it('rejects a stored record that fails its zod schema, naming table and key', async () => {

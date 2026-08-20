@@ -156,6 +156,27 @@ describe('ResearchService server CRUD', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'server-not-found', id } })
     await expect(service.listServers()).resolves.toEqual({ ok: true, value: { servers: [] } })
   })
+
+  it('cleans tags on save: trimmed, emptied out, deduped; omitted keeps them', async () => {
+    const { service } = await harness()
+    const created = await service.saveServer({
+      server: { ...SERVER_INPUT, tags: [' gpu-cluster ', '', 'dev', 'gpu-cluster', '  '] },
+    })
+    if (!created.ok) throw new Error('create failed')
+    expect(created.value.server.tags).toEqual(['gpu-cluster', 'dev'])
+    // An update without tags keeps the stored list.
+    const renamed = await service.saveServer({
+      server: { ...SERVER_INPUT, id: created.value.server.id, note: 'rack 4' },
+    })
+    if (!renamed.ok) throw new Error('update failed')
+    expect(renamed.value.server.tags).toEqual(['gpu-cluster', 'dev'])
+    // An explicit list replaces; an empty list clears.
+    const cleared = await service.saveServer({
+      server: { ...SERVER_INPUT, id: created.value.server.id, tags: [] },
+    })
+    if (!cleared.ok) throw new Error('update failed')
+    expect(cleared.value.server.tags).toEqual([])
+  })
 })
 
 describe('ResearchService.checkServer', () => {
@@ -371,6 +392,53 @@ describe('ResearchService.deleteExperiment', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'missing' } })
     const listed = await service.listExperiments({})
     expect(listed).toMatchObject({ ok: true, value: { experiments: [{ id: 'e1' }] } })
+  })
+})
+
+describe('ResearchService.updateExperiment', () => {
+  /** Seed one experiment and one server. */
+  async function seed(h: Awaited<ReturnType<typeof harness>>) {
+    await h.domain.table('experiments').put('e1', {
+      id: 'e1',
+      projectId: PROJECT.id,
+      name: 'bhx-base',
+      status: 'success',
+      metrics: { mpjpe: 92.4 },
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    })
+    const created = await h.service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    return created.value.server.id
+  }
+
+  it('links, relinks, and clears the server of one experiment', async () => {
+    const h = await harness()
+    const serverId = await seed(h)
+    const linked = await h.service.updateExperiment({ id: 'e1', serverId })
+    expect(linked).toMatchObject({ ok: true, value: { experiment: { id: 'e1', serverId } } })
+    const cleared = await h.service.updateExperiment({ id: 'e1', serverId: null })
+    expect(cleared).toMatchObject({ ok: true, value: { experiment: { id: 'e1' } } })
+    if (cleared.ok) expect(cleared.value.experiment.serverId).toBeUndefined()
+    // The stored record carries no serverId key after a clear.
+    expect('serverId' in h.domain.table('experiments').get('e1')!).toBe(false)
+    // An omitted serverId is a no-op.
+    const untouched = await h.service.updateExperiment({ id: 'e1' })
+    expect(untouched).toMatchObject({ ok: true, value: { experiment: { id: 'e1', name: 'bhx-base' } } })
+  })
+
+  it('rejects an unknown server as invalid-input and keeps the old link', async () => {
+    const h = await harness()
+    const serverId = await seed(h)
+    await h.service.updateExperiment({ id: 'e1', serverId })
+    await expect(h.service.updateExperiment({ id: 'e1', serverId: 'srv-missing' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    expect(h.domain.table('experiments').get('e1')?.serverId).toBe(serverId)
+  })
+
+  it('reports experiment-not-found for an unknown id', async () => {
+    const h = await harness()
+    await expect(h.service.updateExperiment({ id: 'missing', serverId: null }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'missing' } })
   })
 })
 

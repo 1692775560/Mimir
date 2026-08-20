@@ -120,6 +120,13 @@ export interface ResearchPanelInjected {
    */
   deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   /**
+   * Relink one experiment to a server (null clears the link).
+   * @param id - experiment record id.
+   * @param serverId - the server to link, or null to clear.
+   * @returns null on success, the settled failure otherwise.
+   */
+  updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
+  /**
    * Partially update one paper's tags, project links, and notes.
    * @param arxivId - the bare arXiv id.
    * @param patch - the fields to replace; omitted fields stay untouched.

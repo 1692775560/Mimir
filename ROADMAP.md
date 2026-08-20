@@ -9,6 +9,17 @@ polish round every few iterations.
 
 ## Done
 
+- [x] Server tags + experiment server links: ServerRecord grew `tags`
+      (`.default([])`, no version bump) with saveServer cleaning
+      (trim/empty-out/dedupe), ExperimentRecord grew `serverId` (optional, no
+      bump) with a new `updateExperiment` Remote (link / null-clear / unknown
+      server is `invalid-input`); the servers view has tag chips in the form
+      and on cards plus a tag filter bar, the experiments table shows a
+      linked-server badge per row with an inline relink dropdown, and the
+      overview gained a servers stat chip
+- [x] Experiment comparison: covered by the metric-comparison bar charts
+      (one inline SVG chart per numeric metric shared by ≥2 runs) instead of
+      a selection-based table
 - [x] Outline drag-to-reorder sections: each top-level outline row grows a
       drag grip (HTML5 DnD, insertion indicator under the pointer); a drop
       rewrites `main.tex`'s top-level `\section` order (blocks move whole with
@@ -63,17 +74,10 @@ polish round every few iterations.
 
 ## Queue
 
-### Literature & experiments
-
-- [ ] Experiment comparison: select multiple runs of one project, side-by-side
-      metrics table
-
 ### Servers
 
 - [ ] Submit a remote job over SSH (run a training command) + poll job status
       — needs a real server address from the user, otherwise demo-only
-- [ ] Link experiment records to the server they ran on
-- [ ] Server groups/tags
 
 ### UI/UX polish rounds
 

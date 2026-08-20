@@ -43,6 +43,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
   SectionMove,
   ServerInput,
@@ -51,7 +52,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The twenty-four Remote calls this controller needs, exactly as the
+ * The twenty-five Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -78,6 +79,10 @@ export interface ResearchRemote {
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
+  updateExperiment: (request: {
+    id: string
+    serverId?: string | null | undefined
+  }) => Promise<RemoteResult<ResearchUpdateExperimentResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
@@ -748,6 +753,37 @@ export class ResearchController implements HostObservable<ResearchView> {
           experiments: Object.freeze({
             ...current,
             list: Object.freeze(current.list.filter(record => record.id !== id)),
+          }),
+        })
+      }
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Relink one experiment to a server (null clears the link) and patch the
+   * loaded experiments slice with the returned record. The failure view of a
+   * rejected update is returned so the view can surface it.
+   * @param id - experiment record id.
+   * @param serverId - the server to link, or null to clear.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async updateExperiment(id: string, serverId: string | null): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.updateExperiment({ id, serverId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const current = this.view.experiments
+      if (current !== null) {
+        this.publish({
+          experiments: Object.freeze({
+            ...current,
+            list: Object.freeze(current.list.map(record =>
+              record.id === id ? result.value.experiment : record)),
           }),
         })
       }

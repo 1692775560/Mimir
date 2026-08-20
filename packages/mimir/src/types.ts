@@ -94,6 +94,8 @@ export interface ExperimentRecord {
   readonly metrics: Record<string, number | string>
   /** Log file path relative to the workspace root, when the run wrote one. */
   readonly logPath?: string | undefined
+  /** Remembered server the run executed on, when linked. */
+  readonly serverId?: string | undefined
   /** ISO-8601 timestamp of the last write. */
   readonly updatedAt: string
 }
@@ -221,6 +223,9 @@ export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: r
 /** `deleteExperiment` result: the deleted record's id. */
 export type ResearchDeleteExperimentResult = ResearchResult<{ readonly id: string }>
 
+/** `updateExperiment` result: the record after the update. */
+export type ResearchUpdateExperimentResult = ResearchResult<{ readonly experiment: ExperimentRecord }>
+
 /** `readArtifact` result: the markdown artifact's full text. */
 export type ResearchArtifactResult = ResearchResult<{
   readonly name: string
@@ -254,6 +259,8 @@ export interface ServerRecord {
   readonly username: string
   /** Free-form operator note. */
   readonly note: string
+  /** Operator-assigned grouping labels. */
+  readonly tags: readonly string[]
   /** ISO-8601 timestamp of the record's first write. */
   readonly createdAt: string
   /** ISO-8601 timestamp of the last write. */
@@ -268,6 +275,8 @@ export interface ServerInput {
   readonly port: number
   readonly username: string
   readonly note: string
+  /** Replacement tag list; omitted keeps the existing tags on update. */
+  readonly tags?: string[] | undefined
 }
 
 /** One GPU row parsed from a remote `nvidia-smi` probe. */

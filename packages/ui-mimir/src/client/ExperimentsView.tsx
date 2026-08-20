@@ -1,16 +1,19 @@
 /**
  * The experiments view: the selected project's experiment-run table (status
- * pill, expandable metrics, delete action) topped by a metric-comparison
- * section — one hand-drawn inline SVG bar chart per numeric metric key shared
- * by at least two runs — above a minimal markdown rendering of the
- * whitelisted EXPERIMENT_LOG.md artifact. No markdown dependency: the log is
- * rendered line-wise (fences, headings, list items, bold spans).
+ * pill, expandable metrics, the linked-server badge with an inline relink
+ * dropdown, delete action) topped by a metric-comparison section — one
+ * hand-drawn inline SVG bar chart per numeric metric key shared by at least
+ * two runs — above a minimal markdown rendering of the whitelisted
+ * EXPERIMENT_LOG.md artifact. No markdown dependency: the log is rendered
+ * line-wise (fences, headings, list items, bold spans).
  * @module dsh-client-ui-mimir/client/ExperimentsView
  */
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { ExperimentRecord } from 'dsh-mimir/types'
-import type { ResearchArtifactView, ResearchFailureView, ResearchProjectSlice } from './controller.ts'
+import type {
+  ResearchArtifactView, ResearchFailureView, ResearchProjectSlice, ResearchServersView,
+} from './controller.ts'
 import {
   barWidthPercents,
   failureCopy,
@@ -122,25 +125,41 @@ function MetricChart({ metricKey, rows }: {
 }
 
 /**
- * @param props - the experiments slice, the artifact view, the selected
- * project id, the delete action, and copy.
+ * @param props - the experiments slice, the artifact view, the servers slice
+ * (the relink dropdown's options), the selected project id, the verbs, and
+ * copy.
  * @returns the metric charts, the experiment table, and the log viewer.
  */
-export function ExperimentsView({ experiments, artifact, projectId, deleteExperiment, t }: {
+export function ExperimentsView({
+  experiments, artifact, servers, projectId, ensureServers, deleteExperiment, updateExperiment, t,
+}: {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
+  readonly servers: ResearchServersView
   readonly projectId: string | null
+  readonly ensureServers: () => void
   readonly deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
+  readonly updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
   const [actionError, setActionError] = useState<string | null>(null)
+  // The relink dropdown needs the server list; load it once per view mount.
+  useEffect(() => { ensureServers() }, [ensureServers])
   const removeExperiment = (record: ExperimentRecord): void => {
     if (!window.confirm(t('experiments.confirmDelete'))) return
     void deleteExperiment(record.id).then((failure) => {
       setActionError(failure === null ? null : `${t('experiments.deleteFailed')}：${failure.message}`)
     })
   }
+  const relink = (id: string, serverId: string | null): void => {
+    void updateExperiment(id, serverId).then((failure) => {
+      setActionError(failure === null ? null : `${t('experiments.linkFailed')}：${failure.message}`)
+    })
+  }
+  /** Display name of one linked server; unknown ids show raw. */
+  const serverNameOf = (id: string): string =>
+    servers.status === 'ready' ? servers.list.find(server => server.id === id)?.name ?? id : id
   const chartKeys = experiments !== null && experiments.status === 'ready'
     ? numericMetricKeys(experiments.list)
     : []
@@ -176,6 +195,7 @@ export function ExperimentsView({ experiments, artifact, projectId, deleteExperi
                   <th>{t('experiments.colName')}</th>
                   <th>{t('experiments.colStatus')}</th>
                   <th>{t('experiments.colMetrics')}</th>
+                  <th>{t('experiments.colServer')}</th>
                   <th>{t('experiments.colUpdated')}</th>
                   <th>{t('experiments.colActions')}</th>
                 </tr>
@@ -214,6 +234,24 @@ export function ExperimentsView({ experiments, artifact, projectId, deleteExperi
                             ))}
                           </dl>
                         )}
+                      </td>
+                      <td>
+                        {record.serverId !== undefined && (
+                          <span className={css.serverBadge}>⚡ {serverNameOf(record.serverId)}</span>
+                        )}
+                        <select
+                          className={css.serverSelect}
+                          value={record.serverId ?? ''}
+                          aria-label={t('experiments.linkServer')}
+                          onChange={(event) => {
+                            relink(record.id, event.target.value === '' ? null : event.target.value)
+                          }}
+                        >
+                          <option value="">{t('experiments.noServer')}</option>
+                          {servers.status === 'ready' && servers.list.map(server => (
+                            <option key={server.id} value={server.id}>{server.name}</option>
+                          ))}
+                        </select>
                       </td>
                       <td>{record.updatedAt.slice(0, 16).replace('T', ' ')}</td>
                       <td>

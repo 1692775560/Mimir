@@ -29,6 +29,7 @@ import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
   BibEntry,
+  ExperimentRecord,
   PaperRecord,
   ResearchArtifactResult,
   ResearchBibliographyResult,
@@ -57,6 +58,7 @@ import type {
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSuccess,
+  ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
   SectionMove,
   ServerGpuView,
@@ -461,6 +463,39 @@ export class ResearchService extends TypertRemoteService {
   }
 
   /**
+   * Update one experiment record. Only the server link is mutable this round:
+   * a string `serverId` must name a remembered server (`invalid-input`
+   * otherwise), null clears the link, and an omitted field is a no-op. An
+   * unknown experiment id is `experiment-not-found`.
+   * @param request - the record id plus the fields to replace.
+   * @returns the stored record after the update.
+   */
+  @Remote('updateExperiment')
+  async updateExperiment(request: {
+    id: string
+    serverId?: string | null | undefined
+  }): Promise<ResearchUpdateExperimentResult> {
+    const table = this.domain.table('experiments')
+    const existing = table.get(request.id)
+    if (existing === undefined) {
+      return rejected({ code: 'experiment-not-found', id: request.id })
+    }
+    if (request.serverId !== undefined && request.serverId !== null
+      && this.domain.table('servers').get(request.serverId) === undefined) {
+      return rejected({ code: 'invalid-input', message: `unknown server: ${request.serverId}` })
+    }
+    let next: ExperimentRecord = existing
+    if (request.serverId === null) {
+      const { serverId: _dropped, ...rest } = existing
+      next = rest
+    } else if (request.serverId !== undefined) {
+      next = { ...existing, serverId: request.serverId }
+    }
+    await table.put(request.id, next)
+    return success({ experiment: next })
+  }
+
+  /**
    * Read one whitelisted markdown artifact from the workspace root. The name
    * whitelist makes traversal inexpressible — anything off the list is
    * `invalid-artifact`, a listed-but-absent file is `artifact-not-found`.
@@ -861,7 +896,9 @@ export class ResearchService extends TypertRemoteService {
    * (the existing record's `createdAt` survives; `updatedAt` refreshes); its
    * absence creates a record with a generated id. Name and host must be
    * non-empty and the port a valid TCP port — violations are `invalid-input`,
-   * an unknown update id is `server-not-found`.
+   * an unknown update id is `server-not-found`. A present `tags` list is
+   * trimmed, emptied out, and deduped before it replaces the record's tags;
+   * an omitted list keeps them.
    * @param request - the server fields, with `id` marking the update form.
    * @returns the stored record.
    */
@@ -872,6 +909,10 @@ export class ResearchService extends TypertRemoteService {
     if (invalid !== null) return rejected({ code: 'invalid-input', message: invalid })
     const table = this.domain.table('servers')
     const now = new Date().toISOString()
+    // Tags are trimmed, emptied out, and deduped (the updatePaper cleaning).
+    const tags = input.tags === undefined
+      ? undefined
+      : [...new Set(input.tags.map(tag => tag.trim()).filter(tag => tag !== ''))]
     if (input.id !== undefined) {
       const existing = table.get(input.id)
       if (existing === undefined) return rejected({ code: 'server-not-found', id: input.id })
@@ -882,6 +923,7 @@ export class ResearchService extends TypertRemoteService {
         port: input.port,
         username: input.username,
         note: input.note,
+        tags: tags ?? existing.tags,
         updatedAt: now,
       }
       await table.put(input.id, next)
@@ -894,6 +936,7 @@ export class ResearchService extends TypertRemoteService {
       port: input.port,
       username: input.username,
       note: input.note,
+      tags: tags ?? [],
       createdAt: now,
       updatedAt: now,
     }

@@ -20,6 +20,7 @@ export interface OverviewStats {
   readonly papers: number | null
   readonly experiments: number | null
   readonly figures: number | null
+  readonly servers: number | null
 }
 
 /**
@@ -40,6 +41,7 @@ export function OverviewView({ project, stats, t }: {
     { key: 'overview.statPapers', value: stats.papers },
     { key: 'overview.statExperiments', value: stats.experiments },
     { key: 'overview.statFigures', value: stats.figures },
+    { key: 'overview.statServers', value: stats.servers },
   ]
   return (
     <div className={css.overviewWrap}>

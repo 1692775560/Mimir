@@ -32,6 +32,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
 } from 'dsh-mimir/types'
 
@@ -84,6 +85,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     saveBibliography: missing('saveBibliography'),
     importPapersToBib: missing('importPapersToBib'),
     reorderPaperSections: missing('reorderPaperSections'),
+    updateExperiment: missing('updateExperiment'),
     ...overrides,
   }
 }
@@ -504,6 +506,48 @@ describe('ResearchController workbench views', () => {
     expect(controller.getSnapshot().experiments?.list.map(record => record.id)).toEqual(['e2'])
   })
 
+  it('updateExperiment patches the linked row locally and surfaces failures', async () => {
+    const experiments = [
+      { id: 'e1', projectId: 'p1', name: 'baseline', status: 'success' as const,
+        metrics: { acc: 0.9 }, updatedAt: '2026-08-02T00:00:00Z' },
+      { id: 'e2', projectId: 'p1', name: 'full', status: 'running' as const,
+        metrics: { acc: 0.93 }, updatedAt: '2026-08-03T00:00:00Z' },
+    ]
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => Promise.resolve(carried<ResearchExperimentsResult>({
+        ok: true, value: { experiments },
+      })),
+      updateExperiment: ({ id, serverId }) => Promise.resolve(carried<ResearchUpdateExperimentResult>(
+        id === 'e1' && serverId !== 'srv-missing'
+          ? {
+            ok: true,
+            value: {
+              experiment: serverId === null
+                ? experiments[0]!
+                : { ...experiments[0]!, serverId },
+            },
+          }
+          : { ok: false, error: { code: 'invalid-input', message: `unknown server: ${serverId}` } },
+      )),
+    }))
+    controller.select('p1')
+    await settle()
+    const failure = await controller.updateExperiment('e1', 'srv-missing')
+    expect(failure).toMatchObject({ code: 'invalid-input' })
+    expect(controller.getSnapshot().experiments?.list[0]?.serverId).toBeUndefined()
+    const ok = await controller.updateExperiment('e1', 'srv-1')
+    expect(ok).toBeNull()
+    expect(controller.getSnapshot().experiments?.list[0]?.serverId).toBe('srv-1')
+    expect(controller.getSnapshot().experiments?.list[1]?.serverId).toBeUndefined()
+    await controller.updateExperiment('e1', null)
+    expect(controller.getSnapshot().experiments?.list[0]?.serverId).toBeUndefined()
+  })
+
   it('skips a refetch of a ready artifact and keeps the not-found failure', async () => {
     let calls = 0
     let missing = false
@@ -570,7 +614,7 @@ describe('ResearchController servers and figure deletion', () => {
 
   const SERVER = {
     id: 'srv-1', name: 'gpu01', host: '10.0.0.8', port: 22,
-    username: 'ops', note: '', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z',
+    username: 'ops', note: '', tags: [], createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z',
   }
 
   it('loads the server list once on ensureServers', async () => {

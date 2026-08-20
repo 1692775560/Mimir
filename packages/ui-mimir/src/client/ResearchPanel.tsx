@@ -115,7 +115,7 @@ export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  deleteExperiment, updateExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -217,6 +217,7 @@ export function ResearchPanel({
     figures: figures !== null && figures.projectId === selectedProjectId && figures.status === 'ready'
       ? figures.list.length
       : null,
+    servers: servers.status === 'ready' ? servers.list.length : null,
   }
 
   return (
@@ -343,8 +344,11 @@ export function ResearchPanel({
           <ExperimentsView
             experiments={experiments}
             artifact={artifact}
+            servers={servers}
             projectId={selectedProjectId}
+            ensureServers={ensureServers}
             deleteExperiment={deleteExperiment}
+            updateExperiment={updateExperiment}
             t={t}
           />
         )}
