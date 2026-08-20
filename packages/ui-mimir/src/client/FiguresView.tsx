@@ -5,14 +5,18 @@
  * card that opens in a new tab. Hovering a card reveals its two file
  * operations — copy the LaTeX figure block, delete the file — and the view
  * head carries the upload button (POST `/research/figure-upload`) plus the
- * forced rescan.
+ * forced rescan. Image files can also be dragged anywhere onto the view: a
+ * dashed overlay shows while hovering, the drop reuses the upload channel,
+ * and files outside the accept list are reported, not silently ignored.
  * @module dsh-client-ui-mimir/client/FiguresView
  */
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import type { FigureEntry } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchProjectSlice } from './controller.ts'
-import { failureCopy, figureUrl, formatSize, type ResearchT } from './view-common.ts'
+import {
+  failureCopy, FIGURE_ACCEPT_EXTENSIONS, figureUrl, filterDropFiles, formatSize, type ResearchT,
+} from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -49,6 +53,11 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [upload, setUpload] = useState<{ done: number; total: number } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // True while a file drag hovers the view (drives the dashed drop overlay).
+  const [dragActive, setDragActive] = useState(false)
+  // Enter/leave fire per child element; the depth counter keeps the overlay
+  // from flickering as the pointer crosses cards.
+  const dragDepth = useRef(0)
   const fileInput = useRef<HTMLInputElement | null>(null)
   if (projectId === null) {
     return <EmptyState glyph="🖼️">{t('figures.noProject')}</EmptyState>
@@ -82,8 +91,55 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
       .finally(() => { setUpload(null) })
   }
 
+  const onDragEnter = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    // The host app runs its own page-level file-drop overlay; keep it off
+    // while a file drag is over the figures view.
+    event.stopPropagation()
+    dragDepth.current += 1
+    setDragActive(true)
+  }
+  const onDragOver = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    // preventDefault opts the view into being a drop target.
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+  const onDragLeave = (): void => {
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragActive(false)
+  }
+  const onDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragDepth.current = 0
+    setDragActive(false)
+    const { accepted, rejected } = filterDropFiles(
+      [...event.dataTransfer.files],
+      FIGURE_ACCEPT_EXTENSIONS,
+    )
+    pickFiles(accepted)
+    // After pickFiles (which clears the banner): the rejection note wins.
+    if (rejected.length > 0) {
+      setActionError(`${t('figures.dropRejected')}：${rejected.map(file => file.name).join('、')}`)
+    }
+  }
+
   return (
-    <div className={css.figures}>
+    <div
+      className={css.figures}
+      data-drag-active={dragActive || undefined}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragActive && (
+        <div className={css.figuresDropOverlay} aria-hidden>
+          <span>{t('figures.dropHint')}</span>
+        </div>
+      )}
       <ViewHead title={t('tab.figures')} subtitle={t('view.figures.subtitle')}>
         <button
           type="button"
@@ -101,7 +157,7 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
         ref={fileInput}
         type="file"
         multiple
-        accept=".png,.jpg,.jpeg,.svg,.pdf"
+        accept={FIGURE_ACCEPT_EXTENSIONS.join(',')}
         hidden
         onChange={(event) => {
           const files = [...(event.target.files ?? [])]

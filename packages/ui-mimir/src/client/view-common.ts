@@ -2,8 +2,9 @@
  * Shared presentational helpers for the research workbench views: the stage
  * label map, failure-copy translation, byte-size formatting, the figure route
  * URL builder, the experiments comparison-chart helpers (numeric metric
- * keys, chart rows, bar widths, value formatting), and the library tag
- * collection/filter helpers. No JSX, no subscriptions.
+ * keys, chart rows, bar widths, value formatting), the library tag
+ * collection/filter helpers, and the figure-upload drop filter
+ * ({@link filterDropFiles}). No JSX, no subscriptions.
  * @module dsh-client-ui-mimir/client/view-common
  */
 
@@ -225,4 +226,33 @@ export function filterPapers(
   return papers.filter(paper =>
     (tag === null || paper.tags.includes(tag))
     && (projectId === null || paper.projectIds.includes(projectId)))
+}
+
+/** Extensions the figure upload accepts, shared by the file input and the drop filter. */
+export const FIGURE_ACCEPT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.svg', '.pdf'] as const
+
+/** The result of splitting dragged files by the accept list. */
+export interface DropFileFilter<T> {
+  readonly accepted: T[]
+  readonly rejected: T[]
+}
+
+/**
+ * Split dragged files into those matching the accept list (by extension,
+ * case-insensitive) and those rejected, so the figures view uploads the
+ * accepted ones and reports the rest instead of silently dropping them.
+ * Generic over anything carrying a `name` so it stays DOM-free and testable.
+ */
+export function filterDropFiles<T extends { readonly name: string }>(
+  files: readonly T[],
+  accept: readonly string[],
+): DropFileFilter<T> {
+  const accepted: T[] = []
+  const rejected: T[] = []
+  for (const file of files) {
+    const name = file.name.toLowerCase()
+    const bucket = accept.some(ext => name.endsWith(ext)) ? accepted : rejected
+    bucket.push(file)
+  }
+  return { accepted, rejected }
 }

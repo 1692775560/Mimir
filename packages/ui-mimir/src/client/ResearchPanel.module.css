@@ -1615,12 +1615,33 @@ li.dropIndicator {
 /* Figures view: the thumbnail grid plus the lightbox overlay. Cards are
    divs carrying an inner preview button and a hover-revealed action row. */
 .figures {
+  position: relative;
   display: flex;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
   gap: 16px;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
+}
+
+/* The drop-target overlay: a dashed tint over the whole view while a file
+   drag hovers. pointer-events: none so it never swallows the drag. */
+.figuresDropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--dsw-alias-state-business-primary, #4176e6);
+  border-radius: 14px;
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 12%));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .figuresGrid {
@@ -2330,4 +2351,77 @@ li.dropIndicator {
   .content {
     padding: 12px 14px;
   }
+}
+
+/* The experiment-log Markdown renderer: h1 plus the inline/table/quote/rule
+   elements the restricted parser emits (h2–h4, p, pre ride the rules above).
+   Everything reads the shared --dsw-* tokens, so the dark palette follows. */
+.experimentLog h1 {
+  margin: 14px 0 8px;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 18px;
+}
+
+.experimentLog code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.experimentLog pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.experimentLog blockquote {
+  margin: 8px 0;
+  padding: 2px 12px;
+  border-left: 3px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+}
+
+.experimentLog ul,
+.experimentLog ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.experimentLog li {
+  margin: 2px 0;
+}
+
+.experimentLog hr {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+}
+
+.experimentLog table {
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.experimentLog th,
+.experimentLog td {
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  text-align: left;
+}
+
+.experimentLog th {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-weight: 600;
+}
+
+.experimentLog a {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  text-decoration: none;
+}
+
+.experimentLog a:hover {
+  text-decoration: underline;
 }

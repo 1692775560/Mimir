@@ -80,6 +80,21 @@ polish round every few iterations.
       fixed a pre-existing flex bug: a long nowrap project title inflated the
       sidebar past its 216px basis (`.side` now has `min-width: 0`), and the
       experiments error state gained a retry button.
+- [x] Experiment-log Markdown rendering: the artifact viewer renders
+      `EXPERIMENT_LOG.md` with a dependency-free restricted parser
+      (`markdown.ts` blocks + inline spans, `MarkdownView.tsx` renderer) —
+      headings #–####, bold/italic/inline code, fenced code (an unclosed
+      fence swallows the rest), unordered/ordered lists, quotes, rules, pipe
+      tables, and links; `safeLinkUrl` neutralizes every non-http(s) scheme
+      (`javascript:`, `data:`, …) to plain text. Unrecognized syntax stays
+      literal. Styling rides the shared `--dsw-*` tokens, so dark mode
+      follows.
+- [x] Figures drag-and-drop upload: dropping image files anywhere on the
+      figures view reuses the existing upload channel; a dashed overlay shows
+      while a file drag hovers (enter/leave depth counter, `stopPropagation`
+      keeps the host app's own file-drop overlay off), and
+      `filterDropFiles` reports files outside the accept list instead of
+      silently ignoring them.
 
 ## Queue
 

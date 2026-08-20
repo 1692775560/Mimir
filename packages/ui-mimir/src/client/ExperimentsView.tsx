@@ -3,13 +3,12 @@
  * pill, expandable metrics, the linked-server badge with an inline relink
  * dropdown, delete action) topped by a metric-comparison section — one
  * hand-drawn inline SVG bar chart per numeric metric key shared by at least
- * two runs — above a minimal markdown rendering of the whitelisted
- * EXPERIMENT_LOG.md artifact. No markdown dependency: the log is rendered
- * line-wise (fences, headings, list items, bold spans).
+ * two runs — above the whitelisted `EXPERIMENT_LOG.md` artifact, rendered by
+ * the restricted Markdown renderer in `MarkdownView.tsx` (dependency-free).
  * @module dsh-client-ui-mimir/client/ExperimentsView
  */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import type { ExperimentRecord } from 'dsh-mimir/types'
 import type {
   ResearchArtifactView, ResearchFailureView, ResearchProjectSlice, ResearchServersView,
@@ -23,49 +22,10 @@ import {
   type MetricChartRow,
   type ResearchT,
 } from './view-common.ts'
+import { renderMarkdown } from './MarkdownView.tsx'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
-
-/** Render `**bold**` spans inside one text line. */
-function inlineBold(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
-    part.startsWith('**') && part.endsWith('**')
-      ? <strong key={index}>{part.slice(2, -2)}</strong>
-      : <span key={index}>{part}</span>)
-}
-
-/** Render one markdown document line-wise: fences, headings, list items, paragraphs. */
-function renderMarkdown(text: string): ReactNode[] {
-  const out: ReactNode[] = []
-  let inCode = false
-  let codeLines: string[] = []
-  const lines = text.split('\n')
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ''
-    if (line.trimStart().startsWith('```')) {
-      if (inCode) {
-        out.push(<pre key={index}>{codeLines.join('\n')}</pre>)
-        codeLines = []
-        inCode = false
-      } else {
-        inCode = true
-      }
-      continue
-    }
-    if (inCode) {
-      codeLines.push(line)
-      continue
-    }
-    if (line.startsWith('### ')) out.push(<h4 key={index}>{inlineBold(line.slice(4))}</h4>)
-    else if (line.startsWith('## ')) out.push(<h3 key={index}>{inlineBold(line.slice(3))}</h3>)
-    else if (line.startsWith('# ')) out.push(<h2 key={index}>{inlineBold(line.slice(2))}</h2>)
-    else if (line.startsWith('- ')) out.push(<li key={index}>{inlineBold(line.slice(2))}</li>)
-    else if (line.trim() !== '') out.push(<p key={index}>{inlineBold(line)}</p>)
-  }
-  if (inCode && codeLines.length > 0) out.push(<pre key="trailing">{codeLines.join('\n')}</pre>)
-  return out
-}
 
 /** Bar-chart geometry: bars span x 110–270 of the 320-wide viewBox. */
 const CHART_WIDTH = 320
