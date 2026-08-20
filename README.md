@@ -32,6 +32,10 @@ English | [中文](README.zh.md)
 | --- | --- | --- |
 | ![Overview](docs/screenshots/tab-overview.png) | ![Library](docs/screenshots/tab-papers.png) | ![Library: arXiv search](docs/screenshots/tab-papers-search.png) |
 
+| Paper | Paper: compile issues | Paper: click-to-jump |
+| --- | --- | --- |
+| ![Paper](docs/screenshots/tab-paper.png) | ![Paper: compile issues](docs/screenshots/tab-paper-issues.png) | ![Paper: click-to-jump](docs/screenshots/tab-paper-issue-jump.png) |
+
 | Experiments | Figures | Servers |
 | --- | --- | --- |
 | ![Experiments](docs/screenshots/tab-experiments.png) | ![Figures](docs/screenshots/tab-figures.png) | ![Servers](docs/screenshots/tab-servers.png) |

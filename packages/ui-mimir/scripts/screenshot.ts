@@ -2,22 +2,29 @@
  * QA screenshot harness (NOT part of the package test suite): opens the
  * Mimir workbench in headless Chromium against a running `dsh web` instance
  * with the plugin mounted, and captures one PNG per tab into /tmp/research-ui/.
- * Beyond plain tab captures it exercises the figure management (upload two
- * SVG figures, delete the __probe.png left by the route smoke test, hover a
- * card so the copy/delete actions show) and seeds two demo servers (one
- * loopback, one unreachable) so the servers tab shows real probe outcomes.
+ * Beyond plain tab captures it exercises the compile-issue click-through
+ * (env-gated by MIMIR_QA_PAPER: backs up main.tex, injects one bogus command,
+ * clicks the located error, restores byte-for-byte), the figure management
+ * (upload two SVG figures, delete the __probe.png left by the route smoke
+ * test, hover a card so the copy/delete actions show) and seeds two demo
+ * servers (one loopback, one unreachable) so the servers tab shows real probe
+ * outcomes.
  * Run: pnpm exec tsx packages/ui-mimir/scripts/screenshot.ts
  * Requires a local Playwright install — adjust the import below (or set
  * PLAYWRIGHT_MODULE) and CHROMIUM_PATH to your Chromium binary.
  */
 
-import { mkdir } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 // QA-only absolute import: playwright is deliberately not a package
 // dependency; point this at any local playwright installation.
 import { chromium } from '/Users/wujie/deepseek-harness/node_modules/.pnpm/playwright@1.61.1/node_modules/playwright/index.mjs'
 
 const BASE_URL = process.env.DSH_URL ?? 'http://127.0.0.1:3080'
 const OUT_DIR = '/tmp/research-ui'
+// Compile click-through scenario: the main.tex of the mounted workspace's
+// paper (the script backs it up, injects one bogus line, and restores it
+// byte-for-byte). Skipped when unset or absent.
+const PAPER_MAIN_TEX = process.env.MIMIR_QA_PAPER ?? ''
 // The ms-playwright cache holds chromium-1234 while playwright 1.61.1 wants
 // 1228; point at the cached binary directly instead of downloading another.
 const CHROMIUM = process.env.CHROMIUM_PATH
@@ -68,6 +75,57 @@ for (const tab of TABS) {
     await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT_DIR}/tab-paper-collapsed.png` })
     console.log('captured tab-paper-collapsed.png')
+  }
+}
+
+// ── Paper: compile-issue click-through (only when MIMIR_QA_PAPER points at
+//    the mounted paper's main.tex). Backs the file up, injects one bogus
+//    command, compiles for a located error, clicks it, then restores the file
+//    byte-for-byte and recompiles clean.
+if (PAPER_MAIN_TEX !== '') {
+  const compileButton = workbench.getByRole('button', { name: /^编译$|^Compile$/ })
+  const compileAndSettle = async (): Promise<void> => {
+    await compileButton.click()
+    // While compiling the button reads 编译中/Compiling; wait it out.
+    await page.waitForFunction(
+      () => ![...document.querySelectorAll('dialog button')]
+        .some(b => b.textContent === '编译中' || b.textContent === 'Compiling'),
+      undefined,
+      { timeout: 600_000, polling: 1000 },
+    )
+    await page.waitForTimeout(800)
+  }
+  await workbench.getByRole('button', { name: /^论文$|^Paper$/ }).first().click()
+  await page.waitForTimeout(1500)
+  await compileAndSettle()
+  const backup = `${OUT_DIR}/main.tex.backup`
+  await copyFile(PAPER_MAIN_TEX, backup)
+  const original = await readFile(PAPER_MAIN_TEX, 'utf8')
+  const paperLines = original.split('\n')
+  paperLines.splice(149, 0, '\\undefinedcommand')
+  await writeFile(PAPER_MAIN_TEX, paperLines.join('\n'))
+  try {
+    // Reselecting the project reloads the source from disk.
+    await workbench.locator('aside').getByRole('button').nth(1).click()
+    await page.waitForTimeout(1500)
+    await compileAndSettle()
+    await page.screenshot({ path: `${OUT_DIR}/tab-paper-issues.png` })
+    console.log('captured tab-paper-issues.png')
+    const issue = workbench.locator('button', { hasText: 'Undefined control sequence' }).first()
+    if (await issue.count() > 0) {
+      await issue.click()
+      await page.waitForTimeout(400)
+      await page.screenshot({ path: `${OUT_DIR}/tab-paper-issue-jump.png` })
+      console.log('captured tab-paper-issue-jump.png')
+    }
+  } finally {
+    await copyFile(backup, PAPER_MAIN_TEX)
+    if ((await readFile(PAPER_MAIN_TEX, 'utf8')) !== original) {
+      throw new Error(`FAILED to restore ${PAPER_MAIN_TEX} byte-identically`)
+    }
+    await workbench.locator('aside').getByRole('button').nth(1).click()
+    await page.waitForTimeout(1500)
+    await compileAndSettle()
   }
 }
 

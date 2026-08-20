@@ -6,13 +6,13 @@
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { OutlineNode } from 'dsh-mimir/types'
 import type {
   ResearchCompileView, ResearchOutlineView, ResearchSaveState, ResearchSourceView,
 } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
-import { failureCopy } from './view-common.ts'
+import { failureCopy, lineRangeOf } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
 import css from './ResearchPanel.module.css'
 
@@ -28,6 +28,9 @@ const SAVE_KEYS: Record<ResearchSaveState, ResearchKey> = {
 
 /** Editor line height in px; keep in sync with `.editor` in the module CSS. */
 const EDITOR_LINE_HEIGHT = 19
+
+/** How long the jumped-to gutter row stays flashed. */
+const GUTTER_FLASH_MS = 1200
 
 /** One outline subtree, recursing through children; click jumps the editor. */
 function OutlineTree({ nodes, onJump }: {
@@ -68,30 +71,35 @@ export function PaperView({
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The outline rail collapses to a slim strip so the editor can widen.
   const [railCollapsed, setRailCollapsed] = useState(false)
+  // Gutter row flashed after a jump (issue list or outline click).
+  const [flashLine, setFlashLine] = useState<number | null>(null)
+
+  // Cancel a pending gutter flash on unmount.
+  useEffect(() => () => {
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
+  }, [])
 
   /**
    * Move the editor caret and viewport to one 1-based source line (the
-   * outline's and the error list's click target). Character offsets count
-   * newlines; the scroll position estimates from the fixed line height.
+   * outline's and the error list's click target), select the line's text, and
+   * briefly flash its gutter row. Character offsets count newlines; the
+   * scroll position estimates from the fixed line height.
    */
   const jumpToLine = (line: number): void => {
     const editor = editorRef.current
-    if (editor === null || line < 1) return
-    const value = editor.value
-    let start = 0
-    for (let current = 1; current < line; current += 1) {
-      const next = value.indexOf('\n', start)
-      if (next === -1) return
-      start = next + 1
-    }
-    let end = value.indexOf('\n', start)
-    if (end === -1) end = value.length
+    if (editor === null) return
+    const range = lineRangeOf(editor.value, line)
+    if (range === null) return
     editor.focus()
-    editor.setSelectionRange(start, end)
+    editor.setSelectionRange(range.start, range.end)
     editor.scrollTop = Math.max(0, (line - 3) * EDITOR_LINE_HEIGHT)
     if (gutterRef.current !== null) gutterRef.current.scrollTop = editor.scrollTop
+    setFlashLine(line)
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = setTimeout(() => { setFlashLine(null) }, GUTTER_FLASH_MS)
   }
 
   const currentSource = source !== null && source.projectId === projectId ? source : null
@@ -189,7 +197,9 @@ export function PaperView({
         )}
         <div className={css.editorWrap}>
           <div ref={gutterRef} className={css.gutter} aria-hidden>
-            {Array.from({ length: lineCount }, (_, index) => <div key={index}>{index + 1}</div>)}
+            {Array.from({ length: lineCount }, (_, index) => (
+              <div key={index} data-flash={index + 1 === flashLine || undefined}>{index + 1}</div>
+            ))}
           </div>
           <textarea
             ref={editorRef}
@@ -230,11 +240,19 @@ export function PaperView({
                   className={css.issue}
                   data-severity={issue.severity}
                   disabled={issue.line === undefined}
+                  title={issue.line === undefined ? undefined : t('issues.jump')}
                   onClick={() => { if (issue.line !== undefined) jumpToLine(issue.line) }}
                 >
-                  <span className={css.issueWhere}>
-                    {issue.file ?? '?'}{issue.line === undefined ? '' : `:${issue.line}`}
-                  </span> {issue.message}
+                  <span className={css.issueDot} aria-hidden />
+                  <span className={css.issueBody}>
+                    {issue.line !== undefined && (
+                      <span className={css.issueLine}>L{issue.line}</span>
+                    )}
+                    <span className={css.issueMessage}>{issue.message}</span>
+                    {issue.file !== undefined && (
+                      <span className={css.issueWhere}>{issue.file}</span>
+                    )}
+                  </span>
                 </button>
               </li>
             ))}

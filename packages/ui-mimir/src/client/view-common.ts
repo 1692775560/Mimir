@@ -38,6 +38,23 @@ export function formatSize(sizeBytes: number): string {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Character range of one 1-based line in one text (the issue/outline
+ * click-to-jump selection). Offsets count newlines; the last line runs to the
+ * text's end. Returns null for a line past the end or below 1.
+ */
+export function lineRangeOf(text: string, line: number): { readonly start: number; readonly end: number } | null {
+  if (line < 1) return null
+  let start = 0
+  for (let current = 1; current < line; current += 1) {
+    const next = text.indexOf('\n', start)
+    if (next === -1) return null
+    start = next + 1
+  }
+  const newline = text.indexOf('\n', start)
+  return { start, end: newline === -1 ? text.length : newline }
+}
+
 /** Localized relative timestamp (e.g. a probe's checkedAt), coarse-grained. */
 export function relativeTime(t: ResearchT, iso: string): string {
   const elapsedMs = Date.now() - new Date(iso).getTime()

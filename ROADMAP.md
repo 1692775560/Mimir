@@ -14,13 +14,14 @@ polish round every few iterations.
 - [x] UI refresh: nav icons, view headers, stat chips, status pills
 - [x] In-panel arXiv search: search box in the literature view, one-click
       import into the wiki library (plus library card delete)
+- [x] Compile issues click-through: clicking a LaTeX error/warning in the
+      paper view jumps the editor to that line (line badges, gutter flash,
+      no-wrap editor so line numbers never drift)
 
 ## Queue
 
 ### Literature & experiments
 
-- [ ] Compile issues click-through: clicking a LaTeX error/warning in the
-      paper view jumps the editor to that line
 - [ ] Experiment metrics charts: render `experiments.metrics` series as
       inline SVG sparkline/bars in the experiments view
 - [ ] Experiment comparison: select multiple runs of one project, side-by-side

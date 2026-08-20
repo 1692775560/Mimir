@@ -32,6 +32,10 @@
 | --- | --- | --- |
 | ![总览](docs/screenshots/tab-overview.png) | ![文献](docs/screenshots/tab-papers.png) | ![文献：arXiv 搜索](docs/screenshots/tab-papers-search.png) |
 
+| 论文 | 论文：编译问题 | 论文：点击跳源码行 |
+| --- | --- | --- |
+| ![论文](docs/screenshots/tab-paper.png) | ![论文：编译问题](docs/screenshots/tab-paper-issues.png) | ![论文：点击跳源码行](docs/screenshots/tab-paper-issue-jump.png) |
+
 | 实验 | 图表 | 服务器 |
 | --- | --- | --- |
 | ![实验](docs/screenshots/tab-experiments.png) | ![图表](docs/screenshots/tab-figures.png) | ![服务器](docs/screenshots/tab-servers.png) |
