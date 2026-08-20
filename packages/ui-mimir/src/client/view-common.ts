@@ -7,7 +7,7 @@
  * @module dsh-client-ui-mimir/client/view-common
  */
 
-import type { BibEntry, ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage } from 'dsh-mimir/types'
+import type { BibEntry, ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage, SectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchSaveState } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 
@@ -170,6 +170,25 @@ export function bibSummaryOf(entry: BibEntry): string {
     .filter(part => part !== undefined && part !== '')
     .join(' · ')
   return fallback === '' ? entry.type : fallback
+}
+
+/**
+ * Translate one outline drop into a section move. `insertAt` is the insertion
+ * indicator's index in the CURRENT top-level order (0..titles.length); the
+ * move's `targetIndex` addresses the order after the dragged section is
+ * removed. Returns null for a no-op drop (back onto its own slot) or an
+ * unknown title.
+ */
+export function sectionMoveFromDrop(
+  titles: readonly string[],
+  title: string,
+  insertAt: number,
+): SectionMove | null {
+  const from = titles.indexOf(title)
+  if (from === -1) return null
+  const clamped = Math.min(Math.max(insertAt, 0), titles.length)
+  const target = clamped > from ? clamped - 1 : clamped
+  return target === from ? null : { title, targetIndex: target }
 }
 
 /** All tags across the library, deduped and alphabetically sorted (the filter bar). */

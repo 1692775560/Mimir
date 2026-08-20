@@ -83,6 +83,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     getBibliography: missing('getBibliography'),
     saveBibliography: missing('saveBibliography'),
     importPapersToBib: missing('importPapersToBib'),
+    reorderPaperSections: missing('reorderPaperSections'),
     ...overrides,
   }
 }
@@ -912,5 +913,70 @@ describe('ResearchController arXiv search and paper import', () => {
     const outcome = await controller.importPapersToBib('p1', ['nope'])
     expect('code' in outcome && outcome.code).toBe('paper-not-found')
     expect(controller.getSnapshot().bib?.lastImport).toBeNull()
+  })
+
+  it('reorderPaperSections re-reads the outline and the source on success', async () => {
+    let outlineReads = 0
+    let sourceReads = 0
+    const seen: { moves: unknown; baseOutline: unknown }[] = []
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: () => {
+        outlineReads += 1
+        return Promise.resolve(carried<ResearchOutlineResult>({
+          ok: true,
+          value: { nodes: [{ title: 'Intro', line: 5, level: 1, children: [] }] },
+        }))
+      },
+      getPaperSource: () => {
+        sourceReads += 1
+        return Promise.resolve(carried<ResearchPaperSourceResult>({ ok: true, value: { content: 'v1', mtimeMs: 1000 } }))
+      },
+      reorderPaperSections: (request) => {
+        seen.push({ moves: request.moves, baseOutline: request.baseOutline })
+        return Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.select('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(outlineReads).toBe(1)
+    expect(sourceReads).toBe(1)
+    const failure = await controller.reorderPaperSections(
+      'p1', [{ title: 'Intro', targetIndex: 1 }], ['Intro', 'Method'],
+    )
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ moves: [{ title: 'Intro', targetIndex: 1 }], baseOutline: ['Intro', 'Method'] }])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(outlineReads).toBe(2)
+    expect(sourceReads).toBe(2)
+  })
+
+  it('reorderPaperSections surfaces a conflict and still refreshes both views', async () => {
+    let outlineReads = 0
+    let sourceReads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: () => {
+        outlineReads += 1
+        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { nodes: [] } }))
+      },
+      getPaperSource: () => {
+        sourceReads += 1
+        return Promise.resolve(carried<ResearchPaperSourceResult>({ ok: true, value: { content: 'v1', mtimeMs: 1000 } }))
+      },
+      reorderPaperSections: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({
+        ok: false,
+        error: { code: 'conflict', currentMtimeMs: 3000 },
+      })),
+    }))
+    controller.select('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const failure = await controller.reorderPaperSections('p1', [{ title: 'Intro', targetIndex: 1 }], ['Intro'])
+    expect(failure?.code).toBe('conflict')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(outlineReads).toBe(2)
+    expect(sourceReads).toBe(2)
   })
 })

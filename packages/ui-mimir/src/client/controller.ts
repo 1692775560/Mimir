@@ -44,13 +44,14 @@ import type {
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchUpdatePaperResult,
+  SectionMove,
   ServerInput,
   ServerRecord,
   ServerStatusView,
 } from 'dsh-mimir/types'
 
 /**
- * The twenty-three Remote calls this controller needs, exactly as the
+ * The twenty-four Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -96,6 +97,12 @@ export interface ResearchRemote {
     arxivIds: string[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchImportBibResult>>
+  reorderPaperSections: (request: {
+    projectId: string
+    moves: SectionMove[]
+    baseOutline: string[]
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -420,6 +427,38 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Reorder the top-level sections of one project's `main.tex`. The failure
+   * view of a rejected reorder is returned so the outline rail can surface it;
+   * both a success and a conflict re-read the outline and the source from the
+   * Host, because the file on disk is newer than either view.
+   * @param projectId - wiki project id.
+   * @param moves - the drops, applied in order.
+   * @param baseOutline - the top-level titles the drag started from.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async reorderPaperSections(
+    projectId: string,
+    moves: readonly SectionMove[],
+    baseOutline: readonly string[],
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.reorderPaperSections({
+        projectId, moves: [...moves], baseOutline: [...baseOutline], dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) {
+        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        return businessFailure(result.error)
+      }
+      this.refreshPaper(projectId)
       return null
     } catch (error) {
       return transportFailure(error)
@@ -1044,6 +1083,17 @@ export class ResearchController implements HostObservable<ResearchView> {
   /** The selected project's paper directory override, from the loaded list row. */
   private dirOf(projectId: string): string | undefined {
     return this.view.projects.find(project => project.id === projectId)?.paperDir
+  }
+
+  /**
+   * Re-read one project's outline and source after the file changed on disk
+   * (a section reorder, or the conflict that rejected one).
+   */
+  private refreshPaper(projectId: string): void {
+    this.outlineGeneration += 1
+    const generation = this.outlineGeneration
+    void this.loadOutline(projectId, generation)
+    void this.loadSource(projectId, generation)
   }
 
   /** Fetch one project's outline; a superseded generation never publishes. */

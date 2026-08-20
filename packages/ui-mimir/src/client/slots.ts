@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, SectionMove, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -173,6 +173,18 @@ export interface ResearchPanelInjected {
     projectId: string,
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
+  /**
+   * Reorder the top-level sections of one project's `main.tex`.
+   * @param projectId - wiki project id.
+   * @param moves - the drops, applied in order.
+   * @param baseOutline - the top-level titles the drag started from.
+   * @returns null on success, the settled failure otherwise.
+   */
+  reorderPaperSections: (
+    projectId: string,
+    moves: readonly SectionMove[],
+    baseOutline: readonly string[],
+  ) => Promise<ResearchFailureView | null>
 }
 
 /** Full props of the sidebar-footer research toggle. */

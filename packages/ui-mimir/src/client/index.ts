@@ -165,6 +165,8 @@ export function apply(ctx: ClientContext): void {
       reloadBibliography: () => { controller.reloadBibliography() },
       deleteBibEntry: key => controller.deleteBibEntry(key),
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
+      reorderPaperSections: (projectId, moves, baseOutline) =>
+        controller.reorderPaperSections(projectId, moves, baseOutline),
     }),
   }, ResearchPanel))
 }

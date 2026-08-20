@@ -93,6 +93,79 @@ function freezeNode(node: MutableNode): OutlineNode {
   })
 }
 
+/** One section move: the titled top-level section goes to `targetIndex`. */
+export interface SectionMove {
+  /** Title of the top-level `\section` to move (exact match on the parsed title). */
+  readonly title: string
+  /** Target position among the top-level sections AFTER the moved block is removed. */
+  readonly targetIndex: number
+}
+
+/** Structured outcome of one {@link reorderSections} call. */
+export type ReorderOutcome =
+  | { readonly kind: 'reordered'; readonly tex: string }
+  | { readonly kind: 'section-not-found'; readonly title: string }
+  | { readonly kind: 'invalid-move'; readonly targetIndex: number }
+
+/** Whether one raw line is the document's closing `\end{document}`. */
+function isDocumentEnd(line: string): boolean {
+  return line.trimStart().startsWith('\\end{document}')
+}
+
+/**
+ * Move top-level `\section` blocks within one LaTeX source. A section block
+ * runs from its `\section` line to the line before the next top-level
+ * `\section` (subsections ride along); the last block yields to the
+ * `\end{document}` tail when one follows. Everything outside the moved
+ * blocks — the preamble head, the document tail, and the unmoved blocks —
+ * survives byte-for-byte (the rebuild is a line permutation joined on `\n`).
+ * Moves apply in order, each addressing the section by title and its target
+ * as the index among the remaining sections. A `\section`-looking line
+ * inside a comment or a verbatim environment is not a section (the parser's
+ * own rules); a literal `\end{document}` inside a verbatim block would
+ * still truncate the last block — a documented tolerance, not handled.
+ * @param tex - full source text of the document (typically `main.tex`).
+ * @param moves - the moves to apply, in order.
+ * @returns the reordered source, or the first failing move's failure.
+ */
+export function reorderSections(tex: string, moves: readonly SectionMove[]): ReorderOutcome {
+  const sections = parseTexOutline(tex).filter(node => node.level === 1)
+  const firstMove = moves[0]
+  if (sections.length === 0) {
+    return firstMove === undefined
+      ? { kind: 'reordered', tex }
+      : { kind: 'section-not-found', title: firstMove.title }
+  }
+  const lines = tex.split('\n')
+  const starts = sections.map(node => node.line - 1)
+  let tailStart = lines.length
+  const lastStart = starts[starts.length - 1] ?? 0
+  for (let index = lastStart + 1; index < lines.length; index += 1) {
+    if (isDocumentEnd(lines[index] ?? '')) {
+      tailStart = index
+      break
+    }
+  }
+  interface Block { title: string; lines: string[] }
+  const blocks: Block[] = sections.map((node, index) => ({
+    title: node.title,
+    lines: lines.slice(starts[index] ?? 0, index + 1 < starts.length ? starts[index + 1] ?? 0 : tailStart),
+  }))
+  const head = lines.slice(0, starts[0] ?? 0)
+  const tail = lines.slice(tailStart)
+  for (const move of moves) {
+    const from = blocks.findIndex(block => block.title === move.title)
+    if (from === -1) return { kind: 'section-not-found', title: move.title }
+    const [block] = blocks.splice(from, 1)
+    if (block === undefined) return { kind: 'section-not-found', title: move.title }
+    if (!Number.isInteger(move.targetIndex) || move.targetIndex < 0 || move.targetIndex > blocks.length) {
+      return { kind: 'invalid-move', targetIndex: move.targetIndex }
+    }
+    blocks.splice(move.targetIndex, 0, block)
+  }
+  return { kind: 'reordered', tex: [...head, ...blocks.flatMap(block => block.lines), ...tail].join('\n') }
+}
+
 /**
  * Parse the section outline of one LaTeX source.
  * @param tex - Full source text of the document (typically `main.tex`).

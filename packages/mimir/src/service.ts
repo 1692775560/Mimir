@@ -17,7 +17,7 @@ import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
-import { parseTexOutline } from './outline.ts'
+import { parseTexOutline, reorderSections } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
@@ -58,6 +58,7 @@ import type {
   ResearchSearchArxivResult,
   ResearchSuccess,
   ResearchUpdatePaperResult,
+  SectionMove,
   ServerGpuView,
   ServerInput,
   ServerRecord,
@@ -555,6 +556,61 @@ export class ResearchService extends TypertRemoteService {
     const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
     if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
     const outcome = await savePaperSourceFile(join(dir, 'main.tex'), request.content, request.baseMtimeMs)
+    if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
+    if (outcome.kind === 'conflict') {
+      return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
+    }
+    return success({ mtimeMs: outcome.mtimeMs })
+  }
+
+  /**
+   * Reorder the top-level `\section` blocks of the addressed project's paper
+   * `main.tex`. `baseOutline` is the top-level section title sequence the
+   * client's drag gesture was based on; when the file's current sequence
+   * differs (the agent edited the document mid-gesture) the call rejects with
+   * `conflict` and writes nothing. The reorder and the commit ride the same
+   * optimistic-concurrency path as `savePaperSource` (the snapshot's mtime is
+   * the save base), and everything outside the moved blocks survives
+   * byte-for-byte.
+   * @param request - the selected project, the ordered moves, the outline the
+   * client saw, and an optional explicit paper directory (relative to the
+   * workspace) overriding the record's `paperDir`.
+   * @returns the committed mtime, `project-not-found`, `paper-not-found`,
+   * `invalid-dir`, `section-not-found` for an unknown move title,
+   * `invalid-input` for an out-of-range target, or `conflict`.
+   */
+  @Remote('reorderPaperSections')
+  async reorderPaperSections(request: {
+    projectId: string
+    moves: SectionMove[]
+    baseOutline: string[]
+    dir?: string | undefined
+  }): Promise<ResearchSavePaperSourceResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const texPath = join(dir, 'main.tex')
+    const snapshot = await readPaperSource(texPath)
+    if (snapshot === undefined) return rejected({ code: 'paper-not-found' })
+    const sections = parseTexOutline(snapshot.content)
+      .filter(node => node.level === 1)
+      .map(node => node.title)
+    if (sections.length !== request.baseOutline.length
+      || sections.some((title, index) => title !== request.baseOutline[index])) {
+      return rejected({ code: 'conflict', currentMtimeMs: snapshot.mtimeMs })
+    }
+    if (request.moves.length === 0) return success({ mtimeMs: snapshot.mtimeMs })
+    const reordered = reorderSections(snapshot.content, request.moves)
+    if (reordered.kind === 'section-not-found') {
+      return rejected({ code: 'section-not-found', title: reordered.title })
+    }
+    if (reordered.kind === 'invalid-move') {
+      return rejected({ code: 'invalid-input', message: `section target index ${reordered.targetIndex} out of range` })
+    }
+    const outcome = await saveTextFileOptimistic(texPath, reordered.tex, snapshot.mtimeMs)
     if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
     if (outcome.kind === 'conflict') {
       return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })

@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { OutlineNode } from 'dsh-mimir/types'
+import type { OutlineNode, SectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
@@ -23,7 +23,7 @@ import {
   railWidthFromDrag, serializePaperLayout, type PaperLayout,
 } from './paper-layout.ts'
 import type { PaperFullscreen } from './store.ts'
-import { failureCopy, lineRangeOf, SAVE_KEYS } from './view-common.ts'
+import { failureCopy, lineRangeOf, SAVE_KEYS, sectionMoveFromDrop } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
 import css from './ResearchPanel.module.css'
@@ -46,21 +46,86 @@ const COMPRESS_ICON: ReactNode = (
   </svg>
 )
 
-/** One outline subtree, recursing through children; click jumps the editor. */
-function OutlineTree({ nodes, onJump }: {
+/** 10×14 grip icon: two columns of three dots (the drag affordance). */
+const GRIP_ICON: ReactNode = (
+  <svg viewBox="0 0 10 14" fill="currentColor" aria-hidden>
+    <circle cx="3" cy="2.5" r="1.2" /><circle cx="7" cy="2.5" r="1.2" />
+    <circle cx="3" cy="7" r="1.2" /><circle cx="7" cy="7" r="1.2" />
+    <circle cx="3" cy="11.5" r="1.2" /><circle cx="7" cy="11.5" r="1.2" />
+  </svg>
+)
+
+/**
+ * One outline subtree, recursing through children; click jumps the editor.
+ * When `reorder` is given (only at the top level), each row gains a drag
+ * grip and the list shows an insertion indicator under the pointer; a drop
+ * reports the dragged title and the insertion index in the CURRENT order.
+ */
+function OutlineTree({ nodes, onJump, reorder, gripLabel }: {
   readonly nodes: readonly OutlineNode[]
   readonly onJump: (line: number) => void
+  readonly reorder?: { onDropSection: (title: string, insertAt: number) => void } | undefined
+  readonly gripLabel?: string | undefined
 }) {
+  // Mid-gesture drag state of the top-level list (unused in nested trees).
+  const [dragTitle, setDragTitle] = useState<string | null>(null)
+  const [insertIndex, setInsertIndex] = useState<number | null>(null)
+  const endDrag = (): void => {
+    setDragTitle(null)
+    setInsertIndex(null)
+  }
   return (
     <ul className={css.outlineTree}>
-      {nodes.map(node => (
+      {nodes.map((node, index) => (
         <li key={`${node.line}:${node.title}`}>
-          <button type="button" className={css.outlineItem} onClick={() => { onJump(node.line) }}>
-            {node.title} <span className={css.outlineLine}>L{node.line}</span>
-          </button>
+          {reorder === undefined ? (
+            <button type="button" className={css.outlineItem} onClick={() => { onJump(node.line) }}>
+              {node.title} <span className={css.outlineLine}>L{node.line}</span>
+            </button>
+          ) : (
+            <div
+              className={css.outlineRow}
+              onDragOver={(event) => {
+                if (dragTitle === null) return
+                event.preventDefault()
+                const rect = event.currentTarget.getBoundingClientRect()
+                const after = event.clientY > rect.top + rect.height / 2
+                setInsertIndex(after ? index + 1 : index)
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                const title = dragTitle ?? event.dataTransfer.getData('text/plain')
+                const target = insertIndex
+                endDrag()
+                if (title !== '' && target !== null) reorder.onDropSection(title, target)
+              }}
+            >
+              {insertIndex === index && <div className={css.dropIndicator} aria-hidden />}
+              <span
+                className={css.outlineGrip}
+                draggable
+                title={gripLabel}
+                aria-label={gripLabel}
+                onDragStart={(event) => {
+                  setDragTitle(node.title)
+                  event.dataTransfer.setData('text/plain', node.title)
+                  event.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragEnd={endDrag}
+              >
+                {GRIP_ICON}
+              </span>
+              <button type="button" className={css.outlineItem} onClick={() => { onJump(node.line) }}>
+                {node.title} <span className={css.outlineLine}>L{node.line}</span>
+              </button>
+            </div>
+          )}
           {node.children.length > 0 && <OutlineTree nodes={node.children} onJump={onJump} />}
         </li>
       ))}
+      {reorder !== undefined && insertIndex === nodes.length && (
+        <li className={css.dropIndicator} aria-hidden />
+      )}
     </ul>
   )
 }
@@ -73,7 +138,7 @@ function OutlineTree({ nodes, onJump }: {
 export function PaperView({
   outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
-  ensurePapers, fullscreen, setFullscreen, t,
+  ensurePapers, reorderPaperSections, fullscreen, setFullscreen, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -93,6 +158,11 @@ export function PaperView({
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly ensurePapers: () => void
+  readonly reorderPaperSections: (
+    projectId: string,
+    moves: readonly SectionMove[],
+    baseOutline: readonly string[],
+  ) => Promise<ResearchFailureView | null>
   /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
   readonly fullscreen: PaperFullscreen | null
   readonly setFullscreen: (pane: PaperFullscreen | null) => void
@@ -110,6 +180,8 @@ export function PaperView({
   const [flashLine, setFlashLine] = useState<number | null>(null)
   // The bibliography panel replaces the PDF preview while open.
   const [bibOpen, setBibOpen] = useState(false)
+  // The last rejected section reorder, surfaced in the rail.
+  const [reorderError, setReorderError] = useState<ResearchFailureView | null>(null)
   // Pane widths; restored from localStorage, written back on every settle.
   const [layout, setLayout] = useState<PaperLayout>(() => loadPaperLayout(key => localStorage.getItem(key)))
   // Which drag handle is mid-gesture (drives the container's data-dragging).
@@ -120,6 +192,7 @@ export function PaperView({
   useEffect(() => {
     setBibOpen(false)
     setFullscreen(null)
+    setReorderError(null)
   }, [projectId, setFullscreen])
 
   // Persist the pane widths so a reopen restores them.
@@ -260,6 +333,31 @@ export function PaperView({
     }
   }
 
+  // The outline accepts drops only while the editor is clean: a successful
+  // reorder reloads the source, discarding any unsaved draft.
+  const reorderable = projectId !== null
+    && outline !== null
+    && outline.projectId === projectId
+    && outline.status === 'ready'
+    && currentSource !== null
+    && currentSource.status === 'ready'
+    && (currentSource.saveState === 'clean' || currentSource.saveState === 'saved')
+
+  /**
+   * Apply one drop: translate it into a section move against the current
+   * top-level titles and commit it; a rejection stays visible in the rail.
+   */
+  const onDropSection = (title: string, insertAt: number): void => {
+    if (projectId === null || outline === null || !reorderable) return
+    const titles = outline.nodes.map(node => node.title)
+    const move = sectionMoveFromDrop(titles, title, insertAt)
+    if (move === null) return
+    setReorderError(null)
+    void reorderPaperSections(projectId, [move], titles).then((failure) => {
+      setReorderError(failure)
+    })
+  }
+
   return (
     <div
       className={css.paperLayout}
@@ -311,7 +409,21 @@ export function PaperView({
               && outline.projectId === projectId && outline.status === 'ready'
               && (outline.nodes.length === 0
                 ? <p className={css.hint}>{t('outline.empty')}</p>
-                : <OutlineTree nodes={outline.nodes} onJump={jumpToLine} />)}
+                : (
+                  <OutlineTree
+                    nodes={outline.nodes}
+                    onJump={jumpToLine}
+                    reorder={reorderable ? { onDropSection } : undefined}
+                    gripLabel={t('outline.drag')}
+                  />
+                ))}
+            {reorderError !== null && (
+              <p className={css.failure} role="status">
+                {reorderError.code === 'conflict'
+                  ? t('outline.reorderConflict')
+                  : `${t('outline.reorderFailed')}：${failureCopy(t, reorderError)}`}
+              </p>
+            )}
           </>
         )}
       </aside>

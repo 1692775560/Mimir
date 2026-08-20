@@ -116,7 +116,7 @@ export function ResearchPanel({
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
-  ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
+  ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -318,6 +318,7 @@ export function ResearchPanel({
             deleteBibEntry={deleteBibEntry}
             importPapersToBib={importPapersToBib}
             ensurePapers={ensurePapers}
+            reorderPaperSections={reorderPaperSections}
             fullscreen={paperFullscreen}
             setFullscreen={actions.setPaperFullscreen}
             t={t}

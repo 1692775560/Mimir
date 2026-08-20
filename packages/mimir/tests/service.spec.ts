@@ -553,3 +553,86 @@ describe('ResearchService bibliography remotes', () => {
       .resolves.toEqual({ ok: true, value: { entries: [], mtimeMs: null } })
   })
 })
+
+describe('ResearchService.reorderPaperSections', () => {
+  const TEX = [
+    '\\documentclass{article}',
+    '',
+    '\\begin{document}',
+    '',
+    '\\section{Introduction}',
+    'Intro.',
+    '',
+    '\\section{Method}',
+    '\\subsection{Arch}',
+    'Method body.',
+    '',
+    '\\section{Experiments}',
+    'Experiments body.',
+    '',
+    '\\end{document}',
+    '',
+  ].join('\n')
+
+  /** Seed the project and write the fixture main.tex. */
+  async function seedPaper(domain: Awaited<ReturnType<typeof harness>>['domain'], workspaceDir: string) {
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await mkdir(join(workspaceDir, 'paper'), { recursive: true })
+    await writeFile(join(workspaceDir, 'paper', 'main.tex'), TEX)
+  }
+
+  it('moves one section, rewrites the file, and returns the new mtime', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    const outcome = await service.reorderPaperSections({
+      projectId: 'p1',
+      moves: [{ title: 'Method', targetIndex: 0 }],
+      baseOutline: ['Introduction', 'Method', 'Experiments'],
+    })
+    expect(outcome.ok).toBe(true)
+    const text = await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')
+    const methodAt = text.indexOf('\\section{Method}')
+    expect(methodAt).toBeLessThan(text.indexOf('\\section{Introduction}'))
+    // The subsection rode along; the preamble and the tail are untouched.
+    expect(text).toContain('\\subsection{Arch}')
+    expect(text.startsWith('\\documentclass{article}\n\n\\begin{document}\n\n')).toBe(true)
+    expect(text.endsWith('\\end{document}\n')).toBe(true)
+  })
+
+  it('rejects with conflict when the file outline drifted from baseOutline', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    await expect(service.reorderPaperSections({
+      projectId: 'p1',
+      moves: [{ title: 'Method', targetIndex: 0 }],
+      baseOutline: ['Introduction', 'Method'],
+    })).resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    // Nothing was written.
+    expect(await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')).toBe(TEX)
+  })
+
+  it('rejects an unknown section title and a bad target index', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    const base = ['Introduction', 'Method', 'Experiments']
+    await expect(service.reorderPaperSections({
+      projectId: 'p1', moves: [{ title: 'Ghost', targetIndex: 0 }], baseOutline: base,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'section-not-found', title: 'Ghost' } })
+    await expect(service.reorderPaperSections({
+      projectId: 'p1', moves: [{ title: 'Method', targetIndex: 9 }], baseOutline: base,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    expect(await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')).toBe(TEX)
+  })
+
+  it('reports paper-not-found and project-not-found', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    await expect(service.reorderPaperSections({
+      projectId: 'ghost', moves: [], baseOutline: [],
+    })).resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    await domain.table('projects').put('p2', { ...PROJECT, id: 'p2', paperDir: 'paper-p2' })
+    await expect(service.reorderPaperSections({
+      projectId: 'p2', moves: [], baseOutline: [],
+    })).resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+  })
+})

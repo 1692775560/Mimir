@@ -9,6 +9,13 @@ polish round every few iterations.
 
 ## Done
 
+- [x] Outline drag-to-reorder sections: each top-level outline row grows a
+      drag grip (HTML5 DnD, insertion indicator under the pointer); a drop
+      rewrites `main.tex`'s top-level `\section` order (blocks move whole with
+      their subsections, everything else byte-identical — pure
+      `reorderSections` line permutation + new `reorderPaperSections` Remote
+      with an optimistic `baseOutline` check, conflicts reload); a dirty
+      editor disables dragging
 - [x] Paper view layout: drag handles between outline/editor/preview resize
       the panes (pure `railWidthFromDrag`/`editorShareFromDrag` clamp math,
       rail snaps to collapsed below 60px, editor ≥320px / preview ≥280px),
@@ -60,10 +67,6 @@ polish round every few iterations.
 
 - [ ] Experiment comparison: select multiple runs of one project, side-by-side
       metrics table
-
-### Writing experience
-
-- [ ] Outline drag-to-reorder sections (rewrites `main.tex` section order)
 
 ### Servers
 
