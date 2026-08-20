@@ -22,6 +22,7 @@ import type {
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
@@ -44,7 +45,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The eighteen Remote calls this controller needs, exactly as the generated
+ * The nineteen Remote calls this controller needs, exactly as the generated
  * `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -64,6 +65,7 @@ export interface ResearchRemote {
   importPaper: (request: { entry: ArxivEntry }) => Promise<RemoteResult<ResearchImportPaperResult>>
   removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
+  deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
@@ -450,6 +452,35 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       await this.loadPapers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one experiment record and drop it from the loaded slice (the Host
+   * already removed its record, so a local filter repaints without a refetch).
+   * The failure view of a rejected delete is returned so the row surfaces it.
+   * @param id - experiment record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteExperiment(id: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteExperiment({ id })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const current = this.view.experiments
+      if (current !== null) {
+        this.publish({
+          experiments: Object.freeze({
+            ...current,
+            list: Object.freeze(current.list.filter(record => record.id !== id)),
+          }),
+        })
+      }
       return null
     } catch (error) {
       return transportFailure(error)

@@ -93,7 +93,7 @@ export function ResearchPanel({
   useStore, actions, useResearch,
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
+  deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
   const selectedProjectId = useStore(state => state.selectedProjectId)
@@ -254,6 +254,7 @@ export function ResearchPanel({
             experiments={experiments}
             artifact={artifact}
             projectId={selectedProjectId}
+            deleteExperiment={deleteExperiment}
             t={t}
           />
         )}

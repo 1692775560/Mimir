@@ -1055,6 +1055,7 @@
 }
 
 .experimentTableWrap,
+.metricCharts,
 .experimentLog {
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   border-radius: 14px;
@@ -1155,6 +1156,71 @@
   margin: 0;
   color: var(--dsw-alias-label-primary, #17233d);
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* Metric comparison: one hand-drawn SVG bar chart per shared numeric key. */
+
+.metricCharts {
+  padding: 16px 18px;
+}
+
+.metricCharts .sectionTitle {
+  margin: 0 0 10px;
+}
+
+.metricChartGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.metricChart {
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+}
+
+.metricChart h4 {
+  margin: 0 0 6px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricChartSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.metricName {
+  fill: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 11px;
+}
+
+.metricBar {
+  fill: var(--dsw-alias-state-business-primary, #4176e6);
+  opacity: 0.85;
+}
+
+.metricBar[data-status='success'] {
+  fill: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.metricBar[data-status='failed'] {
+  fill: var(--dsw-alias-state-error-primary, #d93026);
+  opacity: 0.55;
+}
+
+.metricValue {
+  fill: var(--dsw-alias-label-primary, #17233d);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
 }
 
 .experimentLog {

@@ -148,6 +148,7 @@ export type ResearchFailure =
   | { readonly code: 'artifact-not-found'; readonly name: string }
   | { readonly code: 'invalid-artifact'; readonly name: string }
   | { readonly code: 'server-not-found'; readonly id: string }
+  | { readonly code: 'experiment-not-found'; readonly id: string }
   | { readonly code: 'invalid-input'; readonly message: string }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
   | { readonly code: 'operation-failed'; readonly message: string }
@@ -205,6 +206,9 @@ export type ResearchRemovePaperResult = ResearchResult<{ readonly arxivId: strin
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>
+
+/** `deleteExperiment` result: the deleted record's id. */
+export type ResearchDeleteExperimentResult = ResearchResult<{ readonly id: string }>
 
 /** `readArtifact` result: the markdown artifact's full text. */
 export type ResearchArtifactResult = ResearchResult<{

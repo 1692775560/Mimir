@@ -17,13 +17,15 @@ polish round every few iterations.
 - [x] Compile issues click-through: clicking a LaTeX error/warning in the
       paper view jumps the editor to that line (line badges, gutter flash,
       no-wrap editor so line numbers never drift)
+- [x] Experiment metrics charts: numeric metric keys shared by ≥2 runs render
+      as inline SVG comparison bar charts; experiment rows can be deleted
+      (new `deleteExperiment` Remote; the "add experiment" form was skipped —
+      no saveExperiment Remote yet)
 
 ## Queue
 
 ### Literature & experiments
 
-- [ ] Experiment metrics charts: render `experiments.metrics` series as
-      inline SVG sparkline/bars in the experiments view
 - [ ] Experiment comparison: select multiple runs of one project, side-by-side
       metrics table
 - [ ] Literature tagging + per-project linking of papers

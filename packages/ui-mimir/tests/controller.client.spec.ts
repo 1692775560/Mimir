@@ -14,6 +14,7 @@ import type {
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
+  ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
@@ -66,6 +67,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     importPaper: missing('importPaper'),
     removePaper: missing('removePaper'),
     listExperiments: missing('listExperiments'),
+    deleteExperiment: missing('deleteExperiment'),
     readArtifact: missing('readArtifact'),
     listFigures: missing('listFigures'),
     deleteFigure: missing('deleteFigure'),
@@ -446,6 +448,39 @@ describe('ResearchController workbench views', () => {
       projectId: 'p1', status: 'ready',
     })
     expect(controller.getSnapshot().experiments?.list[0]?.name).toBe('baseline')
+  })
+
+  it('deleteExperiment drops the row locally and surfaces a business failure', async () => {
+    const experiments = [
+      { id: 'e1', projectId: 'p1', name: 'baseline', status: 'success' as const,
+        metrics: { acc: 0.9 }, updatedAt: '2026-08-02T00:00:00Z' },
+      { id: 'e2', projectId: 'p1', name: 'full', status: 'running' as const,
+        metrics: { acc: 0.93 }, updatedAt: '2026-08-03T00:00:00Z' },
+    ]
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => Promise.resolve(carried<ResearchExperimentsResult>({
+        ok: true, value: { experiments },
+      })),
+      deleteExperiment: ({ id }) => Promise.resolve(carried<ResearchDeleteExperimentResult>(
+        id === 'e1'
+          ? { ok: true, value: { id } }
+          : { ok: false, error: { code: 'experiment-not-found', id } },
+      )),
+    }))
+    controller.select('p1')
+    await settle()
+    expect(controller.getSnapshot().experiments?.list).toHaveLength(2)
+    const failure = await controller.deleteExperiment('nope')
+    expect(failure).toMatchObject({ code: 'experiment-not-found' })
+    expect(controller.getSnapshot().experiments?.list).toHaveLength(2)
+    const ok = await controller.deleteExperiment('e1')
+    expect(ok).toBeNull()
+    expect(controller.getSnapshot().experiments?.list.map(record => record.id)).toEqual(['e2'])
   })
 
   it('skips a refetch of a ready artifact and keeps the not-found failure', async () => {

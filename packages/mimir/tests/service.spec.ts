@@ -4,7 +4,8 @@
  * upsert rules, and the two-stage checkServer probe (TCP, then best-effort
  * ssh GPU readout) — plus the literature-workbench round: searchArxiv input
  * validation and stubbed-fetch outcomes, importPaper upsert idempotence, and
- * removePaper. Real memory-backed domain, real temp workspace, real loopback
+ * removePaper — plus the experiments-workbench round: deleteExperiment. Real
+ * memory-backed domain, real temp workspace, real loopback
  * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
@@ -334,5 +335,41 @@ describe('ResearchService.importPaper / removePaper', () => {
     expect(listed).toEqual({ ok: true, value: { papers: [] } })
     await expect(service.removePaper({ arxivId: ARXIV_ENTRY.id }))
       .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+  })
+})
+
+describe('ResearchService.deleteExperiment', () => {
+  it('deletes one experiment and reports experiment-not-found on a repeat', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('experiments').put('e1', {
+      id: 'e1',
+      projectId: PROJECT.id,
+      name: 'bhx-base',
+      status: 'success',
+      metrics: { mpjpe: 92.4 },
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    })
+    await expect(service.deleteExperiment({ id: 'e1' })).resolves.toEqual({ ok: true, value: { id: 'e1' } })
+    await expect(service.listExperiments({ projectId: PROJECT.id }))
+      .resolves.toEqual({ ok: true, value: { experiments: [] } })
+    await expect(service.deleteExperiment({ id: 'e1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'e1' } })
+  })
+
+  it('does not touch other projects\u2019 experiments', async () => {
+    const { domain, service } = await harness()
+    await domain.table('experiments').put('e1', {
+      id: 'e1',
+      projectId: 'other',
+      name: 'keep-me',
+      status: 'running',
+      metrics: {},
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    })
+    await expect(service.deleteExperiment({ id: 'missing' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'missing' } })
+    const listed = await service.listExperiments({})
+    expect(listed).toMatchObject({ ok: true, value: { experiments: [{ id: 'e1' }] } })
   })
 })

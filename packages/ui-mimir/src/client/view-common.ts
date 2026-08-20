@@ -1,11 +1,12 @@
 /**
  * Shared presentational helpers for the research workbench views: the stage
- * label map, failure-copy translation, byte-size formatting, and the figure
- * route URL builder. No JSX, no subscriptions.
+ * label map, failure-copy translation, byte-size formatting, the figure route
+ * URL builder, and the experiments comparison-chart helpers (numeric metric
+ * keys, chart rows, bar widths, value formatting). No JSX, no subscriptions.
  * @module dsh-client-ui-mimir/client/view-common
  */
 
-import type { ProjectStage } from 'dsh-mimir/types'
+import type { ExperimentRecord, ExperimentStatus, ProjectStage } from 'dsh-mimir/types'
 import type { ResearchFailureView } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 
@@ -74,4 +75,72 @@ export function relativeTime(t: ResearchT, iso: string): string {
 export function figureUrl(projectId: string, relPath: string, dir: string | undefined): string {
   return `/research/figure/${encodeURIComponent(projectId)}?path=${encodeURIComponent(relPath)}`
     + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
+}
+
+/** One run's row in one metric's comparison chart. */
+export interface MetricChartRow {
+  readonly id: string
+  readonly name: string
+  readonly status: ExperimentStatus
+  readonly value: number
+}
+
+/**
+ * Metric keys shared as finite numbers by at least two experiments — the keys
+ * worth a comparison chart (a key only one run carries has nothing to compare
+ * against). Sorted alphabetically so the chart grid is stable across renders.
+ */
+export function numericMetricKeys(experiments: readonly ExperimentRecord[]): string[] {
+  const counts = new Map<string, number>()
+  for (const record of experiments) {
+    for (const [key, value] of Object.entries(record.metrics)) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([key]) => key)
+    .sort()
+}
+
+/**
+ * Rows of one metric's comparison chart: every run carrying a finite number
+ * for the key, oldest first (updatedAt order) so the bars read as a trend.
+ */
+export function metricChartRows(experiments: readonly ExperimentRecord[], key: string): MetricChartRow[] {
+  const rows: Array<{ readonly record: ExperimentRecord; readonly value: number }> = []
+  for (const record of experiments) {
+    const value = record.metrics[key]
+    if (typeof value === 'number' && Number.isFinite(value)) rows.push({ record, value })
+  }
+  rows.sort((left, right) => left.record.updatedAt.localeCompare(right.record.updatedAt))
+  return rows.map(({ record, value }) => ({
+    id: record.id,
+    name: record.name,
+    status: record.status,
+    value,
+  }))
+}
+
+/**
+ * Bar widths (0–100) for one chart's values, normalized to the largest.
+ * Negative values and an all-non-positive chart (e.g. a zero-only metric)
+ * collapse to zero-width bars.
+ */
+export function barWidthPercents(values: readonly number[]): number[] {
+  const max = Math.max(...values, 0)
+  if (max <= 0) return values.map(() => 0)
+  return values.map(value => Math.max(0, Math.min(100, (value / max) * 100)))
+}
+
+/**
+ * Compact display form of one metric value: strings pass through, integers
+ * print as-is, other numbers keep at most four significant digits.
+ */
+export function formatMetricValue(value: number | string): string {
+  if (typeof value === 'string') return value
+  if (!Number.isFinite(value) || Number.isInteger(value)) return String(value)
+  return String(Number(value.toPrecision(4)))
 }

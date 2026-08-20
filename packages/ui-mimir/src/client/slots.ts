@@ -106,6 +106,12 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one experiment record, dropping its row from the loaded slice.
+   * @param id - experiment record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**

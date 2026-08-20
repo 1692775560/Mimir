@@ -32,6 +32,7 @@ import type {
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
@@ -393,6 +394,21 @@ export class ResearchService extends TypertRemoteService {
       .filter(record => request.projectId === undefined || record.projectId === request.projectId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     return Promise.resolve(success({ experiments: Object.freeze(experiments) }))
+  }
+
+  /**
+   * Delete one experiment record; an unknown id is `experiment-not-found`.
+   * @param request - the record id.
+   * @returns the deleted id.
+   */
+  @Remote('deleteExperiment')
+  async deleteExperiment(request: { id: string }): Promise<ResearchDeleteExperimentResult> {
+    const table = this.domain.table('experiments')
+    if (table.get(request.id) === undefined) {
+      return rejected({ code: 'experiment-not-found', id: request.id })
+    }
+    await table.delete(request.id)
+    return success({ id: request.id })
   }
 
   /**

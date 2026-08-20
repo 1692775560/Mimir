@@ -1,6 +1,8 @@
 /**
  * The experiments view: the selected project's experiment-run table (status
- * pill, expandable metrics) above a minimal markdown rendering of the
+ * pill, expandable metrics, delete action) topped by a metric-comparison
+ * section — one hand-drawn inline SVG bar chart per numeric metric key shared
+ * by at least two runs — above a minimal markdown rendering of the
  * whitelisted EXPERIMENT_LOG.md artifact. No markdown dependency: the log is
  * rendered line-wise (fences, headings, list items, bold spans).
  * @module dsh-client-ui-mimir/client/ExperimentsView
@@ -8,8 +10,16 @@
 
 import { useState, type ReactNode } from 'react'
 import type { ExperimentRecord } from 'dsh-mimir/types'
-import type { ResearchArtifactView, ResearchProjectSlice } from './controller.ts'
-import { failureCopy, type ResearchT } from './view-common.ts'
+import type { ResearchArtifactView, ResearchFailureView, ResearchProjectSlice } from './controller.ts'
+import {
+  barWidthPercents,
+  failureCopy,
+  formatMetricValue,
+  metricChartRows,
+  numericMetricKeys,
+  type MetricChartRow,
+  type ResearchT,
+} from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -54,18 +64,86 @@ function renderMarkdown(text: string): ReactNode[] {
   return out
 }
 
+/** Bar-chart geometry: bars span x 110–270 of the 320-wide viewBox. */
+const CHART_WIDTH = 320
+const CHART_BAR_X = 110
+const CHART_BAR_MAX_WIDTH = 160
+const CHART_ROW_HEIGHT = 26
+/** Run names are ellipsized past this many characters to fit the label lane. */
+const CHART_NAME_MAX = 14
+
+/**
+ * One metric's comparison chart: one horizontal bar per run carrying a finite
+ * number for the key, oldest run on top, width normalized to the largest
+ * value. Pure inline SVG — no charting dependency.
+ */
+function MetricChart({ metricKey, rows }: {
+  readonly metricKey: string
+  readonly rows: readonly MetricChartRow[]
+}) {
+  const widths = barWidthPercents(rows.map(row => row.value))
+  const height = rows.length * CHART_ROW_HEIGHT + 4
+  return (
+    <div className={css.metricChart}>
+      <h4 title={metricKey}>{metricKey}</h4>
+      <svg
+        className={css.metricChartSvg}
+        viewBox={`0 0 ${String(CHART_WIDTH)} ${String(height)}`}
+        role="img"
+        aria-label={metricKey}
+      >
+        {rows.map((row, index) => {
+          const y = 2 + index * CHART_ROW_HEIGHT
+          const name = row.name.length > CHART_NAME_MAX ? `${row.name.slice(0, CHART_NAME_MAX - 1)}…` : row.name
+          return (
+            <g key={row.id}>
+              <text className={css.metricName} x={0} y={y + 15}>
+                <title>{row.name}</title>
+                {name}
+              </text>
+              <rect
+                className={css.metricBar}
+                data-status={row.status}
+                x={CHART_BAR_X}
+                y={y + 4}
+                width={(widths[index] ?? 0) / 100 * CHART_BAR_MAX_WIDTH}
+                height={14}
+                rx={4}
+              />
+              <text className={css.metricValue} x={CHART_BAR_X + CHART_BAR_MAX_WIDTH + 6} y={y + 15}>
+                {formatMetricValue(row.value)}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 /**
  * @param props - the experiments slice, the artifact view, the selected
- * project id, and copy.
- * @returns the experiment table plus the log viewer.
+ * project id, the delete action, and copy.
+ * @returns the metric charts, the experiment table, and the log viewer.
  */
-export function ExperimentsView({ experiments, artifact, projectId, t }: {
+export function ExperimentsView({ experiments, artifact, projectId, deleteExperiment, t }: {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly projectId: string | null
+  readonly deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
+  const [actionError, setActionError] = useState<string | null>(null)
+  const removeExperiment = (record: ExperimentRecord): void => {
+    if (!window.confirm(t('experiments.confirmDelete'))) return
+    void deleteExperiment(record.id).then((failure) => {
+      setActionError(failure === null ? null : `${t('experiments.deleteFailed')}：${failure.message}`)
+    })
+  }
+  const chartKeys = experiments !== null && experiments.status === 'ready'
+    ? numericMetricKeys(experiments.list)
+    : []
   return (
     <div className={css.experiments}>
       <ViewHead title={t('tab.experiments')} subtitle={t('view.experiments.subtitle')} />
@@ -78,59 +156,83 @@ export function ExperimentsView({ experiments, artifact, projectId, t }: {
       ) : experiments.list.length === 0 ? (
         <EmptyState glyph="🧪">{t('experiments.empty')}</EmptyState>
       ) : (
-        <div className={css.experimentTableWrap}>
-          <h3 className={css.sectionTitle}>{t('experiments.title')}</h3>
-          <table className={css.experimentTable}>
-            <thead>
-              <tr>
-                <th>{t('experiments.colName')}</th>
-                <th>{t('experiments.colStatus')}</th>
-                <th>{t('experiments.colMetrics')}</th>
-                <th>{t('experiments.colUpdated')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {experiments.list.map((record) => {
-                const entries = Object.entries(record.metrics)
-                const open = Boolean(openMetrics[record.id])
-                return (
-                  <tr key={record.id}>
-                    <td>{record.name}</td>
-                    <td>
-                      <span className={css.experimentStatus} data-status={record.status}>
-                        {t(`experimentStatus.${record.status}`)}
-                      </span>
-                    </td>
-                    <td>
-                      {entries.length > 0 && (
+        <>
+          {chartKeys.length > 0 && (
+            <div className={css.metricCharts}>
+              <h3 className={css.sectionTitle}>{t('experiments.compare')}</h3>
+              <div className={css.metricChartGrid}>
+                {chartKeys.map(key => (
+                  <MetricChart key={key} metricKey={key} rows={metricChartRows(experiments.list, key)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {actionError !== null && <p className={css.failure} role="alert">{actionError}</p>}
+          <div className={css.experimentTableWrap}>
+            <h3 className={css.sectionTitle}>{t('experiments.title')}</h3>
+            <table className={css.experimentTable}>
+              <thead>
+                <tr>
+                  <th>{t('experiments.colName')}</th>
+                  <th>{t('experiments.colStatus')}</th>
+                  <th>{t('experiments.colMetrics')}</th>
+                  <th>{t('experiments.colUpdated')}</th>
+                  <th>{t('experiments.colActions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {experiments.list.map((record) => {
+                  const entries = Object.entries(record.metrics)
+                  const open = Boolean(openMetrics[record.id])
+                  return (
+                    <tr key={record.id}>
+                      <td>{record.name}</td>
+                      <td>
+                        <span className={css.experimentStatus} data-status={record.status}>
+                          {t(`experimentStatus.${record.status}`)}
+                        </span>
+                      </td>
+                      <td>
+                        {entries.length > 0 && (
+                          <button
+                            type="button"
+                            className={css.metricsToggle}
+                            onClick={() => {
+                              setOpenMetrics(prev => ({ ...prev, [record.id]: !prev[record.id] }))
+                            }}
+                          >
+                            {entries.length} {t('experiments.metrics')}
+                          </button>
+                        )}
+                        {open && (
+                          <dl className={css.metricsList}>
+                            {entries.map(([key, value]) => (
+                              <div key={key} className={css.metricsRow}>
+                                <dt>{key}</dt>
+                                <dd>{formatMetricValue(value)}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </td>
+                      <td>{record.updatedAt.slice(0, 16).replace('T', ' ')}</td>
+                      <td>
                         <button
                           type="button"
-                          className={css.metricsToggle}
-                          onClick={() => {
-                            setOpenMetrics(prev => ({ ...prev, [record.id]: !prev[record.id] }))
-                          }}
+                          className={css.btn}
+                          data-danger
+                          onClick={() => { removeExperiment(record) }}
                         >
-                          {entries.length} {t('experiments.metrics')}
+                          {t('experiments.delete')}
                         </button>
-                      )}
-                      {open && (
-                        <dl className={css.metricsList}>
-                          {entries.map(([key, value]) => (
-                            <div key={key} className={css.metricsRow}>
-                              <dt>{key}</dt>
-                              <dd>{String(value)}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </td>
-                    <td>{record.updatedAt.slice(0, 16).replace('T', ' ')}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
       {projectId === null || artifact === null || artifact.status === 'loading' ? (
         <p className={css.hint}>{t('experiments.loading')}</p>
