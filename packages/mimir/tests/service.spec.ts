@@ -373,3 +373,65 @@ describe('ResearchService.deleteExperiment', () => {
     expect(listed).toMatchObject({ ok: true, value: { experiments: [{ id: 'e1' }] } })
   })
 })
+
+describe('ResearchService.updatePaper', () => {
+  /** Seed one paper with organization fields already set. */
+  async function seedPaper(domain: Awaited<ReturnType<typeof harness>>['domain']) {
+    await domain.table('papers').put(ARXIV_ENTRY.id, {
+      arxivId: ARXIV_ENTRY.id,
+      title: ARXIV_ENTRY.title,
+      authors: [...ARXIV_ENTRY.authors],
+      summary: ARXIV_ENTRY.summary,
+      url: ARXIV_ENTRY.url,
+      notes: 'existing notes',
+      tags: ['baseline'],
+      projectIds: [],
+      addedAt: '2026-08-01T00:00:00.000Z',
+    })
+  }
+
+  it('replaces only the provided fields and cleans tags up', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await seedPaper(domain)
+    const outcome = await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      tags: [' mesh-recovery ', 'baseline', '', 'mesh-recovery'],
+      projectIds: [PROJECT.id],
+    })
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: { paper: { tags: ['mesh-recovery', 'baseline'], projectIds: ['p1'], notes: 'existing notes' } },
+    })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.tags).toEqual(['mesh-recovery', 'baseline'])
+    // Notes untouched by a partial update that omits them.
+    const notesOnly = await service.updatePaper({ arxivId: ARXIV_ENTRY.id, notes: 'new notes' })
+    expect(notesOnly).toMatchObject({ ok: true, value: { paper: { notes: 'new notes', tags: ['mesh-recovery', 'baseline'] } } })
+  })
+
+  it('reports paper-not-found for an unknown arXiv id', async () => {
+    const { service } = await harness()
+    await expect(service.updatePaper({ arxivId: 'nope', tags: ['x'] }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+  })
+
+  it('rejects links to unknown projects without touching the record', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await seedPaper(domain)
+    await expect(service.updatePaper({ arxivId: ARXIV_ENTRY.id, projectIds: [PROJECT.id, 'ghost'] }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown project: ghost' } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.projectIds).toEqual([])
+  })
+
+  it('re-import refreshes metadata but preserves tags, projectIds, and notes', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    await service.updatePaper({ arxivId: ARXIV_ENTRY.id, tags: ['egocentric'], projectIds: [PROJECT.id], notes: 'read it' })
+    const again = await service.importPaper({ entry: { ...ARXIV_ENTRY, title: 'New Title' } })
+    expect(again).toEqual({ ok: true, value: { imported: false } })
+    const stored = domain.table('papers').get(ARXIV_ENTRY.id)
+    expect(stored).toMatchObject({ title: 'New Title', tags: ['egocentric'], projectIds: ['p1'], notes: 'read it' })
+  })
+})

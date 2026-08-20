@@ -112,6 +112,16 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
+  /**
+   * Partially update one paper's tags, project links, and notes.
+   * @param arxivId - the bare arXiv id.
+   * @param patch - the fields to replace; omitted fields stay untouched.
+   * @returns null on success, the settled failure otherwise.
+   */
+  updatePaper: (
+    arxivId: string,
+    patch: { tags?: string[]; projectIds?: string[]; notes?: string },
+  ) => Promise<ResearchFailureView | null>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**

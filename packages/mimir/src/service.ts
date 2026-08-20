@@ -51,6 +51,7 @@ import type {
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSuccess,
+  ResearchUpdatePaperResult,
   ServerGpuView,
   ServerInput,
   ServerRecord,
@@ -357,6 +358,10 @@ export class ResearchService extends TypertRemoteService {
       summary: entry.summary,
       url: entry.url === '' ? `https://arxiv.org/abs/${arxivId}` : entry.url,
       notes: existing?.notes ?? '',
+      // A re-import refreshes the arXiv metadata but never wipes the
+      // workbench-curated organization fields.
+      tags: [...(existing?.tags ?? [])],
+      projectIds: [...(existing?.projectIds ?? [])],
       addedAt: existing?.addedAt ?? new Date().toISOString(),
     }
     await table.put(arxivId, record)
@@ -376,6 +381,43 @@ export class ResearchService extends TypertRemoteService {
     }
     await table.delete(request.arxivId)
     return success({ arxivId: request.arxivId })
+  }
+
+  /**
+   * Partially update one remembered paper's organization fields: only the
+   * present fields (`tags`, `projectIds`, `notes`) change. Tags are trimmed,
+   * emptied out, and deduped; every linked project id must exist in the wiki
+   * (`invalid-input` otherwise). An unknown arXiv id is `paper-not-found`.
+   * @param request - the bare arXiv id plus the fields to replace.
+   * @returns the stored record after the update.
+   */
+  @Remote('updatePaper')
+  async updatePaper(request: {
+    arxivId: string
+    tags?: string[] | undefined
+    projectIds?: string[] | undefined
+    notes?: string | undefined
+  }): Promise<ResearchUpdatePaperResult> {
+    const table = this.domain.table('papers')
+    const existing = table.get(request.arxivId)
+    if (existing === undefined) return rejected({ code: 'paper-not-found' })
+    if (request.projectIds !== undefined) {
+      for (const projectId of request.projectIds) {
+        if (this.domain.table('projects').get(projectId) === undefined) {
+          return rejected({ code: 'invalid-input', message: `unknown project: ${projectId}` })
+        }
+      }
+    }
+    const next: PaperRecord = {
+      ...existing,
+      tags: request.tags === undefined
+        ? existing.tags
+        : [...new Set(request.tags.map(tag => tag.trim()).filter(tag => tag !== ''))],
+      projectIds: request.projectIds ?? existing.projectIds,
+      notes: request.notes ?? existing.notes,
+    }
+    await table.put(request.arxivId, next)
+    return success({ paper: next })
   }
 
   /**

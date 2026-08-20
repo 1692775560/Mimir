@@ -107,6 +107,7 @@ export function apply(ctx: ClientContext): void {
       searchArxiv: (query) => { controller.searchArxiv(query) },
       importPaper: (entry) => controller.importPaper(entry),
       removePaper: (arxivId) => controller.removePaper(arxivId),
+      updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
       loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
       uploadFigures: async (projectId, dir, files, onProgress) => {

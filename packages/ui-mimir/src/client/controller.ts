@@ -39,13 +39,14 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchUpdatePaperResult,
   ServerInput,
   ServerRecord,
   ServerStatusView,
 } from 'dsh-mimir/types'
 
 /**
- * The nineteen Remote calls this controller needs, exactly as the generated
+ * The twenty Remote calls this controller needs, exactly as the generated
  * `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -64,6 +65,12 @@ export interface ResearchRemote {
   searchArxiv: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchSearchArxivResult>>
   importPaper: (request: { entry: ArxivEntry }) => Promise<RemoteResult<ResearchImportPaperResult>>
   removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
+  updatePaper: (request: {
+    arxivId: string
+    tags?: string[] | undefined
+    projectIds?: string[] | undefined
+    notes?: string | undefined
+  }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
@@ -447,6 +454,31 @@ export class ResearchController implements HostObservable<ResearchView> {
   async removePaper(arxivId: string): Promise<ResearchFailureView | null> {
     try {
       const carried = await this.remote.removePaper({ arxivId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Partially update one paper's organization fields (tags, project links,
+   * notes), then refresh the literature list so the grid, the filter bar,
+   * and any matching search result repaint.
+   * @param arxivId - the bare arXiv id.
+   * @param patch - the fields to replace; omitted fields stay untouched.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async updatePaper(
+    arxivId: string,
+    patch: { tags?: string[]; projectIds?: string[]; notes?: string },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.updatePaper({ arxivId, ...patch })
       if (this.disposed) return null
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value

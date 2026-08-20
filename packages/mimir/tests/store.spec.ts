@@ -31,6 +31,8 @@ const paper: PaperRecord = {
   summary: 'Summary text.',
   url: 'https://arxiv.org/abs/2103.00020v2',
   notes: '',
+  tags: [],
+  projectIds: [],
   addedAt: '2026-08-20T00:00:00.000Z',
 }
 
@@ -78,6 +80,23 @@ describe('researchWikiDomainSpec', () => {
     const reopened = await facility.open(researchWikiDomainSpec)
     expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
     expect(reopened.table('servers').size).toBe(0)
+  })
+
+  it('loads a paper record predating tags/projectIds with both defaulted empty', async () => {
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('papers').put(paper.arxivId, paper)
+    }
+    // Simulate a v2 store written before the organization fields existed:
+    // strip them from the raw stored record.
+    const legacy: Record<string, unknown> = { ...paper }
+    delete legacy['tags']
+    delete legacy['projectIds']
+    pool.media.get('research_wiki')!.tables.get('papers')!.set(paper.arxivId, legacy)
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    expect(reopened.table('papers').get(paper.arxivId)).toEqual(paper)
   })
 
   it('rejects a stored record that fails its zod schema, naming table and key', async () => {

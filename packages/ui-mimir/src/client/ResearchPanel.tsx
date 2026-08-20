@@ -92,7 +92,7 @@ const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
 export function ResearchPanel({
   useStore, actions, useResearch,
   ensure, selectProject, compile, editSource, reloadSource,
-  ensurePapers, searchArxiv, importPaper, removePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -242,9 +242,12 @@ export function ResearchPanel({
           <PapersView
             papers={papers}
             arxivSearch={arxivSearch}
+            projects={projects}
+            selectedProjectId={selectedProjectId}
             ensurePapers={ensurePapers}
             searchArxiv={searchArxiv}
             importPaper={importPaper}
+            updatePaper={updatePaper}
             removePaper={removePaper}
             t={t}
           />

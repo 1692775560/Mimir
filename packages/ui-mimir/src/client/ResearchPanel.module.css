@@ -979,6 +979,149 @@
   line-height: 1.6;
 }
 
+/* Tag pills (filter bar, card tags, editor chips) and project badges. */
+
+.papersFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tagPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 999px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tagPill:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+.tagPill[data-active] {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 12%));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.tagPill[data-kind='project'] {
+  border-style: dashed;
+}
+
+/* Editor chips are static spans: no hover, no pointer. */
+.tagPill[data-static] {
+  cursor: default;
+}
+
+.tagPill[data-static]:hover {
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.tagRemove {
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tagRemove:hover {
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.paperTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.projectBadge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 12%));
+  color: var(--dsw-alias-state-success-primary, #2da44e);
+  font-size: 12px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The inline organization editor (tags, project links, notes). */
+
+.paperEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
+  border-radius: 10px;
+}
+
+.paperEditorLabel {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tagEditor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tagEditor .input {
+  flex: 1;
+  min-width: 140px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.projectChecks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.projectCheck {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.paperEditor textarea {
+  resize: vertical;
+  font-size: 13px;
+}
+
+.paperEditorFoot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .papersSearchBar {
   display: flex;
   gap: 8px;
@@ -1040,6 +1183,7 @@
 
 .paperCardFoot {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: auto;
 }

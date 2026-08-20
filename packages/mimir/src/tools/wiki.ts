@@ -81,6 +81,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
   switch (args.action) {
     case 'add_paper': {
       const arxivId = requireField(args.arxiv_id, 'arxiv_id', args.action)
+      const existing = domain.table('papers').get(arxivId)
       const record = {
         arxivId,
         title: requireField(args.title, 'title', args.action),
@@ -88,6 +89,9 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         summary: requireField(args.summary, 'summary', args.action),
         url: args.url ?? `https://arxiv.org/abs/${arxivId}`,
         notes: args.notes ?? '',
+        // An agent-driven re-add must not wipe workbench-curated organization.
+        tags: [...(existing?.tags ?? [])],
+        projectIds: [...(existing?.projectIds ?? [])],
         addedAt: new Date().toISOString(),
       }
       await domain.table('papers').put(arxivId, record)

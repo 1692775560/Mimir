@@ -18,6 +18,10 @@ export const paperRecord = z.object({
   summary: z.string(),
   url: z.string(),
   notes: z.string(),
+  // Added WITHOUT a version bump: `.default([])` fills both fields when a
+  // stored record predates them, so existing v2 JSON stores keep loading.
+  tags: z.array(z.string()).default([]),
+  projectIds: z.array(z.string()).default([]),
   addedAt: z.string(),
 })
 

@@ -29,6 +29,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchUpdatePaperResult,
 } from 'dsh-mimir/types'
 
 /** Wrap one business result in the carrier's success branch. */
@@ -66,6 +67,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     searchArxiv: missing('searchArxiv'),
     importPaper: missing('importPaper'),
     removePaper: missing('removePaper'),
+    updatePaper: missing('updatePaper'),
     listExperiments: missing('listExperiments'),
     deleteExperiment: missing('deleteExperiment'),
     readArtifact: missing('readArtifact'),
@@ -663,7 +665,8 @@ describe('ResearchController arXiv search and paper import', () => {
   }
   const PAPER = {
     arxivId: ENTRY.id, title: ENTRY.title, authors: ENTRY.authors,
-    summary: ENTRY.summary, url: ENTRY.url, notes: '', addedAt: '2026-08-01T00:00:00Z',
+    summary: ENTRY.summary, url: ENTRY.url, notes: '', tags: [] as string[], projectIds: [] as string[],
+    addedAt: '2026-08-01T00:00:00Z',
   }
 
   it('publishes loading then the ready search outcome; an empty query never leaves the client', async () => {
@@ -747,5 +750,32 @@ describe('ResearchController arXiv search and paper import', () => {
     const ok = await controller.removePaper(ENTRY.id)
     expect(ok).toBeNull()
     expect(lists).toBe(1)
+  })
+
+  it('updatePaper forwards the patch and refreshes the list only on success', async () => {
+    let lists = 0
+    let seen: { arxivId: string; tags?: string[]; projectIds?: string[]; notes?: string } | null = null
+    const controller = new ResearchController(stubRemote({
+      updatePaper: (request) => {
+        seen = request
+        return Promise.resolve(carried<ResearchUpdatePaperResult>(
+          request.arxivId === ENTRY.id
+            ? { ok: true, value: { paper: { ...PAPER, tags: request.tags ?? [] } } }
+            : { ok: false, error: { code: 'paper-not-found' } },
+        ))
+      },
+      listPapers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchPapersResult>({ ok: true, value: { papers: [PAPER] } }))
+      },
+    }))
+    const missing = await controller.updatePaper('nope', { tags: ['x'] })
+    expect(missing).toMatchObject({ code: 'paper-not-found' })
+    expect(lists).toBe(0)
+    const ok = await controller.updatePaper(ENTRY.id, { tags: ['baseline'], projectIds: ['p1'] })
+    expect(ok).toBeNull()
+    expect(seen).toMatchObject({ arxivId: ENTRY.id, tags: ['baseline'], projectIds: ['p1'] })
+    expect(lists).toBe(1)
+    expect(controller.getSnapshot().papers).toMatchObject({ status: 'ready' })
   })
 })

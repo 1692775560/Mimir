@@ -21,6 +21,10 @@ polish round every few iterations.
       as inline SVG comparison bar charts; experiment rows can be deleted
       (new `deleteExperiment` Remote; the "add experiment" form was skipped —
       no saveExperiment Remote yet)
+- [x] Literature tagging + per-project linking of papers (new `updatePaper`
+      Remote; tag pills, project badges, inline editor, tag/current-project
+      filter bar; PaperRecord grew `tags`/`projectIds` with zod defaults, no
+      wiki version bump)
 
 ## Queue
 
@@ -28,7 +32,6 @@ polish round every few iterations.
 
 - [ ] Experiment comparison: select multiple runs of one project, side-by-side
       metrics table
-- [ ] Literature tagging + per-project linking of papers
 
 ### Writing experience
 

@@ -25,6 +25,10 @@ export interface PaperRecord {
   readonly url: string
   /** Free-form working notes the agent attaches while reading. */
   readonly notes: string
+  /** Organization tags, edited from the workbench. */
+  tags: string[]
+  /** Wiki projects this paper is linked to. */
+  projectIds: string[]
   /** ISO-8601 timestamp of the record's first write. */
   readonly addedAt: string
 }
@@ -203,6 +207,9 @@ export type ResearchImportPaperResult = ResearchResult<{ readonly imported: bool
 
 /** `removePaper` result: the removed paper's arXiv id. */
 export type ResearchRemovePaperResult = ResearchResult<{ readonly arxivId: string }>
+
+/** `updatePaper` result: the stored record after the partial update. */
+export type ResearchUpdatePaperResult = ResearchResult<{ readonly paper: PaperRecord }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>

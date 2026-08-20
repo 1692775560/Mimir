@@ -1,12 +1,13 @@
 /**
  * Shared presentational helpers for the research workbench views: the stage
  * label map, failure-copy translation, byte-size formatting, the figure route
- * URL builder, and the experiments comparison-chart helpers (numeric metric
- * keys, chart rows, bar widths, value formatting). No JSX, no subscriptions.
+ * URL builder, the experiments comparison-chart helpers (numeric metric
+ * keys, chart rows, bar widths, value formatting), and the library tag
+ * collection/filter helpers. No JSX, no subscriptions.
  * @module dsh-client-ui-mimir/client/view-common
  */
 
-import type { ExperimentRecord, ExperimentStatus, ProjectStage } from 'dsh-mimir/types'
+import type { ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage } from 'dsh-mimir/types'
 import type { ResearchFailureView } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 
@@ -143,4 +144,25 @@ export function formatMetricValue(value: number | string): string {
   if (typeof value === 'string') return value
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value)
   return String(Number(value.toPrecision(4)))
+}
+
+/** All tags across the library, deduped and alphabetically sorted (the filter bar). */
+export function collectTags(papers: readonly PaperRecord[]): string[] {
+  const tags = new Set<string>()
+  for (const paper of papers) for (const tag of paper.tags) tags.add(tag)
+  return [...tags].sort()
+}
+
+/**
+ * Filter the library by one active tag and/or one linked project; a null
+ * selector passes everything on its axis.
+ */
+export function filterPapers(
+  papers: readonly PaperRecord[],
+  tag: string | null,
+  projectId: string | null,
+): PaperRecord[] {
+  return papers.filter(paper =>
+    (tag === null || paper.tags.includes(tag))
+    && (projectId === null || paper.projectIds.includes(projectId)))
 }
