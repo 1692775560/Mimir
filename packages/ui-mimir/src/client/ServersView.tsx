@@ -8,13 +8,14 @@
  */
 
 import { useEffect, useState } from 'react'
-import type { ServerInput, ServerRecord } from 'dsh-mimir/types'
+import type { ExperimentRecord, ServerInput, ServerRecord } from 'dsh-mimir/types'
 import type {
-  ResearchFailureView, ResearchServersView, ServerCheckState,
+  ResearchFailureView, ResearchJobsView, ResearchProjectSlice, ResearchServersView, ServerCheckState,
 } from './controller.ts'
 import { collectServerTags, failureCopy, filterServers, relativeTime, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
+import { JobsSection } from './JobsSection.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Form field state: the port stays text until submit. */
@@ -51,11 +52,15 @@ function dotStateOf(check: ServerCheckState | undefined): string {
 
 /**
  * @param props - the servers slice, the per-server probe states, the
- * ensure/save/delete/check verbs, and copy.
- * @returns the server card grid plus the inline form card.
+ * ensure/save/delete/check verbs, the jobs slice with its verbs (the remote
+ * jobs section), the selected project's experiments slice (the job form's
+ * link options), and copy.
+ * @returns the server card grid plus the inline form card and the jobs
+ * section.
  */
 export function ServersView({
-  servers, checks, ensureServers, saveServer, deleteServer, checkServer, checkAllServers, t,
+  servers, checks, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  jobs, experiments, ensureJobs, refreshJobs, submitJob, deleteJob, t,
 }: {
   readonly servers: ResearchServersView
   readonly checks: Readonly<Record<string, ServerCheckState>>
@@ -64,6 +69,12 @@ export function ServersView({
   readonly deleteServer: (id: string) => Promise<ResearchFailureView | null>
   readonly checkServer: (id: string) => Promise<void>
   readonly checkAllServers: () => void
+  readonly jobs: ResearchJobsView
+  readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
+  readonly ensureJobs: () => void
+  readonly refreshJobs: () => void
+  readonly submitJob: (serverId: string, command: string, experimentId?: string) => Promise<ResearchFailureView | null>
+  readonly deleteJob: (id: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   /** 'new' for the add form, a server id for the edit form, null when closed. */
@@ -394,6 +405,16 @@ export function ServersView({
           })}
         </div>
       )}
+      <JobsSection
+        jobs={jobs}
+        servers={servers}
+        experiments={experiments}
+        ensureJobs={ensureJobs}
+        refreshJobs={refreshJobs}
+        submitJob={submitJob}
+        deleteJob={deleteJob}
+        t={t}
+      />
     </div>
   )
 }

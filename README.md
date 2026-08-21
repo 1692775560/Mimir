@@ -35,7 +35,7 @@ English | [中文](README.zh.md)
 - **Library** — remembered papers with editable tags and per-project links, a tag/current-project filter bar, in-panel arXiv search with one-click import, and add-to-`references.bib` per card.
 - **Experiments** — run records with metric-comparison bar charts (inline SVG), expandable metrics, linked-server badges with inline relink, and a rendered `EXPERIMENT_LOG.md`.
 - **Figures** — paper-directory image grid with preview, upload (button or drag-and-drop), delete, and copy-LaTeX-reference actions.
-- **Servers** — remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars and tag filters.
+- **Servers** — remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars and tag filters; the jobs section submits a remote command over SSH (queued → running → succeeded/failed polled live, stdout/stderr tails expandable, optional link to an experiment record whose status follows the job).
 
 Dark/light theme and 中/EN language toggles live in the panel header; keyboard shortcuts: `1–6` switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
 
@@ -154,7 +154,7 @@ The paper directory's images as a grid: click to zoom, copy a ready-made LaTeX `
 
 ### Servers
 
-Remembered GPU boxes: add/edit/delete, one-click TCP reachability probe, and a best-effort SSH `nvidia-smi` readout with per-GPU utilization and memory bars. Tag chips on the cards and a filter bar above the grid keep large fleets navigable.
+Remembered GPU boxes: add/edit/delete, one-click TCP reachability probe, and a best-effort SSH `nvidia-smi` readout with per-GPU utilization and memory bars. Tag chips on the cards and a filter bar above the grid keep large fleets navigable. The **Remote jobs** section below the grid submits a command to any remembered server over SSH (`submitJob` Remote; the run executes in the background with a 30-minute session cap) and polls the job table while anything is queued/running — status pills flip queued → running → succeeded/failed with a toast, output tails expand inline, and a job linked to an experiment of the selected project flips that experiment to running on submit and success/failed on settle.
 
 | Servers |
 | --- |

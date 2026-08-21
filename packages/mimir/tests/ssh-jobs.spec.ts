@@ -1,0 +1,224 @@
+/**
+ * Behavior tests for the ssh job remotes: submitJob validation and the
+ * background run's status flips (queued → running → succeeded/failed) with
+ * the output tails and the linked-experiment write-back, plus listJobs
+ * ordering/filtering and deleteJob. Real memory-backed domain, real temp
+ * workspace; the ssh client itself is exercised through a fake `ssh`
+ * executable shimmed onto PATH (a real ssh against a refused port covers
+ * the session-failure path) — no module mocks.
+ */
+
+import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
+import { researchWikiDomainSpec } from '../src/store.ts'
+import { ResearchService } from '../src/service.ts'
+import type { ExperimentRecord, JobRecord } from '../src/types.ts'
+
+/** Boot a service over a memory-backed domain and a fresh temp workspace. */
+async function harness() {
+  const ctx = new Context()
+  await ctx.plugin(Storage)
+  const backend = new MemoryStorageBackend(new MemoryMediaPool())
+  ctx.storage.backend.register('memory', backend)
+  ctx.provide(storageBackendServiceKey('memory'), backend)
+  const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', facility)
+  const domain = await facility.open(researchWikiDomainSpec)
+  const workspaceDir = await mkdtemp(join(tmpdir(), 'mimir-jobs-'))
+  const service = new ResearchService(ctx, {
+    workspaceDir,
+    domain,
+    latex: { engine: 'auto', timeoutMs: 1000 },
+  })
+  return { ctx, domain, workspaceDir, service }
+}
+
+const SERVER_INPUT = { name: 'gpu01', host: '127.0.0.1', port: 22, username: 'ops', note: '' }
+
+const EXPERIMENT: ExperimentRecord = {
+  id: 'exp-1',
+  projectId: 'p1',
+  name: 'baseline',
+  status: 'failed',
+  metrics: {},
+  updatedAt: '2026-08-20T00:00:00.000Z',
+}
+
+/**
+ * Shim a fake `ssh` onto PATH: it echoes the remote command (its last
+ * argument) to stdout, writes one stderr line, and exits 3 when the command
+ * contains `mimir-fail`.
+ * @returns the harness cleanup; PATH restores via `vi.unstubAllEnvs`.
+ */
+async function stubFakeSsh(): Promise<void> {
+  const binDir = await mkdtemp(join(tmpdir(), 'mimir-fake-ssh-'))
+  const script = [
+    '#!/bin/bash',
+    'while [ $# -gt 1 ]; do shift; done',
+    'echo "fake-ssh stdout: $1"',
+    'echo "fake-ssh stderr line" >&2',
+    'case "$1" in *mimir-fail*) exit 3 ;; esac',
+    'exit 0',
+    '',
+  ].join('\n')
+  await writeFile(join(binDir, 'ssh'), script)
+  await chmod(join(binDir, 'ssh'), 0o755)
+  vi.stubEnv('PATH', `${binDir}:${process.env.PATH ?? ''}`)
+}
+
+/** Poll listJobs until one job reaches a terminal status. */
+async function settleJob(service: ResearchService, id: string): Promise<JobRecord> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const listed = await service.listJobs({})
+    if (listed.ok) {
+      const job = listed.value.jobs.find(record => record.id === id)
+      if (job !== undefined && (job.status === 'succeeded' || job.status === 'failed')) return job
+    }
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  throw new Error(`job ${id} did not settle`)
+}
+
+afterEach(() => { vi.unstubAllEnvs() })
+
+describe('ResearchService.submitJob validation', () => {
+  it('rejects an unknown server, an empty/overlong command, a TCP-only server, and an unknown experiment', async () => {
+    const { service } = await harness()
+    await expect(service.submitJob({ serverId: 'srv-missing', command: 'nvidia-smi' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'server-not-found', id: 'srv-missing' } })
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    const serverId = created.value.server.id
+    await expect(service.submitJob({ serverId, command: '   ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.submitJob({ serverId, command: 'x'.repeat(4001) }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.submitJob({ serverId, command: 'nvidia-smi', experimentId: 'exp-missing' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'exp-missing' } })
+    const tcpOnly = await service.saveServer({ server: { ...SERVER_INPUT, username: '' } })
+    if (!tcpOnly.ok) throw new Error('create failed')
+    await expect(service.submitJob({ serverId: tcpOnly.value.server.id, command: 'nvidia-smi' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    // Nothing was queued by the rejections.
+    await expect(service.listJobs({})).resolves.toEqual({ ok: true, value: { jobs: [] } })
+  })
+})
+
+describe('ResearchService job lifecycle', () => {
+  it('runs a submitted job to succeeded, keeps the output tails, and writes back the linked experiment', async () => {
+    const { domain, service } = await harness()
+    await stubFakeSsh()
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    const serverId = created.value.server.id
+    await domain.table('experiments').put(EXPERIMENT.id, EXPERIMENT)
+
+    const submitted = await service.submitJob({
+      serverId,
+      command: 'python train.py --epochs 1',
+      experimentId: EXPERIMENT.id,
+    })
+    if (!submitted.ok) throw new Error('submit rejected')
+    expect(submitted.value.job.status).toBe('queued')
+    expect(submitted.value.job.id).toMatch(/^job-/)
+    expect(submitted.value.job.experimentId).toBe(EXPERIMENT.id)
+    // The submit flip: the linked experiment runs on the job's server.
+    expect(domain.table('experiments').get(EXPERIMENT.id)).toMatchObject({
+      status: 'running',
+      serverId,
+    })
+
+    const settled = await settleJob(service, submitted.value.job.id)
+    expect(settled.status).toBe('succeeded')
+    expect(settled.exitCode).toBe(0)
+    expect(settled.stdoutTail).toContain('fake-ssh stdout: python train.py --epochs 1')
+    expect(settled.stderrTail).toContain('fake-ssh stderr line')
+    expect(Date.parse(settled.startedAt ?? '')).not.toBeNaN()
+    expect(Date.parse(settled.finishedAt ?? '')).not.toBeNaN()
+    // The settle flip: the linked experiment lands on success.
+    expect(domain.table('experiments').get(EXPERIMENT.id)?.status).toBe('success')
+  })
+
+  it('settles a non-zero remote exit as failed with the exit code and flips the experiment to failed', async () => {
+    const { domain, service } = await harness()
+    await stubFakeSsh()
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    await domain.table('experiments').put(EXPERIMENT.id, EXPERIMENT)
+
+    const submitted = await service.submitJob({
+      serverId: created.value.server.id,
+      command: 'echo mimir-fail',
+      experimentId: EXPERIMENT.id,
+    })
+    if (!submitted.ok) throw new Error('submit rejected')
+    const settled = await settleJob(service, submitted.value.job.id)
+    expect(settled.status).toBe('failed')
+    expect(settled.exitCode).toBe(3)
+    expect(settled.stderrTail).toContain('fake-ssh stderr line')
+    expect(domain.table('experiments').get(EXPERIMENT.id)?.status).toBe('failed')
+  })
+
+  it('settles an ssh session failure as failed with the client message and a null exit code', async () => {
+    const { service } = await harness()
+    // No shim: the real ssh hits a refused port and fails fast.
+    const created = await service.saveServer({
+      server: { ...SERVER_INPUT, host: '127.0.0.1', port: 19999 },
+    })
+    if (!created.ok) throw new Error('create failed')
+    const submitted = await service.submitJob({ serverId: created.value.server.id, command: 'hostname' })
+    if (!submitted.ok) throw new Error('submit rejected')
+    const settled = await settleJob(service, submitted.value.job.id)
+    expect(settled.status).toBe('failed')
+    expect(settled.stderrTail).toBeTruthy()
+  }, 20_000)
+})
+
+describe('ResearchService.listJobs / deleteJob', () => {
+  it('lists newest first, filters by server, and rejects an unknown filter id', async () => {
+    const { domain, service } = await harness()
+    const first = await service.saveServer({ server: SERVER_INPUT })
+    // saveServer ids are millisecond-based; keep the two servers distinct.
+    await new Promise(resolve => setTimeout(resolve, 2))
+    const second = await service.saveServer({ server: { ...SERVER_INPUT, name: 'gpu02' } })
+    if (!first.ok || !second.ok) throw new Error('create failed')
+    const older: JobRecord = {
+      id: 'job-old', serverId: first.value.server.id, command: 'hostname', status: 'succeeded',
+      exitCode: 0, stdoutTail: '', stderrTail: '',
+      createdAt: '2026-08-20T00:00:00.000Z', finishedAt: '2026-08-20T00:00:01.000Z',
+    }
+    const newer: JobRecord = {
+      ...older, id: 'job-new', serverId: second.value.server.id,
+      createdAt: '2026-08-21T00:00:00.000Z', finishedAt: '2026-08-21T00:00:01.000Z',
+    }
+    await domain.table('jobs').put(older.id, older)
+    await domain.table('jobs').put(newer.id, newer)
+    const all = await service.listJobs({})
+    if (!all.ok) throw new Error('list rejected')
+    expect(all.value.jobs.map(job => job.id)).toEqual(['job-new', 'job-old'])
+    const filtered = await service.listJobs({ serverId: first.value.server.id })
+    if (!filtered.ok) throw new Error('list rejected')
+    expect(filtered.value.jobs.map(job => job.id)).toEqual(['job-old'])
+    await expect(service.listJobs({ serverId: 'srv-missing' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'server-not-found', id: 'srv-missing' } })
+  })
+
+  it('deletes a record and reports job-not-found on a repeat', async () => {
+    const { domain, service } = await harness()
+    const record: JobRecord = {
+      id: 'job-1', serverId: 'srv-1', command: 'hostname', status: 'succeeded',
+      exitCode: 0, stdoutTail: '', stderrTail: '', createdAt: '2026-08-20T00:00:00.000Z',
+    }
+    await domain.table('jobs').put(record.id, record)
+    await expect(service.deleteJob({ id: 'job-1' })).resolves.toEqual({ ok: true, value: { id: 'job-1' } })
+    await expect(service.deleteJob({ id: 'job-1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'job-not-found', id: 'job-1' } })
+    await expect(service.listJobs({})).resolves.toEqual({ ok: true, value: { jobs: [] } })
+  })
+})

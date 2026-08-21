@@ -30,7 +30,7 @@ import { en, zh } from './locales.ts'
 
 export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
-  ResearchImportCounts, ResearchLoadStatus,
+  ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
   ResearchSaveState, ResearchSourceView, ResearchView,
 } from './controller.ts'
@@ -163,6 +163,10 @@ export function apply(ctx: ClientContext): void {
       deleteServer: (id) => controller.deleteServer(id),
       checkServer: (id) => controller.checkServer(id),
       checkAllServers: () => { void controller.checkAllServers() },
+      ensureJobs: () => { controller.ensureJobs() },
+      refreshJobs: () => { controller.refreshJobs() },
+      submitJob: (serverId, command, experimentId) => controller.submitJob(serverId, command, experimentId),
+      deleteJob: (id) => controller.deleteJob(id),
       ensureBibliography: (projectId) => { controller.ensureBibliography(projectId) },
       reloadBibliography: () => { controller.reloadBibliography() },
       deleteBibEntry: key => controller.deleteBibEntry(key),

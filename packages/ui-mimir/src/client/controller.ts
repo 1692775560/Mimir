@@ -18,6 +18,7 @@ import type {
   BibEntry,
   ExperimentRecord,
   FigureEntry,
+  JobRecord,
   OutlineNode,
   PaperRecord,
   ResearchArtifactResult,
@@ -29,6 +30,7 @@ import type {
   ResearchCompileStatusView,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
+  ResearchDeleteJobResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchExportWikiResult,
@@ -39,6 +41,7 @@ import type {
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
+  ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -50,6 +53,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
@@ -60,7 +64,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The twenty-eight Remote calls this controller needs, exactly as the
+ * The thirty-one Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -98,6 +102,13 @@ export interface ResearchRemote {
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
+  submitJob: (request: {
+    serverId: string
+    command: string
+    experimentId?: string | undefined
+  }) => Promise<RemoteResult<ResearchSubmitJobResult>>
+  listJobs: (request: { serverId?: string }) => Promise<RemoteResult<ResearchListJobsResult>>
+  deleteJob: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteJobResult>>
   getBibliography: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchBibliographyResult>>
   saveBibliography: (request: {
     projectId: string
@@ -207,6 +218,13 @@ export interface ResearchServersView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The remote-jobs view: every submitted job, most recently submitted first. */
+export interface ResearchJobsView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly JobRecord[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** Settled counts of one `importPapersToBib` run (appended vs already-present keys). */
 export interface ResearchImportCounts {
   readonly added: readonly string[]
@@ -246,6 +264,8 @@ export interface ResearchView {
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
+  /** Submitted remote jobs (the servers view's jobs section). */
+  readonly jobs: ResearchJobsView
   /** The selected project's bibliography; null until the bib panel first opens. */
   readonly bib: ResearchBibView | null
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
@@ -268,6 +288,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   figures: null,
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
+  jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   bib: null,
   toasts: Object.freeze([]),
   backup: null,
@@ -300,6 +321,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private backupPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
   private serversPromise: Promise<void> | null = null
+  private jobsPromise: Promise<void> | null = null
   private outlineGeneration = 0
   private artifactGeneration = 0
   private figuresGeneration = 0
@@ -439,6 +461,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (this.view.projectsStatus !== 'cold') void this.loadProjects()
     if (this.view.papers.status !== 'cold') void this.loadPapers()
     if (this.view.servers.status !== 'cold') void this.loadServers()
+    if (this.view.jobs.status !== 'cold') void this.loadJobs()
     const projectId = this.view.outline?.projectId ?? null
     if (projectId === null) return
     this.select(projectId)
@@ -1049,6 +1072,116 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.publish({
         servers: Object.freeze({ ...this.view.servers, status: 'error', failure: transportFailure(error) }),
       })
+    }
+  }
+
+  /** Load the job list once, on the servers view's jobs section first open. */
+  ensureJobs(): void {
+    if (this.view.jobs.status === 'ready' || this.jobsPromise !== null) return
+    this.jobsPromise = this.loadJobs().finally(() => { this.jobsPromise = null })
+  }
+
+  /**
+   * Re-poll the job list (the jobs section's interval while any job is
+   * active, and the post-submit repaint). A poll already in flight is left
+   * alone; a ready list stays ready while the refresh runs.
+   */
+  refreshJobs(): void {
+    if (this.jobsPromise !== null) return
+    this.jobsPromise = this.loadJobs().finally(() => { this.jobsPromise = null })
+  }
+
+  /**
+   * Submit one remote command to a server, then repaint the job list. The
+   * failure view of a rejected submit is returned so the form can surface it.
+   * @param serverId - the target server record id.
+   * @param command - the remote command line.
+   * @param experimentId - the experiment to link, when given.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async submitJob(serverId: string, command: string, experimentId?: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.submitJob({ serverId, command, experimentId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.refreshJobs()
+      this.notify('success', 'toast.jobSubmitted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one job record, dropping it from the loaded list.
+   * @param id - job record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteJob(id: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteJob({ id })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const current = this.view.jobs
+      this.publish({
+        jobs: Object.freeze({
+          ...current,
+          list: Object.freeze(current.list.filter(record => record.id !== id)),
+        }),
+      })
+      this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /** Fetch the job list and publish it, toasting terminal flips observed between polls. */
+  private async loadJobs(): Promise<void> {
+    if (this.view.jobs.status === 'cold') {
+      this.publish({ jobs: Object.freeze({ ...this.view.jobs, status: 'loading', failure: null }) })
+    }
+    try {
+      const carried = await this.remote.listJobs({})
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({
+          jobs: Object.freeze({ ...this.view.jobs, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }),
+        })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          jobs: Object.freeze({ ...this.view.jobs, status: 'error', failure: businessFailure(result.error) }),
+        })
+        return
+      }
+      this.notifyJobTransitions(this.view.jobs.list, result.value.jobs)
+      this.publish({
+        jobs: Object.freeze({ status: 'ready', list: result.value.jobs, failure: null }),
+      })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({
+        jobs: Object.freeze({ ...this.view.jobs, status: 'error', failure: transportFailure(error) }),
+      })
+    }
+  }
+
+  /** Toast each job whose poll-observed status newly flipped terminal. */
+  private notifyJobTransitions(prev: readonly JobRecord[], next: readonly JobRecord[]): void {
+    const before = new Map(prev.map(job => [job.id, job.status]))
+    for (const job of next) {
+      const prior = before.get(job.id)
+      if (prior === undefined || prior === job.status) continue
+      const detail = job.command.length > 60 ? `${job.command.slice(0, 59)}…` : job.command
+      if (job.status === 'succeeded') this.notify('success', 'toast.jobSucceeded', detail)
+      else if (job.status === 'failed') this.notify('error', 'toast.jobFailed', detail)
     }
   }
 

@@ -2,7 +2,10 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * Reads the wiki's projects table, parses the section outline of each
  * project's paper `main.tex`, and runs the LaTeX compile through the same
- * engine path as the `latex_compile` tool. The paper directory resolves per
+ * engine path as the `latex_compile` tool, and drives remote jobs submitted
+ * to remembered servers over batch-mode ssh (the panel polls `listJobs` for
+ * the queued→running→succeeded/failed flips; a linked experiment record
+ * follows the terminal state). The paper directory resolves per
  * call — an explicit request `dir`, else the project record's `paperDir`,
  * else `paper` — always confined inside the workspace. Compile status is
  * process memory keyed by project id, so a panel reopened after a compile
@@ -34,6 +37,8 @@ import type {
   ArxivEntry,
   BibEntry,
   ExperimentRecord,
+  ExperimentStatus,
+  JobRecord,
   PaperRecord,
   ResearchArtifactResult,
   ResearchBibliographyResult,
@@ -43,6 +48,7 @@ import type {
   ResearchCompileStatusView,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
+  ResearchDeleteJobResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchExportWikiResult,
@@ -53,6 +59,7 @@ import type {
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
+  ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -65,6 +72,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSubmitJobResult,
   ResearchSuccess,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
@@ -173,6 +181,20 @@ const GPU_PROBE_SSH_CONNECT_TIMEOUT_S = 5
 /** The remote command whose CSV output feeds the GPU table. */
 const NVIDIA_SMI_QUERY = 'nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits'
 
+/** Hard cap of one submitted command line (the durable record stores it verbatim). */
+const JOB_COMMAND_MAX_CHARS = 4000
+/** Kill timeout of one remote job's ssh session. */
+const SSH_JOB_TIMEOUT_MS = 30 * 60_000
+/** execFile buffer cap of one job's combined stdout/stderr. */
+const SSH_JOB_MAX_BUFFER_BYTES = 4 * 1024 * 1024
+/** Characters kept of one settled job's stdout/stderr tails. */
+const JOB_OUTPUT_TAIL_CHARS = 8192
+
+/** Keep the trailing window of one job output stream. */
+function tailOf(text: string): string {
+  return text.length <= JOB_OUTPUT_TAIL_CHARS ? text : text.slice(text.length - JOB_OUTPUT_TAIL_CHARS)
+}
+
 /** Outcome of one TCP reachability probe. */
 type TcpProbeOutcome =
   | { readonly ok: true; readonly latencyMs: number }
@@ -271,6 +293,8 @@ export class ResearchService extends TypertRemoteService {
   private readonly latex: LatexToolOptions
   private readonly backup: ResearchServiceConfig['backup']
   private readonly compileStatus = new Map<string, ResearchCompileStatusView>()
+  /** Monotonic suffix of generated job ids (same-millisecond submits stay distinct). */
+  private jobSeq = 0
 
   /**
    * @param ctx - Host context the service registers on (`ctx.research`).
@@ -1022,6 +1046,186 @@ export class ResearchService extends TypertRemoteService {
       gpus: gpu.ok ? gpu.gpus : Object.freeze([]),
       checkedAt: new Date().toISOString(),
       message: gpu.ok ? null : `gpu probe failed: ${gpu.message}`,
+    })
+  }
+
+  /**
+   * Submit one remote command to a remembered server. The record lands
+   * `queued` and the run starts in the background: this call returns once
+   * the record is durable, and the panel polls `listJobs` for the status
+   * flips (`running`, then `succeeded`/`failed`). The command must be
+   * non-empty and at most {@link JOB_COMMAND_MAX_CHARS} characters
+   * (`invalid-input`), and the server must name an ssh login user (a
+   * TCP-only record cannot run jobs). A given `experimentId` must name an
+   * experiment record (`experiment-not-found`): a linked experiment flips
+   * to `running` with the server link on submit, then to
+   * `success`/`failed` when the job settles.
+   * @param request - the target server, the command line, and the optional
+   * experiment link.
+   * @returns the queued record.
+   */
+  @Remote('submitJob')
+  async submitJob(request: {
+    serverId: string
+    command: string
+    experimentId?: string | undefined
+  }): Promise<ResearchSubmitJobResult> {
+    const server = this.domain.table('servers').get(request.serverId)
+    if (server === undefined) {
+      return rejected({ code: 'server-not-found', id: request.serverId })
+    }
+    const command = request.command.trim()
+    if (command === '') return rejected({ code: 'invalid-input', message: 'command must be non-empty' })
+    if (command.length > JOB_COMMAND_MAX_CHARS) {
+      return rejected({ code: 'invalid-input', message: `command must be at most ${String(JOB_COMMAND_MAX_CHARS)} characters` })
+    }
+    if (server.username === '') {
+      return rejected({ code: 'invalid-input', message: `server ${server.name} has no ssh login user` })
+    }
+    if (request.experimentId !== undefined
+      && this.domain.table('experiments').get(request.experimentId) === undefined) {
+      return rejected({ code: 'experiment-not-found', id: request.experimentId })
+    }
+    this.jobSeq += 1
+    const job: JobRecord = {
+      id: `job-${Date.now().toString(36)}-${String(this.jobSeq)}`,
+      serverId: server.id,
+      command,
+      status: 'queued',
+      experimentId: request.experimentId,
+      exitCode: null,
+      stdoutTail: '',
+      stderrTail: '',
+      createdAt: new Date().toISOString(),
+    }
+    await this.domain.table('jobs').put(job.id, job)
+    if (request.experimentId !== undefined) {
+      await this.markExperiment(request.experimentId, 'running', server.id)
+    }
+    // Fire-and-forget: runJob never rejects; the panel follows the
+    // transitions through listJobs.
+    void this.runJob(job.id)
+    return success({ job })
+  }
+
+  /**
+   * List submitted remote jobs, most recently submitted first, optionally
+   * filtered to one server (an unknown id is `server-not-found`). This is
+   * the panel's polling read.
+   * @param request - the optional server filter.
+   * @returns the job rows.
+   */
+  @Remote('listJobs')
+  listJobs(request: { serverId?: string }): Promise<ResearchListJobsResult> {
+    if (request.serverId !== undefined
+      && this.domain.table('servers').get(request.serverId) === undefined) {
+      return Promise.resolve(rejected({ code: 'server-not-found', id: request.serverId }))
+    }
+    const jobs = [...this.domain.table('jobs').entries()]
+      .map(([, record]) => record)
+      .filter(record => request.serverId === undefined || record.serverId === request.serverId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    return Promise.resolve(success({ jobs: Object.freeze(jobs) }))
+  }
+
+  /**
+   * Delete one job record; an unknown id is `job-not-found`. Deleting a
+   * queued/running job removes only the record: the remote command still
+   * finishes, but its outcome is written nowhere.
+   * @param request - the record id.
+   * @returns the deleted id.
+   */
+  @Remote('deleteJob')
+  async deleteJob(request: { id: string }): Promise<ResearchDeleteJobResult> {
+    const table = this.domain.table('jobs')
+    if (table.get(request.id) === undefined) {
+      return rejected({ code: 'job-not-found', id: request.id })
+    }
+    await table.delete(request.id)
+    return success({ id: request.id })
+  }
+
+  /**
+   * Drive one queued job to its terminal state over a batch-mode ssh call:
+   * flip the record `running`, wait on the remote command (killed after
+   * {@link SSH_JOB_TIMEOUT_MS}), then settle `succeeded` (exit 0) or
+   * `failed` with the output tails. Never rejects — the record is the
+   * panel's only channel.
+   * @param id - the job record id.
+   */
+  private async runJob(id: string): Promise<void> {
+    const table = this.domain.table('jobs')
+    const queued = table.get(id)
+    if (queued === undefined) return
+    const server = this.domain.table('servers').get(queued.serverId)
+    if (server === undefined) {
+      await table.put(id, {
+        ...queued,
+        status: 'failed',
+        stderrTail: 'server record deleted before the job started',
+        finishedAt: new Date().toISOString(),
+      })
+      return
+    }
+    const running: JobRecord = { ...queued, status: 'running', startedAt: new Date().toISOString() }
+    await table.put(id, running)
+    let settled: JobRecord
+    try {
+      const { stdout, stderr } = await execFileAsync('ssh', [
+        '-o', 'BatchMode=yes',
+        '-o', `ConnectTimeout=${String(GPU_PROBE_SSH_CONNECT_TIMEOUT_S)}`,
+        '-p', String(server.port),
+        `${server.username}@${server.host}`,
+        running.command,
+      ], { timeout: SSH_JOB_TIMEOUT_MS, maxBuffer: SSH_JOB_MAX_BUFFER_BYTES })
+      settled = {
+        ...running, status: 'succeeded', exitCode: 0,
+        stdoutTail: tailOf(stdout), stderrTail: tailOf(stderr),
+        finishedAt: new Date().toISOString(),
+      }
+    } catch (error) {
+      // execFile failures carry the child's exit code and captured output;
+      // the ssh client propagates the remote command's exit code as its
+      // own, so a numeric code IS the remote exit code. A non-numeric code
+      // means the session itself failed (connect refused, spawn error, or
+      // the timeout kill) — then the message stands in for stderr.
+      const carrier = error as { code?: unknown; stdout?: unknown; stderr?: unknown }
+      const exitCode = typeof carrier.code === 'number' ? carrier.code : null
+      const stdout = typeof carrier.stdout === 'string' ? carrier.stdout : ''
+      const stderr = typeof carrier.stderr === 'string' && carrier.stderr.trim() !== ''
+        ? carrier.stderr
+        : error instanceof Error ? error.message : 'ssh job failed'
+      settled = {
+        ...running, status: 'failed', exitCode,
+        stdoutTail: tailOf(stdout), stderrTail: tailOf(stderr),
+        finishedAt: new Date().toISOString(),
+      }
+    }
+    // A delete during the run already dropped the record: the remote
+    // command still finished, but nothing is written back.
+    if (table.get(id) === undefined) return
+    await table.put(id, settled)
+    if (settled.experimentId !== undefined) {
+      await this.markExperiment(settled.experimentId, settled.status === 'succeeded' ? 'success' : 'failed')
+    }
+  }
+
+  /**
+   * Flip one linked experiment's status, linking the server on submit; a
+   * deleted experiment is skipped.
+   * @param experimentId - the experiment record id.
+   * @param status - the next lifecycle status.
+   * @param serverId - the executing server, set on the submit flip only.
+   */
+  private async markExperiment(experimentId: string, status: ExperimentStatus, serverId?: string): Promise<void> {
+    const table = this.domain.table('experiments')
+    const existing = table.get(experimentId)
+    if (existing === undefined) return
+    await table.put(experimentId, {
+      ...existing,
+      status,
+      serverId: serverId ?? existing.serverId,
+      updatedAt: new Date().toISOString(),
     })
   }
 
