@@ -1,5 +1,7 @@
 # Mimir
 
+[![CI](https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/1692775560/Mimir/actions/workflows/ci.yml)
+
 [English](README.md) | 中文
 
 **Mimir 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的科研生命周期插件套件：arXiv 文献检索、持久化研究 wiki、独立子代理评审，以及 LaTeX 写作 → 编译 → 预览闭环——外加一个完整的 web 工作台。**

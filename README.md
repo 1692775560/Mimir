@@ -1,5 +1,7 @@
 # Mimir
 
+[![CI](https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/1692775560/Mimir/actions/workflows/ci.yml)
+
 English | [中文](README.zh.md)
 
 **Mimir is a research-lifecycle plugin suite for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh): arXiv literature search, a persistent research wiki, independent subagent review, and a closed LaTeX writing → compile → preview loop — plus a full web workbench.**
