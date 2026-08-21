@@ -9,7 +9,7 @@ import type { LatexIssue } from './latex-log.ts'
 import type { OutlineNode } from './outline.ts'
 import type { LatexEngineKind } from './tools/latex.ts'
 import type { ArxivEntry } from './tools/arxiv.ts'
-export type { OutlineNode, SectionMove } from './outline.ts'
+export type { OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from './outline.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export type { BibEntry } from './bibtex.ts'
 import type { BibEntry } from './bibtex.ts'
@@ -192,6 +192,7 @@ export type ResearchFailure =
   | { readonly code: 'job-not-found'; readonly id: string }
   | { readonly code: 'experiment-not-found'; readonly id: string }
   | { readonly code: 'section-not-found'; readonly title: string }
+  | { readonly code: 'subsection-not-found'; readonly sectionTitle: string; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
   | { readonly code: 'operation-failed'; readonly message: string }

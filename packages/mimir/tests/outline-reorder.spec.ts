@@ -2,11 +2,13 @@
  * Tests for `reorderSections`: top-level `\section` block moves with
  * byte-level invariants — the preamble head, the `\end{document}` tail, and
  * every unmoved block survive untouched; subsection content rides along with
- * its section; unknown titles and out-of-range targets fail closed.
+ * its section; unknown titles and out-of-range targets fail closed. The
+ * `reorderSubsections` block covers subsection moves within and across
+ * sections under the same byte-level invariants.
  */
 
 import { describe, expect, it } from 'vitest'
-import { parseTexOutline, reorderSections } from '../src/outline.ts'
+import { parseTexOutline, reorderSections, reorderSubsections } from '../src/outline.ts'
 
 /** A three-section document with a preamble, subsections, and a tail. */
 const DOC = [
@@ -166,5 +168,155 @@ describe('reorderSections', () => {
   it('reports section-not-found for a sectionless document', () => {
     expect(reorderSections('\\begin{document}\nhi\n\\end{document}\n', [{ title: 'X', targetIndex: 0 }]))
       .toEqual({ kind: 'section-not-found', title: 'X' })
+  })
+})
+
+/** A document with two subsections under Method, one under Intro, and a level-3 heading. */
+const SUBDOC = [
+  '\\documentclass{article}',
+  '',
+  '\\begin{document}',
+  '',
+  '\\section{Introduction}',
+  'Intro body.',
+  '\\subsection{Background}',
+  'Background body.',
+  '',
+  '\\section{Method}',
+  'Method overview.',
+  '\\subsection{Architecture}',
+  'Arch body.',
+  '\\subsubsection{Layers}',
+  'Layers body.',
+  '\\subsection{Training}',
+  'Training body.',
+  '',
+  '\\section{Conclusion}',
+  'Conclusion body.',
+  '',
+  '\\end{document}',
+  '',
+].join('\n')
+
+/** The <section, subsections> tree of one source. */
+function subTree(tex: string): { title: string; subs: string[] }[] {
+  return parseTexOutline(tex)
+    .filter(node => node.level === 1)
+    .map(node => ({ title: node.title, subs: node.children.map(child => child.title) }))
+}
+
+describe('reorderSubsections', () => {
+  it('moves a subsection within its own section, byte-identical block', () => {
+    const outcome = reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Method', targetIndex: 0 },
+    ])
+    expect(outcome.kind).toBe('reordered')
+    if (outcome.kind !== 'reordered') return
+    expect(subTree(outcome.tex)).toEqual([
+      { title: 'Introduction', subs: ['Background'] },
+      { title: 'Method', subs: ['Training', 'Architecture'] },
+      { title: 'Conclusion', subs: [] },
+    ])
+    // The moved block kept its text verbatim.
+    expect(outcome.tex).toContain('\\subsection{Training}\nTraining body.\n\n\\subsection{Architecture}')
+  })
+
+  it('moves a subsection across sections, carrying its subsubsection', () => {
+    const outcome = reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Architecture', targetSectionTitle: 'Introduction', targetIndex: 1 },
+    ])
+    expect(outcome.kind).toBe('reordered')
+    if (outcome.kind !== 'reordered') return
+    expect(subTree(outcome.tex)).toEqual([
+      { title: 'Introduction', subs: ['Background', 'Architecture'] },
+      { title: 'Method', subs: ['Training'] },
+      { title: 'Conclusion', subs: [] },
+    ])
+    // The level-3 heading rode along inside the moved block.
+    const moved = outcome.tex.slice(
+      outcome.tex.indexOf('\\subsection{Architecture}'),
+      outcome.tex.indexOf('\\section{Method}'),
+    )
+    expect(moved).toContain('\\subsubsection{Layers}')
+    expect(moved).toContain('Layers body.')
+  })
+
+  it('drops into a section without subsections, after its body', () => {
+    const outcome = reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Introduction', title: 'Background', targetSectionTitle: 'Conclusion', targetIndex: 0 },
+    ])
+    expect(outcome.kind).toBe('reordered')
+    if (outcome.kind !== 'reordered') return
+    expect(subTree(outcome.tex)).toEqual([
+      { title: 'Introduction', subs: [] },
+      { title: 'Method', subs: ['Architecture', 'Training'] },
+      { title: 'Conclusion', subs: ['Background'] },
+    ])
+    expect(outcome.tex).toContain('\\section{Conclusion}\nConclusion body.\n\n\\subsection{Background}')
+  })
+
+  it('keeps everything outside the moved block byte-for-byte identical', () => {
+    const outcome = reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Architecture', targetSectionTitle: 'Introduction', targetIndex: 0 },
+    ])
+    expect(outcome.kind).toBe('reordered')
+    if (outcome.kind !== 'reordered') return
+    // The result is a permutation of the original lines.
+    expect(outcome.tex.split('\n').sort()).toEqual(SUBDOC.split('\n').sort())
+    expect(outcome.tex.startsWith('\\documentclass{article}\n\n\\begin{document}\n\n\\section{Introduction}\n')).toBe(true)
+    expect(outcome.tex.endsWith('\\end{document}\n')).toBe(true)
+    // Unmoved regions stay contiguous and verbatim.
+    expect(outcome.tex).toContain('\\subsection{Background}\nBackground body.')
+    expect(outcome.tex).toContain('\\subsection{Training}\nTraining body.\n\n\\section{Conclusion}\nConclusion body.')
+  })
+
+  it('applies several moves in order', () => {
+    const outcome = reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Architecture', targetSectionTitle: 'Introduction', targetIndex: 0 },
+      { sectionTitle: 'Introduction', title: 'Background', targetSectionTitle: 'Method', targetIndex: 1 },
+    ])
+    expect(outcome.kind).toBe('reordered')
+    if (outcome.kind !== 'reordered') return
+    expect(subTree(outcome.tex)).toEqual([
+      { title: 'Introduction', subs: ['Architecture'] },
+      { title: 'Method', subs: ['Training', 'Background'] },
+      { title: 'Conclusion', subs: [] },
+    ])
+  })
+
+  it('returns the source untouched for an empty move list', () => {
+    expect(reorderSubsections(SUBDOC, [])).toEqual({ kind: 'reordered', tex: SUBDOC })
+  })
+
+  it('fails closed on unknown sections and subsections', () => {
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Ghost', title: 'X', targetSectionTitle: 'Method', targetIndex: 0 },
+    ])).toEqual({ kind: 'section-not-found', title: 'Ghost' })
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'X', targetSectionTitle: 'Ghost', targetIndex: 0 },
+    ])).toEqual({ kind: 'section-not-found', title: 'Ghost' })
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Ghost', targetSectionTitle: 'Method', targetIndex: 0 },
+    ])).toEqual({ kind: 'subsection-not-found', sectionTitle: 'Method', title: 'Ghost' })
+  })
+
+  it('fails closed on an out-of-range target index', () => {
+    // Method has two subsections; a same-section move allows at most index 1.
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Method', targetIndex: 2 },
+    ])).toEqual({ kind: 'invalid-move', targetIndex: 2 })
+    // A cross-section move into Conclusion (no subsections) allows only index 0.
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Conclusion', targetIndex: 1 },
+    ])).toEqual({ kind: 'invalid-move', targetIndex: 1 })
+    expect(reorderSubsections(SUBDOC, [
+      { sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Method', targetIndex: -1 },
+    ])).toEqual({ kind: 'invalid-move', targetIndex: -1 })
+  })
+
+  it('reports section-not-found for a sectionless document', () => {
+    expect(reorderSubsections('\\begin{document}\nhi\n\\end{document}\n', [
+      { sectionTitle: 'X', title: 'Y', targetSectionTitle: 'X', targetIndex: 0 },
+    ])).toEqual({ kind: 'section-not-found', title: 'X' })
   })
 })

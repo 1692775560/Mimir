@@ -777,6 +777,114 @@ describe('ResearchService.reorderPaperSections', () => {
   })
 })
 
+describe('ResearchService.reorderPaperSubsections', () => {
+  const TEX = [
+    '\\documentclass{article}',
+    '',
+    '\\begin{document}',
+    '',
+    '\\section{Introduction}',
+    'Intro.',
+    '\\subsection{Background}',
+    'Background body.',
+    '',
+    '\\section{Method}',
+    '\\subsection{Arch}',
+    'Arch body.',
+    '\\subsection{Training}',
+    'Training body.',
+    '',
+    '\\section{Experiments}',
+    'Experiments body.',
+    '',
+    '\\end{document}',
+    '',
+  ].join('\n')
+
+  const BASE = [
+    { title: 'Introduction', subsections: ['Background'] },
+    { title: 'Method', subsections: ['Arch', 'Training'] },
+    { title: 'Experiments', subsections: [] },
+  ]
+
+  /** Seed the project and write the fixture main.tex. */
+  async function seedPaper(domain: Awaited<ReturnType<typeof harness>>['domain'], workspaceDir: string) {
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await mkdir(join(workspaceDir, 'paper'), { recursive: true })
+    await writeFile(join(workspaceDir, 'paper', 'main.tex'), TEX)
+  }
+
+  it('moves a subsection within its section and across sections', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    const within = await service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Method', targetIndex: 0 }],
+      baseOutline: BASE,
+    })
+    expect(within.ok).toBe(true)
+    let text = await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')
+    expect(text.indexOf('\\subsection{Training}')).toBeLessThan(text.indexOf('\\subsection{Arch}'))
+
+    const across = await service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Method', title: 'Arch', targetSectionTitle: 'Introduction', targetIndex: 1 }],
+      baseOutline: [
+        { title: 'Introduction', subsections: ['Background'] },
+        { title: 'Method', subsections: ['Training', 'Arch'] },
+        { title: 'Experiments', subsections: [] },
+      ],
+    })
+    expect(across.ok).toBe(true)
+    text = await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')
+    const introAt = text.indexOf('\\section{Introduction}')
+    const methodAt = text.indexOf('\\section{Method}')
+    expect(text.indexOf('\\subsection{Arch}')).toBeGreaterThan(introAt)
+    expect(text.indexOf('\\subsection{Arch}')).toBeLessThan(methodAt)
+    // The preamble and the document tail are untouched.
+    expect(text.startsWith('\\documentclass{article}\n\n\\begin{document}\n\n')).toBe(true)
+    expect(text.endsWith('\\end{document}\n')).toBe(true)
+  })
+
+  it('rejects with conflict when the file tree drifted from baseOutline', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    // A stale subsection list (Training missing) must conflict.
+    await expect(service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Method', title: 'Training', targetSectionTitle: 'Method', targetIndex: 0 }],
+      baseOutline: [
+        { title: 'Introduction', subsections: ['Background'] },
+        { title: 'Method', subsections: ['Arch'] },
+        { title: 'Experiments', subsections: [] },
+      ],
+    })).resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    expect(await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')).toBe(TEX)
+  })
+
+  it('rejects unknown sections, unknown subsections, and bad target indices', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await seedPaper(domain, workspaceDir)
+    await expect(service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Ghost', title: 'X', targetSectionTitle: 'Method', targetIndex: 0 }],
+      baseOutline: BASE,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'section-not-found', title: 'Ghost' } })
+    // With a matching baseOutline the move itself fails closed.
+    await expect(service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Method', title: 'Ghost', targetSectionTitle: 'Method', targetIndex: 0 }],
+      baseOutline: BASE,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'subsection-not-found', sectionTitle: 'Method', title: 'Ghost' } })
+    await expect(service.reorderPaperSubsections({
+      projectId: 'p1',
+      moves: [{ sectionTitle: 'Method', title: 'Arch', targetSectionTitle: 'Method', targetIndex: 9 }],
+      baseOutline: BASE,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    expect(await readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8')).toBe(TEX)
+  })
+})
+
 describe('ResearchService.saveExperiment', () => {
   /** Seed the owning project and one server; returns the server id. */
   async function seed(h: Awaited<ReturnType<typeof harness>>) {

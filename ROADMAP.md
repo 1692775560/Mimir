@@ -36,6 +36,13 @@ polish round every few iterations.
       `reorderSections` line permutation + new `reorderPaperSections` Remote
       with an optimistic `baseOutline` check, conflicts reload); a dirty
       editor disables dragging
+- [x] Outline drag-to-reorder subsections (Issue #10): subsection rows gain
+      the same drag grip; a drop reorders within the owning section or moves
+      the block across sections (a dashed drop zone appears under
+      subsection-less sections mid-gesture) — pure `reorderSubsections` line
+      permutation (`\subsubsection`s ride along, unmoved blocks
+      byte-identical) + new `reorderPaperSubsections` Remote whose
+      `baseOutline` conflict check covers the whole section/subsection tree
 - [x] Paper view layout: drag handles between outline/editor/preview resize
       the panes (pure `railWidthFromDrag`/`editorShareFromDrag` clamp math,
       rail snaps to collapsed below 60px, editor ≥320px / preview ≥280px),
