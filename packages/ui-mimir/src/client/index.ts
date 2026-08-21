@@ -143,6 +143,7 @@ export function apply(ctx: ClientContext): void {
       importPaper: (entry) => controller.importPaper(entry),
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),
+      fetchPaperPdf: (arxivId) => controller.fetchPaperPdf(arxivId),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
       loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
       uploadFigures: async (projectId, dir, files, onProgress) => {
@@ -175,6 +176,8 @@ export function apply(ctx: ClientContext): void {
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
       reorderPaperSections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSections(projectId, moves, baseOutline),
+      reorderPaperSubsections: (projectId, moves, baseOutline) =>
+        controller.reorderPaperSubsections(projectId, moves, baseOutline),
       exportWiki: () => controller.exportWiki(),
       importWiki: (snapshot, mode, confirmReplace) => controller.importWiki(snapshot, mode, confirmReplace),
       dismissToast: (id) => { controller.dismissToast(id) },

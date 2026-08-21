@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, BibEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, BibEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -142,6 +142,13 @@ export interface ResearchPanelInjected {
     arxivId: string,
     patch: { tags?: string[]; projectIds?: string[]; notes?: string },
   ) => Promise<ResearchFailureView | null>
+  /**
+   * Download one paper's arXiv PDF into the workspace and link it on the
+   * record, then refresh the literature list.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**
@@ -227,6 +234,19 @@ export interface ResearchPanelInjected {
     projectId: string,
     moves: readonly SectionMove[],
     baseOutline: readonly string[],
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Reorder the subsections of one project's `main.tex`, inside their own
+   * section or across sections.
+   * @param projectId - wiki project id.
+   * @param moves - the drops, applied in order.
+   * @param baseOutline - the section/subsection title tree the drag started from.
+   * @returns null on success, the settled failure otherwise.
+   */
+  reorderPaperSubsections: (
+    projectId: string,
+    moves: readonly SubsectionMove[],
+    baseOutline: readonly SectionOutlineTitles[],
   ) => Promise<ResearchFailureView | null>
   /**
    * Export the whole wiki as one snapshot (the download button).

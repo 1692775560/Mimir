@@ -13,8 +13,8 @@
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { BibEntry, OutlineNode, SectionMove } from 'dsh-mimir/types'
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
@@ -26,8 +26,8 @@ import {
   type PaperLayout, type PaperSoloPane,
 } from './paper-layout.ts'
 import type { PaperFullscreen } from './store.ts'
-import { failureCopy, lineRangeOf, SAVE_KEYS, sectionMoveFromDrop } from './view-common.ts'
-import type { ResearchT } from './view-common.ts'
+import { failureCopy, lineRangeOf, outlineSectionTitles, SAVE_KEYS, sectionMoveFromDrop, subsectionMoveFromDrop } from './view-common.ts'
+import type { ResearchT, SubsectionDrag } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
 import css from './ResearchPanel.module.css'
 
@@ -73,63 +73,83 @@ const GRIP_ICON: ReactNode = (
   </svg>
 )
 
+/** What one outline drag gesture carries (a section or a subsection). */
+interface OutlineDragNode {
+  readonly level: 1 | 2
+  /** Parent section title (level-2 drags only). */
+  readonly sectionTitle: string | undefined
+  readonly title: string
+}
+
+/** The insertion indicator's location: one list plus the index in its CURRENT order. */
+interface OutlineInsert {
+  readonly listId: string
+  readonly index: number
+}
+
+/** Mid-gesture state and callbacks the root tree hands down to every list. */
+interface OutlineReorderCtx {
+  readonly drag: OutlineDragNode | null
+  readonly insert: OutlineInsert | null
+  readonly startDrag: (node: OutlineDragNode, event: ReactDragEvent) => void
+  readonly endDrag: () => void
+  readonly overRow: (listId: string, index: number, event: ReactDragEvent) => void
+  readonly overZone: (listId: string, event: ReactDragEvent) => void
+  readonly drop: (listId: string) => void
+}
+
+/** List id of the top-level section list. */
+const ROOT_LIST = 'root'
+/** List id prefix of one section's subsection list (`sub:<section title>`). */
+const SUB_PREFIX = 'sub:'
+
 /**
- * One outline subtree, recursing through children; click jumps the editor.
- * When `reorder` is given (only at the top level), each row gains a drag
- * grip and the list shows an insertion indicator under the pointer; a drop
- * reports the dragged title and the insertion index in the CURRENT order.
+ * One outline list, recursing through children; click jumps the editor. When
+ * `ctx` is given, level-1 and level-2 rows gain a drag grip and the list
+ * shows an insertion indicator under the pointer — but only while the dragged
+ * node's level matches the list's (sections reorder among sections,
+ * subsections among any section's subsections).
  */
-function OutlineTree({ nodes, onJump, reorder, gripLabel }: {
+function OutlineRows({ nodes, listId, level, parentTitle, onJump, ctx, gripLabel, dropZoneLabel }: {
   readonly nodes: readonly OutlineNode[]
+  readonly listId: string
+  readonly level: 1 | 2 | 3
+  readonly parentTitle: string | undefined
   readonly onJump: (line: number) => void
-  readonly reorder?: { onDropSection: (title: string, insertAt: number) => void } | undefined
+  readonly ctx: OutlineReorderCtx | undefined
   readonly gripLabel?: string | undefined
+  readonly dropZoneLabel?: string | undefined
 }) {
-  // Mid-gesture drag state of the top-level list (unused in nested trees).
-  const [dragTitle, setDragTitle] = useState<string | null>(null)
-  const [insertIndex, setInsertIndex] = useState<number | null>(null)
-  const endDrag = (): void => {
-    setDragTitle(null)
-    setInsertIndex(null)
-  }
+  const accepts = ctx !== undefined && ctx.drag !== null && ctx.drag.level === level
   return (
     <ul className={css.outlineTree}>
       {nodes.map((node, index) => (
         <li key={`${node.line}:${node.title}`}>
-          {reorder === undefined ? (
+          {ctx === undefined || level === 3 ? (
             <button type="button" className={css.outlineItem} onClick={() => { onJump(node.line) }}>
               {node.title} <span className={css.outlineLine}>L{node.line}</span>
             </button>
           ) : (
             <div
               className={css.outlineRow}
-              onDragOver={(event) => {
-                if (dragTitle === null) return
-                event.preventDefault()
-                const rect = event.currentTarget.getBoundingClientRect()
-                const after = event.clientY > rect.top + rect.height / 2
-                setInsertIndex(after ? index + 1 : index)
-              }}
+              onDragOver={(event) => { ctx.overRow(listId, index, event) }}
               onDrop={(event) => {
                 event.preventDefault()
-                const title = dragTitle ?? event.dataTransfer.getData('text/plain')
-                const target = insertIndex
-                endDrag()
-                if (title !== '' && target !== null) reorder.onDropSection(title, target)
+                ctx.drop(listId)
               }}
             >
-              {insertIndex === index && <div className={css.dropIndicator} aria-hidden />}
+              {accepts && ctx.insert?.listId === listId && ctx.insert.index === index && (
+                <div className={css.dropIndicator} aria-hidden />
+              )}
               <span
                 className={css.outlineGrip}
                 draggable
                 title={gripLabel}
                 aria-label={gripLabel}
                 onDragStart={(event) => {
-                  setDragTitle(node.title)
-                  event.dataTransfer.setData('text/plain', node.title)
-                  event.dataTransfer.effectAllowed = 'move'
+                  ctx.startDrag({ level, sectionTitle: level === 2 ? parentTitle : undefined, title: node.title }, event)
                 }}
-                onDragEnd={endDrag}
+                onDragEnd={ctx.endDrag}
               >
                 {GRIP_ICON}
               </span>
@@ -138,13 +158,113 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel }: {
               </button>
             </div>
           )}
-          {node.children.length > 0 && <OutlineTree nodes={node.children} onJump={onJump} />}
+          {level !== 3 && node.children.length > 0 && (
+            <OutlineRows
+              nodes={node.children}
+              listId={`${SUB_PREFIX}${node.title}`}
+              level={level === 1 ? 2 : 3}
+              parentTitle={node.title}
+              onJump={onJump}
+              ctx={ctx}
+              gripLabel={gripLabel}
+              dropZoneLabel={dropZoneLabel}
+            />
+          )}
+          {level === 1 && node.children.length === 0 && ctx?.drag?.level === 2 && (
+            <ul className={css.outlineTree}>
+              <li
+                className={css.outlineDropZone}
+                data-active={ctx.insert?.listId === `${SUB_PREFIX}${node.title}` || undefined}
+                onDragOver={(event) => { ctx.overZone(`${SUB_PREFIX}${node.title}`, event) }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  ctx.drop(`${SUB_PREFIX}${node.title}`)
+                }}
+              >
+                {dropZoneLabel}
+              </li>
+            </ul>
+          )}
         </li>
       ))}
-      {reorder !== undefined && insertIndex === nodes.length && (
+      {accepts && ctx.insert?.listId === listId && ctx.insert.index === nodes.length && (
         <li className={css.dropIndicator} aria-hidden />
       )}
     </ul>
+  )
+}
+
+/**
+ * The outline tree root: owns the mid-gesture drag state and translates a
+ * drop into the section or subsection callback of `reorder`.
+ */
+function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
+  readonly nodes: readonly OutlineNode[]
+  readonly onJump: (line: number) => void
+  readonly reorder?: {
+    onDropSection: (title: string, insertAt: number) => void
+    onDropSubsection: (drag: SubsectionDrag, targetSectionTitle: string, insertAt: number) => void
+  } | undefined
+  readonly gripLabel?: string | undefined
+  readonly dropZoneLabel?: string | undefined
+}) {
+  const [drag, setDrag] = useState<OutlineDragNode | null>(null)
+  const [insert, setInsert] = useState<OutlineInsert | null>(null)
+  const endDrag = (): void => {
+    setDrag(null)
+    setInsert(null)
+  }
+  const ctx: OutlineReorderCtx | undefined = reorder === undefined ? undefined : {
+    drag,
+    insert,
+    startDrag: (node, event) => {
+      setDrag(node)
+      event.dataTransfer.setData('text/plain', node.title)
+      event.dataTransfer.effectAllowed = 'move'
+    },
+    endDrag,
+    overRow: (listId, index, event) => {
+      // Only the lists matching the dragged level accept the gesture.
+      if (drag === null || (drag.level === 1) !== (listId === ROOT_LIST)) return
+      event.preventDefault()
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      const after = event.clientY > rect.top + rect.height / 2
+      setInsert({ listId, index: after ? index + 1 : index })
+    },
+    overZone: (listId, event) => {
+      if (drag === null || drag.level !== 2) return
+      event.preventDefault()
+      setInsert({ listId, index: 0 })
+    },
+    drop: (listId) => {
+      const node = drag
+      const target = insert
+      endDrag()
+      if (node === null || target === null || target.listId !== listId) return
+      if (node.level === 1) {
+        if (listId === ROOT_LIST) reorder.onDropSection(node.title, target.index)
+        return
+      }
+      if (node.sectionTitle !== undefined && listId.startsWith(SUB_PREFIX)) {
+        reorder.onDropSubsection(
+          { sectionTitle: node.sectionTitle, title: node.title },
+          listId.slice(SUB_PREFIX.length),
+          target.index,
+        )
+      }
+    },
+  }
+  return (
+    <OutlineRows
+      nodes={nodes}
+      listId={ROOT_LIST}
+      level={1}
+      parentTitle={undefined}
+      onJump={onJump}
+      ctx={ctx}
+      gripLabel={gripLabel}
+      dropZoneLabel={dropZoneLabel}
+    />
   )
 }
 
@@ -156,7 +276,7 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel }: {
 export function PaperView({
   outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
-  ensurePapers, reorderPaperSections, fullscreen, setFullscreen, t,
+  ensurePapers, reorderPaperSections, reorderPaperSubsections, fullscreen, setFullscreen, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -181,6 +301,11 @@ export function PaperView({
     projectId: string,
     moves: readonly SectionMove[],
     baseOutline: readonly string[],
+  ) => Promise<ResearchFailureView | null>
+  readonly reorderPaperSubsections: (
+    projectId: string,
+    moves: readonly SubsectionMove[],
+    baseOutline: readonly SectionOutlineTitles[],
   ) => Promise<ResearchFailureView | null>
   /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
   readonly fullscreen: PaperFullscreen | null
@@ -383,6 +508,20 @@ export function PaperView({
     })
   }
 
+  /**
+   * Apply one subsection drop: translate it into a subsection move against the
+   * current outline and commit it; a rejection stays visible in the rail.
+   */
+  const onDropSubsection = (drag: SubsectionDrag, targetSectionTitle: string, insertAt: number): void => {
+    if (projectId === null || outline === null || !reorderable) return
+    const move = subsectionMoveFromDrop(outline.nodes, drag, targetSectionTitle, insertAt)
+    if (move === null) return
+    setReorderError(null)
+    void reorderPaperSubsections(projectId, [move], outlineSectionTitles(outline.nodes)).then((failure) => {
+      setReorderError(failure)
+    })
+  }
+
   // The narrow-width editor/preview tab bar (CSS-hidden at full width); both
   // pane heads render it so the switch is reachable from whichever pane shows.
   const paneTabs = (
@@ -458,8 +597,9 @@ export function PaperView({
                   <OutlineTree
                     nodes={outline.nodes}
                     onJump={jumpToLine}
-                    reorder={reorderable ? { onDropSection } : undefined}
+                    reorder={reorderable ? { onDropSection, onDropSubsection } : undefined}
                     gripLabel={t('outline.drag')}
+                    dropZoneLabel={t('outline.dropInto')}
                   />
                 ))}
             {reorderError !== null && (

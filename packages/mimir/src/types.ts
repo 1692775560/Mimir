@@ -9,7 +9,7 @@ import type { LatexIssue } from './latex-log.ts'
 import type { OutlineNode } from './outline.ts'
 import type { LatexEngineKind } from './tools/latex.ts'
 import type { ArxivEntry } from './tools/arxiv.ts'
-export type { OutlineNode, SectionMove } from './outline.ts'
+export type { OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from './outline.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export type { BibEntry } from './bibtex.ts'
 import type { BibEntry } from './bibtex.ts'
@@ -31,6 +31,11 @@ export interface PaperRecord {
   tags: string[]
   /** Wiki projects this paper is linked to. */
   projectIds: string[]
+  /**
+   * Fetched PDF's path relative to the workspace root; absent until the
+   * workbench fetches the PDF (records predating the field read as absent).
+   */
+  readonly pdfPath?: string | undefined
   /** ISO-8601 timestamp of the record's first write. */
   readonly addedAt: string
 }
@@ -187,6 +192,7 @@ export type ResearchFailure =
   | { readonly code: 'job-not-found'; readonly id: string }
   | { readonly code: 'experiment-not-found'; readonly id: string }
   | { readonly code: 'section-not-found'; readonly title: string }
+  | { readonly code: 'subsection-not-found'; readonly sectionTitle: string; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
   | { readonly code: 'operation-failed'; readonly message: string }
@@ -244,6 +250,9 @@ export type ResearchRemovePaperResult = ResearchResult<{ readonly arxivId: strin
 
 /** `updatePaper` result: the stored record after the partial update. */
 export type ResearchUpdatePaperResult = ResearchResult<{ readonly paper: PaperRecord }>
+
+/** `fetchPaperPdf` result: the stored record with its `pdfPath` set. */
+export type ResearchFetchPaperPdfResult = ResearchResult<{ readonly paper: PaperRecord }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>

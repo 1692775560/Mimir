@@ -8,7 +8,7 @@
  * @module dsh-client-ui-mimir/client/view-common
  */
 
-import type { BibEntry, ExperimentRecord, ExperimentStatus, PaperRecord, ProjectStage, SectionMove, ServerRecord } from 'dsh-mimir/types'
+import type { BibEntry, ExperimentRecord, ExperimentStatus, OutlineNode, PaperRecord, ProjectStage, SectionMove, SectionOutlineTitles, ServerRecord, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchSaveState } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 
@@ -217,6 +217,16 @@ export function bibEntryFromDraft(draft: BibEntryDraft): BibEntry | null {
 }
 
 /**
+ * Build the paper-PDF route URL of one remembered paper (the library card's
+ * embedded reader). `version` cache-busts a refetch: the route serves the
+ * same path after every fetch, and the no-cache reply alone does not force an
+ * already-open iframe to re-request.
+ */
+export function paperPdfUrl(arxivId: string, version: number): string {
+  return `/research/paper-pdf/${encodeURIComponent(arxivId)}?v=${version}`
+}
+
+/**
  * One-line summary of one bibliography entry (the bib panel's row): the
  * title when present, else the author/year pair, else the entry type.
  * Whitespace runs collapse; the result truncates at 80 characters.
@@ -249,6 +259,50 @@ export function sectionMoveFromDrop(
   const clamped = Math.min(Math.max(insertAt, 0), titles.length)
   const target = clamped > from ? clamped - 1 : clamped
   return target === from ? null : { title, targetIndex: target }
+}
+
+/**
+ * The conflict-check snapshot of one parsed outline: the top-level section
+ * titles plus each section's direct child titles, in document order. This is
+ * the `baseOutline` a subsection reorder commits against.
+ */
+export function outlineSectionTitles(nodes: readonly OutlineNode[]): SectionOutlineTitles[] {
+  return nodes
+    .filter(node => node.level === 1)
+    .map(node => ({ title: node.title, subsections: node.children.map(child => child.title) }))
+}
+
+/** The dragged subsection of one drop: its current section title and its own title. */
+export interface SubsectionDrag {
+  readonly sectionTitle: string
+  readonly title: string
+}
+
+/**
+ * Translate one subsection drop into a subsection move. `insertAt` is the
+ * insertion indicator's index in the CURRENT subsection order of the target
+ * section (0..count); for a same-section drop the move's `targetIndex`
+ * addresses the order after the dragged subsection is removed, mirroring
+ * {@link sectionMoveFromDrop}. Returns null for a no-op drop (back onto its
+ * own slot) or an unknown section/subsection.
+ */
+export function subsectionMoveFromDrop(
+  nodes: readonly OutlineNode[],
+  drag: SubsectionDrag,
+  targetSectionTitle: string,
+  insertAt: number,
+): SubsectionMove | null {
+  const sections = nodes.filter(node => node.level === 1)
+  const source = sections.find(node => node.title === drag.sectionTitle)
+  const target = sections.find(node => node.title === targetSectionTitle)
+  if (source === undefined || target === undefined) return null
+  const from = source.children.findIndex(child => child.title === drag.title)
+  if (from === -1) return null
+  const same = source === target
+  const clamped = Math.min(Math.max(insertAt, 0), target.children.length)
+  const targetIndex = same && clamped > from ? clamped - 1 : clamped
+  if (same && targetIndex === from) return null
+  return { sectionTitle: drag.sectionTitle, title: drag.title, targetSectionTitle, targetIndex }
 }
 
 /** All tags across the library, deduped and alphabetically sorted (the filter bar). */

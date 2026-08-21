@@ -36,6 +36,7 @@ import type {
   ResearchExperimentsResult,
   ResearchExportWikiResult,
   ResearchFailure,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -60,13 +61,15 @@ import type {
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
   SectionMove,
+  SectionOutlineTitles,
   ServerInput,
   ServerRecord,
   ServerStatusView,
+  SubsectionMove,
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-two Remote calls this controller needs, exactly as the
+ * The thirty-three Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -91,6 +94,7 @@ export interface ResearchRemote {
     projectIds?: string[] | undefined
     notes?: string | undefined
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
+  fetchPaperPdf: (request: { arxivId: string }) => Promise<RemoteResult<ResearchFetchPaperPdfResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   updateExperiment: (request: {
@@ -128,6 +132,12 @@ export interface ResearchRemote {
     projectId: string
     moves: SectionMove[]
     baseOutline: string[]
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
+  reorderPaperSubsections: (request: {
+    projectId: string
+    moves: SubsectionMove[]
+    baseOutline: SectionOutlineTitles[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
   exportWiki: () => Promise<RemoteResult<ResearchExportWikiResult>>
@@ -628,6 +638,42 @@ export class ResearchController implements HostObservable<ResearchView> {
   }
 
   /**
+   * Reorder the subsections of one project's `main.tex`, inside their own
+   * section or across sections. Same settlement contract as
+   * {@link ResearchController.reorderPaperSections}: the failure view is
+   * returned for the rail, and both a success and a conflict re-read the
+   * outline and the source from the Host.
+   * @param projectId - wiki project id.
+   * @param moves - the drops, applied in order.
+   * @param baseOutline - the section/subsection title tree the drag started from.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async reorderPaperSubsections(
+    projectId: string,
+    moves: readonly SubsectionMove[],
+    baseOutline: readonly SectionOutlineTitles[],
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.reorderPaperSubsections({
+        projectId,
+        moves: [...moves],
+        baseOutline: baseOutline.map(section => ({ title: section.title, subsections: [...section.subsections] })),
+        dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) {
+        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        return businessFailure(result.error)
+      }
+      this.refreshPaper(projectId)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
    * Search arXiv for one query and publish the outcome to the papers view.
    * A newer search supersedes an in-flight one, whose late reply is discarded
    * by generation; an empty query never leaves the client.
@@ -726,6 +772,28 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       await this.loadPapers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Download one remembered paper's arXiv PDF into the workspace, then refresh
+   * the literature list so the card's read/fetch buttons repaint. The failure
+   * view of a rejected fetch is returned so the card can surface it.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async fetchPaperPdf(arxivId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.fetchPaperPdf({ arxivId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      this.notify('success', 'toast.pdfFetched')
       return null
     } catch (error) {
       return transportFailure(error)

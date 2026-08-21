@@ -14,13 +14,13 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { readdir, readFile, mkdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
-import { parseTexOutline, reorderSections } from './outline.ts'
+import { parseTexOutline, reorderSections, reorderSubsections } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
@@ -31,7 +31,7 @@ import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { isBackupFileName } from './backup.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
-import { fetchArxivSearch } from './tools/arxiv.ts'
+import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from './tools/arxiv.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
@@ -54,6 +54,7 @@ import type {
   ResearchExperimentsResult,
   ResearchExportWikiResult,
   ResearchFailure,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -81,6 +82,8 @@ import type {
   ResearchWikiSnapshot,
   ResearchWikiTableName,
   SectionMove,
+  SectionOutlineTitles,
+  SubsectionMove,
   ServerGpuView,
   ServerInput,
   ServerRecord,
@@ -172,6 +175,10 @@ async function pdfMtime(pdfPath: string): Promise<number | null> {
 const TCP_PROBE_TIMEOUT_MS = 4000
 /** Timeout of one arXiv API request made on the panel's behalf. */
 const ARXIV_FETCH_TIMEOUT_MS = 15_000
+/** Timeout of one panel-driven arXiv PDF download. */
+const ARXIV_PDF_FETCH_TIMEOUT_MS = 60_000
+/** Workspace-relative directory the fetched paper PDFs land in. */
+const PAPER_PDF_DIR = 'papers'
 /** Default result cap of one panel-driven arXiv search. */
 const ARXIV_SEARCH_DEFAULT_MAX_RESULTS = 10
 /** Hard result cap of one panel-driven arXiv search. */
@@ -497,6 +504,40 @@ export class ResearchService extends TypertRemoteService {
   }
 
   /**
+   * Download one remembered paper's arXiv PDF into the workspace and link it
+   * on the record: the bytes land at `papers/<arxiv id>.pdf` under the
+   * workspace root (same-name overwrite on a refetch, so a new arXiv version
+   * replaces the stale copy) and the record's `pdfPath` points at it. The
+   * panel reads the file back through the `/research/paper-pdf/<id>` route.
+   * An unknown arXiv id is `paper-not-found`; transport/HTTP/oversize
+   * failures settle as `operation-failed` with the underlying message.
+   * @param request - the bare arXiv id.
+   * @returns the stored record after the update.
+   */
+  @Remote('fetchPaperPdf')
+  async fetchPaperPdf(request: { arxivId: string }): Promise<ResearchFetchPaperPdfResult> {
+    const table = this.domain.table('papers')
+    const existing = table.get(request.arxivId)
+    if (existing === undefined) return rejected({ code: 'paper-not-found' })
+    let bytes: Uint8Array
+    try {
+      bytes = await fetchArxivPdf(request.arxivId, AbortSignal.timeout(ARXIV_PDF_FETCH_TIMEOUT_MS))
+    } catch (error) {
+      return rejected({
+        code: 'operation-failed',
+        message: error instanceof Error ? error.message : 'arXiv PDF download failed',
+      })
+    }
+    const relPath = `${PAPER_PDF_DIR}/${paperPdfFileName(request.arxivId)}`
+    const dir = join(this.workspaceDir, PAPER_PDF_DIR)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, paperPdfFileName(request.arxivId)), bytes)
+    const next: PaperRecord = { ...existing, pdfPath: relPath }
+    await table.put(request.arxivId, next)
+    return success({ paper: next })
+  }
+
+  /**
    * List experiment runs, filtered to one project when `projectId` is given.
    * @param request - optional project filter; an unknown id is `project-not-found`.
    * @returns the experiment rows, most recently updated first.
@@ -771,6 +812,69 @@ export class ResearchService extends TypertRemoteService {
     }
     if (reordered.kind === 'invalid-move') {
       return rejected({ code: 'invalid-input', message: `section target index ${reordered.targetIndex} out of range` })
+    }
+    const outcome = await saveTextFileOptimistic(texPath, reordered.tex, snapshot.mtimeMs)
+    if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
+    if (outcome.kind === 'conflict') {
+      return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
+    }
+    return success({ mtimeMs: outcome.mtimeMs })
+  }
+
+  /**
+   * Reorder the `\subsection` blocks of the addressed project's paper
+   * `main.tex`, inside their own section or across sections. `baseOutline` is
+   * the section/subsection title tree the client's drag gesture was based on;
+   * when the file's current tree differs (the agent edited the document
+   * mid-gesture) the call rejects with `conflict` and writes nothing. The
+   * commit rides the same optimistic-concurrency path as `savePaperSource`,
+   * and everything outside the moved blocks survives byte-for-byte.
+   * @param request - the selected project, the ordered moves, the outline the
+   * client saw, and an optional explicit paper directory (relative to the
+   * workspace) overriding the record's `paperDir`.
+   * @returns the committed mtime, `project-not-found`, `paper-not-found`,
+   * `invalid-dir`, `section-not-found` for an unknown section title,
+   * `subsection-not-found` for an unknown subsection title, `invalid-input`
+   * for an out-of-range target, or `conflict`.
+   */
+  @Remote('reorderPaperSubsections')
+  async reorderPaperSubsections(request: {
+    projectId: string
+    moves: SubsectionMove[]
+    baseOutline: SectionOutlineTitles[]
+    dir?: string | undefined
+  }): Promise<ResearchSavePaperSourceResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const texPath = join(dir, 'main.tex')
+    const snapshot = await readPaperSource(texPath)
+    if (snapshot === undefined) return rejected({ code: 'paper-not-found' })
+    const outline: SectionOutlineTitles[] = parseTexOutline(snapshot.content)
+      .filter(node => node.level === 1)
+      .map(node => ({ title: node.title, subsections: node.children.map(child => child.title) }))
+    if (outline.length !== request.baseOutline.length
+      || outline.some((section, index) => {
+        const base = request.baseOutline[index]
+        return base === undefined || section.title !== base.title
+          || section.subsections.length !== base.subsections.length
+          || section.subsections.some((title, subIndex) => title !== base.subsections[subIndex])
+      })) {
+      return rejected({ code: 'conflict', currentMtimeMs: snapshot.mtimeMs })
+    }
+    if (request.moves.length === 0) return success({ mtimeMs: snapshot.mtimeMs })
+    const reordered = reorderSubsections(snapshot.content, request.moves)
+    if (reordered.kind === 'section-not-found') {
+      return rejected({ code: 'section-not-found', title: reordered.title })
+    }
+    if (reordered.kind === 'subsection-not-found') {
+      return rejected({ code: 'subsection-not-found', sectionTitle: reordered.sectionTitle, title: reordered.title })
+    }
+    if (reordered.kind === 'invalid-move') {
+      return rejected({ code: 'invalid-input', message: `subsection target index ${reordered.targetIndex} out of range` })
     }
     const outcome = await saveTextFileOptimistic(texPath, reordered.tex, snapshot.mtimeMs)
     if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
