@@ -17,3 +17,8 @@
           timeoutMs: 120000           # compile kill timeout; raise it for tectonic's first network fetch
         arxiv:
           maxResults: 10              # default arxiv_search result cap
+        backup:
+          enabled: true               # scheduled wiki backup timer
+          intervalMinutes: 60         # backup cadence (first pass 1 min after start)
+          keep: 24                    # keep the newest N backups, prune the rest
+          dir: backups                # backup directory, resolved against workspaceDir

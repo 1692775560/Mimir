@@ -86,6 +86,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     importPapersToBib: missing('importPapersToBib'),
     reorderPaperSections: missing('reorderPaperSections'),
     updateExperiment: missing('updateExperiment'),
+    listBackups: missing('listBackups'),
     ...overrides,
   }
 }

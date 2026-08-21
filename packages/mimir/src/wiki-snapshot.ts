@@ -1,11 +1,12 @@
 /**
- * The wiki export/import snapshot: the format envelope constants plus the
- * pure validation shared by both Remote methods. `snapshotEnvelopeError`
+ * The wiki export/import snapshot: the format envelope constants, the pure
+ * validation shared by both Remote methods, and the snapshot constructor
+ * shared by `exportWiki` and the scheduled backup. `snapshotEnvelopeError`
  * guards the envelope (format/version/table arrays) and `tableRowsError`
  * validates every row of one table against its durable zod schema — both
  * return the first problem as a message (null when clean) so `importWiki`
- * rejects the whole request before any write. DOM-free and storage-free, so
- * every rule is unit-testable.
+ * rejects the whole request before any write. DOM-free, so every rule is
+ * unit-testable.
  * @module dsh-mimir/src/wiki-snapshot
  */
 
@@ -13,7 +14,7 @@ import type { ZodType } from 'zod'
 import {
   claimRecord, experimentRecord, ideaRecord, paperRecord, projectRecord, serverRecord,
 } from './store.ts'
-import type { ResearchWikiTableName } from './types.ts'
+import type { ResearchWikiSnapshot, ResearchWikiTableName } from './types.ts'
 
 /** Snapshot envelope marker (`format` field). */
 export const WIKI_SNAPSHOT_FORMAT = 'mimir-wiki'
@@ -42,6 +43,37 @@ const TABLE_SCHEMAS: Record<ResearchWikiTableName, ZodType> = {
   projects: projectRecord,
   experiments: experimentRecord,
   servers: serverRecord,
+}
+
+/** Minimal read surface the snapshot builder needs from an open wiki domain. */
+export interface WikiSnapshotSource {
+  table(name: ResearchWikiTableName): { entries(): IterableIterator<[string, unknown]> }
+}
+
+/**
+ * Snapshot the whole wiki: every record of all six tables under the format
+ * envelope. Shared by the `exportWiki` Remote and the scheduled backup, so
+ * both always emit the same shape.
+ * @param domain - the open wiki domain (anything with per-table `entries`).
+ * @param now - the `exportedAt` timestamp (defaults to the current time).
+ * @returns the snapshot, tables frozen.
+ */
+export function buildWikiSnapshot(domain: WikiSnapshotSource, now = new Date()): ResearchWikiSnapshot {
+  const rows = (name: ResearchWikiTableName): readonly unknown[] =>
+    Object.freeze([...domain.table(name).entries()].map(([, record]) => record))
+  return {
+    format: WIKI_SNAPSHOT_FORMAT,
+    version: WIKI_SNAPSHOT_VERSION,
+    exportedAt: now.toISOString(),
+    tables: {
+      papers: rows('papers') as ResearchWikiSnapshot['tables']['papers'],
+      ideas: rows('ideas') as ResearchWikiSnapshot['tables']['ideas'],
+      claims: rows('claims') as ResearchWikiSnapshot['tables']['claims'],
+      projects: rows('projects') as ResearchWikiSnapshot['tables']['projects'],
+      experiments: rows('experiments') as ResearchWikiSnapshot['tables']['experiments'],
+      servers: rows('servers') as ResearchWikiSnapshot['tables']['servers'],
+    },
+  }
 }
 
 /**

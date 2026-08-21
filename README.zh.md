@@ -110,7 +110,7 @@ dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 
 ### 总览
 
-落地视图：所选项目的五阶段流水线进度、统计芯片（文献/实验/图表/服务器）、工件清单与时间戳。**数据卡片**可以把整个 wiki 导出为一份带日期的 JSON 快照（`mimir-wiki-<日期>.json`）用于备份或迁移，也可以导入回放：选择文件、确认逐表行数摘要，然后选合并（已存在主键跳过、绝不覆盖）或替换（先清空六张表——有红字二次确认）。导入成功后会刷新所有已加载的视图，并用 toast 汇报导入/跳过总数。
+落地视图：所选项目的五阶段流水线进度、统计芯片（文献/实验/图表/服务器）、工件清单与时间戳。**数据卡片**显示自动备份状态（周期、保留份数、已备份份数），并可以把整个 wiki 导出为一份带日期的 JSON 快照（`mimir-wiki-<日期>.json`）用于备份或迁移，也可以导入回放：选择文件（`<workspaceDir>/backups/` 下的自动备份可直接选）、确认逐表行数摘要，然后选合并（已存在主键跳过、绝不覆盖）或替换（先清空六张表——有红字二次确认）。导入成功后会刷新所有已加载的视图，并用 toast 汇报导入/跳过总数。
 
 | 总览 | 总览：wiki 导出/导入 |
 | --- | --- |
@@ -205,6 +205,10 @@ agent 在对话中途可以触达同一组能力：
 | `latex.engine` | `auto` | `auto`（依次探测 PATH 上的 `latexmk`、`tectonic`）、引擎名，或绝对二进制路径（按 basename 选择方言） |
 | `latex.timeoutMs` | `120000` | 编译杀进程超时（毫秒）；tectonic 首次联网拉包时可调大 |
 | `arxiv.maxResults` | `10` | `arxiv_search` 的默认结果上限 |
+| `backup.enabled` | `true` | wiki 定时自动备份开关；`false` 完全关闭 |
+| `backup.intervalMinutes` | `60` | 备份周期（分钟，正整数）；插件启动 1 分钟后做首次备份 |
+| `backup.keep` | `24` | 保留最近 N 份，超出裁剪（正整数） |
+| `backup.dir` | `backups` | 备份目录，相对 `workspaceDir` 解析（也接受绝对路径） |
 
 带注释的完整示例见 [examples/mimir-agent/cordis.yml](examples/mimir-agent/cordis.yml)。
 
@@ -215,7 +219,7 @@ agent 在对话中途可以触达同一组能力：
 - **找不到 LaTeX 引擎**——装 tectonic（单二进制）：macOS 用 `brew install tectonic`，其他平台见 <https://tectonic-typesetting.github.io>。也可以把 `latex.engine` 指到绝对二进制路径。`engine: auto` 先探测 `latexmk`，再探测 `tectonic`。
 - **编译报错**——`/paper-compile` 打印解析后的文件/行号诊断；在工作台论文视图里点击错误会跳到对应源码行。tectonic 首次运行要联网下载宏包——初次编译超时就把 `latex.timeoutMs` 调大。
 - **arXiv 搜索失败**——工具请求 `export.arxiv.org`；检查连通性，代理环境下在启动 dsh 前导出 `HTTPS_PROXY`/`HTTP_PROXY`。
-- **数据在哪 / 怎么备份**——wiki 在 `~/.dsh/storages/research_wiki.json`，科研工件在 `workspaceDir`（默认 `./.research`）下。用总览视图的数据卡片把整个 wiki 导出为一份 JSON 快照（之后可导入回放——合并是非破坏性的）。
+- **数据在哪 / 怎么备份**——wiki 在 `~/.dsh/storages/research_wiki.json`，科研工件在 `workspaceDir`（默认 `./.research`）下。双轨备份：host 每 `backup.intervalMinutes` 自动写一份全量快照到 `<workspaceDir>/backups/mimir-wiki-<UTC 时间戳>.json`（保留最近 `backup.keep` 份，原子写，失败只告警、下个周期重试），总览视图的数据卡片也可以随时手动导出同格式快照。两种文件都能从数据卡片导入回放（合并是非破坏性的）——从自动备份恢复时，在导入流程里直接选 `backups/` 下的文件即可。
 
 ## 已知限制
 
