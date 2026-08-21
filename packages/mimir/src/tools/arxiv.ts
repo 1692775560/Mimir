@@ -9,6 +9,8 @@
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ResearchWikiDomain } from '../store.ts'
+import type { PaperRecord, ProjectRecord } from '../types.ts'
 
 /** One parsed arXiv entry, shared by both tools' output. */
 export interface ArxivEntry {
@@ -162,6 +164,54 @@ function renderEntries(entries: readonly ArxivEntry[]): string {
   ).join('\n')
 }
 
+/** Most recently touched project, used when a fetch omits an explicit id. */
+function latestProject(domain: ResearchWikiDomain): ProjectRecord | undefined {
+  let latest: ProjectRecord | undefined
+  for (const [, project] of domain.table('projects').entries()) {
+    if (latest === undefined || project.updatedAt > latest.updatedAt) latest = project
+  }
+  return latest
+}
+
+/**
+ * Persist a deliberately fetched paper and associate it with the active
+ * project. Re-fetching refreshes arXiv metadata while preserving the user's
+ * organization, downloaded PDF, first-save timestamp, and prior notes.
+ */
+export async function rememberFetchedPaper(
+  domain: ResearchWikiDomain,
+  entry: ArxivEntry,
+  options: { readonly projectId?: string; readonly notes?: string; readonly tags?: readonly string[] } = {},
+): Promise<PaperRecord> {
+  const explicitProject = options.projectId === undefined ? undefined : domain.table('projects').get(options.projectId)
+  if (options.projectId !== undefined && explicitProject === undefined) {
+    throw new Error(`paper_fetch: no project with id '${options.projectId}'`)
+  }
+  const project = explicitProject ?? latestProject(domain)
+  const table = domain.table('papers')
+  const existing = table.get(entry.id)
+  const incomingNotes = options.notes?.trim() ?? ''
+  const notes = incomingNotes === '' || incomingNotes === existing?.notes
+    ? (existing?.notes ?? '')
+    : existing?.notes === '' || existing?.notes === undefined
+      ? incomingNotes
+      : `${existing.notes}\n\n${incomingNotes}`
+  const record: PaperRecord = {
+    arxivId: entry.id,
+    title: entry.title,
+    authors: [...entry.authors],
+    summary: entry.summary,
+    url: entry.url === '' ? `https://arxiv.org/abs/${entry.id}` : entry.url,
+    notes,
+    tags: [...new Set([...(existing?.tags ?? []), ...(options.tags ?? []).map(tag => tag.trim()).filter(Boolean)])],
+    projectIds: [...new Set([...(existing?.projectIds ?? []), ...(project === undefined ? [] : [project.id])])],
+    ...(existing?.pdfPath === undefined ? {} : { pdfPath: existing.pdfPath }),
+    addedAt: existing?.addedAt ?? new Date().toISOString(),
+  }
+  await table.put(entry.id, record)
+  return record
+}
+
 /**
  * Build the `arxiv_search` tool.
  * @param defaultMaxResults - Deployment default for the result cap.
@@ -203,12 +253,15 @@ export function createArxivSearchTool(defaultMaxResults: number): ToolDefinition
  * Build the `paper_fetch` tool.
  * @returns the registry-ready tool definition.
  */
-export function createPaperFetchTool(): ToolDefinition {
+export function createPaperFetchTool(domain: ResearchWikiDomain): ToolDefinition {
   return defineTool({
     name: 'paper_fetch',
-    description: 'Fetch one arXiv paper\'s full metadata record by its arXiv id (e.g. 2103.00020 or 2103.00020v2).',
+    description: 'Fetch one useful arXiv paper by id and automatically save it to the Mimir literature library. It is linked to project_id when supplied, otherwise to the most recently active project.',
     parameters: {
       arxiv_id: { type: 'string', required: true, description: 'Bare arXiv id, with or without a version suffix.' },
+      project_id: { type: 'string', description: 'Project to associate with the saved paper; defaults to the most recently updated project.' },
+      notes: { type: 'string', description: 'Why this paper is useful; appended without erasing existing notes.' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Organization tags merged into the saved paper.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: ENTRY_PROPERTIES },
@@ -220,6 +273,11 @@ export function createPaperFetchTool(): ToolDefinition {
       const url = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}&max_results=1`
       const [entry] = parseArxivFeed(await fetchArxiv(url, exec.signal))
       if (entry === undefined) throw new Error(`arXiv holds no record for id '${id}'`)
+      await rememberFetchedPaper(domain, entry, {
+        ...(args.project_id === undefined ? {} : { projectId: args.project_id }),
+        ...(args.notes === undefined ? {} : { notes: args.notes }),
+        ...(args.tags === undefined ? {} : { tags: args.tags }),
+      })
       return entry
     },
   })

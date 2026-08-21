@@ -24,10 +24,10 @@ English | [中文](README.zh.md)
 
 | Tool | Purpose |
 | --- | --- |
-| `arxiv_search` / `paper_fetch` | arXiv Atom API search and single-paper fetch |
+| `arxiv_search` / `paper_fetch` | arXiv search; selected-paper fetch automatically archives and links it |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
-| `figure_save` | Saves a generated image into a project's `figures/` directory with caption/experiment metadata and returns a LaTeX snippet |
+| `figure_save` | Saves a generated image with metadata, registers a project artifact, and returns LaTeX |
 
 **Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay:
 
@@ -195,8 +195,8 @@ Registers a project in the wiki, scaffolds `IDEA_REPORT.md` in the workspace, su
 
 The agent reaches the same capabilities mid-conversation:
 
-- `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`).
-- `paper_fetch` — fetch one paper's metadata by arXiv id.
+- `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`); search results alone do not pollute the library.
+- `paper_fetch` — fetch a useful paper by arXiv id and automatically archive its metadata, usefulness notes, and tags. It links to an explicit `project_id`, or the latest active project when omitted. Re-fetching refreshes arXiv metadata without losing existing notes, tags, links, or a downloaded PDF.
 - `wiki_note` — the wiki's read/write surface, one flat parameter set keyed by `action`: `add_paper`, `add_idea`, `fail_idea`, `add_claim`, `set_claim`, `set_project` (points a project at its paper directory), `add_experiment`, `set_experiment` (status `running`/`success`/`failed`), plus `list` and `get` over the five tables.
 - `latex_compile` — "compile the paper in `paper/`" (`project_dir` parameter); returns parsed file/line diagnostics.
 
