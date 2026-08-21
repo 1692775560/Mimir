@@ -11,6 +11,8 @@
 
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ResearchKey } from './locales.ts'
+import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
   BibEntry,
@@ -243,6 +245,8 @@ export interface ResearchView {
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
   /** The selected project's bibliography; null until the bib panel first opens. */
   readonly bib: ResearchBibView | null
+  /** The corner toast queue (oldest first); the host component sweeps expiries. */
+  readonly toasts: readonly ResearchToast[]
 }
 
 const INITIAL_VIEW: ResearchView = Object.freeze({
@@ -260,6 +264,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
   bib: null,
+  toasts: Object.freeze([]),
 })
 
 /** Translate one settled Remote envelope or business branch into a failure view. */
@@ -301,6 +306,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private saveInFlight = false
   private saveAgain = false
   private disposed = false
+  private toastSeq = 0
 
   /**
    * @param remote - the research Remote namespace.
@@ -326,6 +332,33 @@ export class ResearchController implements HostObservable<ResearchView> {
   resync(): void {
     if (this.view.projectsStatus === 'cold') return
     this.loadPromise ??= this.loadProjects().finally(() => { this.loadPromise = null })
+  }
+
+  /**
+   * Push one toast into the corner stack: same copy+detail dedupes to a
+   * refresh, the queue caps at {@link TOAST_LIMIT} (oldest drops first).
+   * Only user-initiated, slow, or asynchronous completions call this — never
+   * high-frequency editor state like the autosave pill.
+   * @param kind - toast severity.
+   * @param copy - locale copy key (the controller stays locale-free).
+   * @param detail - optional verbatim suffix (counts, the failure message).
+   */
+  notify(kind: ResearchToastKind, copy: ResearchKey, detail: string | null = null): void {
+    if (this.disposed) return
+    this.toastSeq += 1
+    const { list } = pushToast(this.view.toasts, kind, copy, detail, Date.now(), this.toastSeq)
+    this.publish({ toasts: list })
+  }
+
+  /** Remove one toast (the × button). @param id - toast id. */
+  dismissToast(id: number): void {
+    this.publish({ toasts: Object.freeze(this.view.toasts.filter(toast => toast.id !== id)) })
+  }
+
+  /** Sweep expired toasts (the host component's expiry timer). */
+  pruneToasts(): void {
+    const kept = pruneExpiredToasts(this.view.toasts, Date.now())
+    if (kept !== this.view.toasts) this.publish({ toasts: kept })
   }
 
   /**
@@ -366,6 +399,9 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       this.reloadAll()
+      const imported = Object.values(result.value.imported).reduce((sum, count) => sum + count, 0)
+      const skipped = Object.values(result.value.skipped).reduce((sum, count) => sum + count, 0)
+      this.notify('success', 'toast.wikiImported', `${imported} / ${skipped}`)
       return result.value
     } catch (error) {
       return transportFailure(error)
@@ -500,6 +536,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
+      this.notify('success', 'toast.deleted')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -590,6 +627,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       await this.loadPapers()
+      this.notify('success', 'toast.paperImported')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -610,6 +648,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       await this.loadPapers()
+      this.notify('success', 'toast.deleted')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -720,6 +759,7 @@ export class ResearchController implements HostObservable<ResearchView> {
           saveState: 'saved', failure: null,
         }),
       })
+      this.notify('success', 'toast.deleted')
       return null
     } catch (error) {
       const failure = transportFailure(error)
@@ -752,6 +792,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       const counts = Object.freeze({ added: result.value.added, skipped: result.value.skipped })
       if (this.disposed) return counts
+      this.notify('success', 'toast.bibImported', `× ${counts.added}`)
       const bib = this.view.bib
       if (bib !== null && bib.projectId === projectId && bib.status !== 'loading') {
         this.publish({ bib: Object.freeze({ ...bib, lastImport: counts }) })
@@ -824,6 +865,7 @@ export class ResearchController implements HostObservable<ResearchView> {
           }),
         })
       }
+      this.notify('success', 'toast.deleted')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -902,6 +944,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       delete checks[id]
       this.publish({ serverChecks: Object.freeze(checks) })
       await this.loadServers()
+      this.notify('success', 'toast.deleted')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -923,9 +966,17 @@ export class ResearchController implements HostObservable<ResearchView> {
     this.publish({ serverChecks: Object.freeze({ ...this.view.serverChecks, [id]: settled }) })
   }
 
-  /** Probe every listed server that is not already being probed. */
-  checkAllServers(): void {
-    for (const server of this.view.servers.list) void this.checkServer(server.id)
+  /**
+   * Probe every listed server that is not already being probed, then toast
+   * when the batch settles (a user-initiated, potentially slow operation).
+   */
+  async checkAllServers(): Promise<void> {
+    const pending = this.view.servers.list
+      .filter(server => this.view.serverChecks[server.id] !== 'checking')
+      .map(server => this.checkServer(server.id))
+    if (pending.length === 0) return
+    await Promise.all(pending)
+    this.notify('info', 'toast.serversChecked', `× ${pending.length}`)
   }
 
   /** Run one probe, translating every failure mode into a settled offline view. */
@@ -1073,6 +1124,11 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.publish({
         compile: Object.freeze({ ...result.value, projectId }),
       })
+      if (result.value.state === 'ok') {
+        this.notify('success', 'toast.compileOk')
+      } else if (result.value.state === 'error') {
+        this.notify('error', 'toast.compileFailed')
+      }
     } catch (error) {
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run during the await.
       if (this.disposed || abort.signal.aborted) return
@@ -1107,6 +1163,7 @@ export class ResearchController implements HostObservable<ResearchView> {
         pdfUpdatedAt: this.view.compile.pdfUpdatedAt,
       }),
     })
+    this.notify('error', 'toast.compileFailed', failure.message)
   }
 
   /** Fetch the project list and publish it. */

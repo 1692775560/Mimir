@@ -153,6 +153,7 @@ export function apply(ctx: ClientContext): void {
           onProgress?.(done, files.length)
         }
         controller.loadFigures(projectId, true)
+        if (done > 0) controller.notify('success', 'toast.figuresUploaded', `× ${done}`)
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
       deleteExperiment: (id) => controller.deleteExperiment(id),
@@ -161,7 +162,7 @@ export function apply(ctx: ClientContext): void {
       saveServer: (server) => controller.saveServer(server),
       deleteServer: (id) => controller.deleteServer(id),
       checkServer: (id) => controller.checkServer(id),
-      checkAllServers: () => { controller.checkAllServers() },
+      checkAllServers: () => { void controller.checkAllServers() },
       ensureBibliography: (projectId) => { controller.ensureBibliography(projectId) },
       reloadBibliography: () => { controller.reloadBibliography() },
       deleteBibEntry: key => controller.deleteBibEntry(key),
@@ -170,6 +171,8 @@ export function apply(ctx: ClientContext): void {
         controller.reorderPaperSections(projectId, moves, baseOutline),
       exportWiki: () => controller.exportWiki(),
       importWiki: (snapshot, mode, confirmReplace) => controller.importWiki(snapshot, mode, confirmReplace),
+      dismissToast: (id) => { controller.dismissToast(id) },
+      pruneToasts: () => { controller.pruneToasts() },
     }),
   }, ResearchPanel))
 }

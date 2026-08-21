@@ -210,6 +210,10 @@ export interface ResearchPanelInjected {
     mode: ResearchImportWikiMode,
     confirmReplace: boolean,
   ) => Promise<{ imported: Record<string, number>; skipped: Record<string, number> } | ResearchFailureView>
+  /** Remove one toast from the corner stack (the × button). @param id - toast id. */
+  dismissToast: (id: number) => void
+  /** Sweep expired toasts (the toast host's expiry timer). */
+  pruneToasts: () => void
 }
 
 /** Full props of the sidebar-footer research toggle. */

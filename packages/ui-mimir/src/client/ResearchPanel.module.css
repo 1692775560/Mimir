@@ -2450,3 +2450,78 @@ li.dropIndicator {
   color: var(--dsw-alias-state-error-primary, #d93026);
   font-size: 13px;
 }
+
+/* The corner toast stack: bottom-right of the workbench, one card per queued
+   toast with a kind-colored accent bar; the entrance slides in from the right. */
+.toastStack {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, 60%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-left: 3px solid var(--dsw-alias-state-business-primary, #4176e6);
+  border-radius: 10px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 8%), 0 8px 24px rgb(0 0 0 / 10%);
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: toastSlideIn 180ms ease-out;
+  word-break: break-word;
+}
+
+.toastSuccess {
+  border-left-color: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.toastInfo {
+  border-left-color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.toastError {
+  border-left-color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.toastMessage {
+  flex: 1;
+}
+
+.toastClose {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--dsw-alias-label-tertiary, rgb(23 35 61 / 45%));
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.toastClose:hover {
+  color: var(--dsw-alias-label-primary, #17233d);
+}
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
