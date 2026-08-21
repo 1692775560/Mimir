@@ -8,9 +8,11 @@ English | [中文](README.zh.md)
 
 ## Video demo
 
-[![Watch the Mimir product demo](docs/media/mimir-cover.png)](docs/media/mimir-demo.mp4)
+[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
 
-Click the cover to watch the complete product demo, including AI-assisted research, literature management, experiments, figure archiving, and paper writing. The video includes smooth zooms that highlight each workflow.
+▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB)
+
+The GIF preview plays automatically. Click it or the link above to watch the complete product demo, including AI-assisted research, literature management, experiments, figure archiving, and paper writing. The full video includes smooth zooms that highlight each workflow.
 
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
