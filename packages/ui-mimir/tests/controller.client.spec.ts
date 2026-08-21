@@ -31,6 +31,7 @@ import type {
   ResearchPapersResult,
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
+  ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -92,6 +93,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     importPapersToBib: missing('importPapersToBib'),
     reorderPaperSections: missing('reorderPaperSections'),
     updateExperiment: missing('updateExperiment'),
+    saveExperiment: missing('saveExperiment'),
     listBackups: missing('listBackups'),
     ...overrides,
   }
@@ -553,6 +555,54 @@ describe('ResearchController workbench views', () => {
     expect(controller.getSnapshot().experiments?.list[1]?.serverId).toBeUndefined()
     await controller.updateExperiment('e1', null)
     expect(controller.getSnapshot().experiments?.list[0]?.serverId).toBeUndefined()
+  })
+
+  it('saveExperiment appends a created row, patches an edited one, and surfaces failures', async () => {
+    const experiments = [
+      { id: 'e1', projectId: 'p1', name: 'baseline', status: 'success' as const,
+        metrics: { acc: 0.9 }, updatedAt: '2026-08-02T00:00:00Z' },
+    ]
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => Promise.resolve(carried<ResearchExperimentsResult>({
+        ok: true, value: { experiments },
+      })),
+      saveExperiment: ({ experiment }) => Promise.resolve(carried<ResearchSaveExperimentResult>(
+        experiment.name.trim().length === 0
+          ? { ok: false, error: { code: 'invalid-input', message: 'name must be non-empty' } }
+          : {
+            ok: true,
+            value: {
+              experiment: {
+                id: experiment.id ?? 'e2',
+                projectId: experiment.projectId,
+                name: experiment.name,
+                status: experiment.status,
+                metrics: experiment.metrics,
+                updatedAt: '2026-08-04T00:00:00Z',
+              },
+            },
+          },
+      )),
+    }))
+    controller.select('p1')
+    await settle()
+    expect(controller.getSnapshot().experiments?.list).toHaveLength(1)
+    const failure = await controller.saveExperiment({ projectId: 'p1', name: '  ', status: 'running', metrics: {} })
+    expect(failure).toMatchObject({ code: 'invalid-input' })
+    expect(controller.getSnapshot().experiments?.list).toHaveLength(1)
+    const created = await controller.saveExperiment({ projectId: 'p1', name: 'full', status: 'running', metrics: { acc: 0.93 } })
+    expect(created).toBeNull()
+    expect(controller.getSnapshot().experiments?.list.map(record => record.id)).toEqual(['e1', 'e2'])
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.experimentSaved' })
+    const edited = await controller.saveExperiment({ id: 'e1', projectId: 'p1', name: 'baseline-v2', status: 'failed', metrics: {} })
+    expect(edited).toBeNull()
+    expect(controller.getSnapshot().experiments?.list).toHaveLength(2)
+    expect(controller.getSnapshot().experiments?.list[0]?.name).toBe('baseline-v2')
   })
 
   it('skips a refetch of a ready artifact and keeps the not-found failure', async () => {

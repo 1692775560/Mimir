@@ -1,7 +1,9 @@
 /**
  * The experiments view: the selected project's experiment-run table (status
  * pill, expandable metrics, the linked-server badge with an inline relink
- * dropdown, delete action) topped by a metric-comparison section — one
+ * dropdown, edit/delete actions) topped by the inline create/edit form
+ * (`ExperimentForm.tsx`, opened from the toolbar's new-experiment button or
+ * a row's edit) and a metric-comparison section — one
  * hand-drawn inline SVG bar chart per numeric metric key shared by at least
  * two runs — above the whitelisted `EXPERIMENT_LOG.md` artifact, rendered by
  * the restricted Markdown renderer in `MarkdownView.tsx` (dependency-free).
@@ -9,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import type { ExperimentRecord } from 'dsh-mimir/types'
+import type { ExperimentInput, ExperimentRecord } from 'dsh-mimir/types'
 import type {
   ResearchArtifactView, ResearchFailureView, ResearchProjectSlice, ResearchServersView,
 } from './controller.ts'
@@ -24,6 +26,7 @@ import {
 } from './view-common.ts'
 import { renderMarkdown } from './MarkdownView.tsx'
 import { EmptyState } from './EmptyState.tsx'
+import { ExperimentForm } from './ExperimentForm.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
 
@@ -92,7 +95,7 @@ function MetricChart({ metricKey, rows }: {
  */
 export function ExperimentsView({
   experiments, artifact, servers, projectId, ensureServers, deleteExperiment, updateExperiment,
-  retry, t,
+  saveExperiment, retry, t,
 }: {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
@@ -101,12 +104,15 @@ export function ExperimentsView({
   readonly ensureServers: () => void
   readonly deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   readonly updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
+  readonly saveExperiment: (experiment: ExperimentInput) => Promise<ResearchFailureView | null>
   /** Reload the slice after a load failure (re-selects the current project). */
   readonly retry: () => void
   readonly t: ResearchT
 }) {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
   const [actionError, setActionError] = useState<string | null>(null)
+  // The inline create/edit form; `editing` null means create.
+  const [form, setForm] = useState<{ editing: ExperimentRecord | null } | null>(null)
   // The relink dropdown needs the server list; load it once per view mount.
   useEffect(() => { ensureServers() }, [ensureServers])
   const removeExperiment = (record: ExperimentRecord): void => {
@@ -129,6 +135,29 @@ export function ExperimentsView({
   return (
     <div className={css.experiments}>
       <ViewHead title={t('tab.experiments')} subtitle={t('view.experiments.subtitle')} />
+      {projectId !== null && (
+        <div className={css.dataActions}>
+          <button
+            type="button"
+            className={css.btnPrimary}
+            disabled={form !== null}
+            onClick={() => { setForm({ editing: null }) }}
+          >
+            {t('experiments.add')}
+          </button>
+        </div>
+      )}
+      {form !== null && projectId !== null && (
+        <ExperimentForm
+          key={form.editing?.id ?? 'new'}
+          projectId={projectId}
+          editing={form.editing}
+          servers={servers}
+          saveExperiment={saveExperiment}
+          onClose={() => { setForm(null) }}
+          t={t}
+        />
+      )}
       {experiments === null || experiments.status === 'loading' ? (
         <p className={css.hint}>{t('experiments.loading')}</p>
       ) : experiments.status === 'error' ? (
@@ -221,6 +250,13 @@ export function ExperimentsView({
                       </td>
                       <td>{record.updatedAt.slice(0, 16).replace('T', ' ')}</td>
                       <td>
+                        <button
+                          type="button"
+                          className={css.btn}
+                          onClick={() => { setForm({ editing: record }) }}
+                        >
+                          {t('experiments.edit')}
+                        </button>
                         <button
                           type="button"
                           className={css.btn}

@@ -116,7 +116,7 @@ export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  deleteExperiment, updateExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
   exportWiki, importWiki, dismissToast, pruneToasts,
@@ -357,6 +357,7 @@ export function ResearchPanel({
             ensureServers={ensureServers}
             deleteExperiment={deleteExperiment}
             updateExperiment={updateExperiment}
+            saveExperiment={saveExperiment}
             retry={() => { if (selectedProjectId !== null) selectProject(selectedProjectId) }}
             t={t}
           />

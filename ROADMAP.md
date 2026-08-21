@@ -20,6 +20,15 @@ polish round every few iterations.
 - [x] Experiment comparison: covered by the metric-comparison bar charts
       (one inline SVG chart per numeric metric shared by ≥2 runs) instead of
       a selection-based table
+- [x] Experiment create/edit inline form: new `saveExperiment` Remote
+      (32 research methods) — full-field upsert (fresh `exp-` id on create,
+      `updatedAt` refresh on both paths) with project-exists
+      (`project-not-found`), non-empty name, legal status, metrics shape,
+      and linked-server-exists (`invalid-input`) validation. The experiments
+      view's toolbar opens the form card (name / status select / dynamic
+      metrics key-value rows — numeric-looking values store as numbers,
+      empty keys drop — / optional server select), a row's Edit backfills
+      it, and a save patches the loaded slice plus toasts
 - [x] Outline drag-to-reorder sections: each top-level outline row grows a
       drag grip (HTML5 DnD, insertion indicator under the pointer); a drop
       rewrites `main.tex`'s top-level `\section` order (blocks move whole with

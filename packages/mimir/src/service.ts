@@ -38,6 +38,7 @@ import type {
   BibEntry,
   ExperimentRecord,
   ExperimentStatus,
+  ExperimentInput,
   JobRecord,
   PaperRecord,
   ResearchArtifactResult,
@@ -69,6 +70,7 @@ import type {
   ResearchRejected,
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
+  ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -279,6 +281,25 @@ function validateServerInput(input: ServerInput): string | null {
   if (input.host.trim().length === 0) return 'host must be non-empty'
   if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
     return 'port must be an integer between 1 and 65535'
+  }
+  return null
+}
+
+/** Legal experiment statuses, for the runtime guard (remote callers bypass the type). */
+const EXPERIMENT_STATUSES: readonly string[] = ['running', 'success', 'failed']
+
+/** First invalid-input message for one experiment upsert payload, or null when valid. */
+function validateExperimentInput(input: ExperimentInput): string | null {
+  if (input.name.trim().length === 0) return 'name must be non-empty'
+  // Widened to string so the runtime guard is not linted away.
+  const rawStatus: string = input.status
+  if (!EXPERIMENT_STATUSES.includes(rawStatus)) return `unknown status: ${rawStatus}`
+  if (typeof input.metrics !== 'object' || input.metrics === null || Array.isArray(input.metrics)) {
+    return 'metrics must be an object keyed by metric name'
+  }
+  for (const [key, value] of Object.entries(input.metrics)) {
+    if (key.trim().length === 0) return 'metrics keys must be non-empty'
+    if (typeof value !== 'number' && typeof value !== 'string') return `metrics.${key} must be a number or a string`
   }
   return null
 }
@@ -506,6 +527,66 @@ export class ResearchService extends TypertRemoteService {
     }
     await table.delete(request.id)
     return success({ id: request.id })
+  }
+
+  /**
+   * Upsert one experiment record (the panel's inline create/edit form).
+   * `projectId` must name a wiki project (`project-not-found`); the name
+   * must be non-empty, the status one of running/success/failed, and a
+   * given `serverId` must name a remembered server (`invalid-input`). An
+   * omitted `id` creates with a fresh `exp-` id; a given `id` must exist
+   * (`experiment-not-found`) and replaces the mutable fields. An omitted
+   * `logPath`/`serverId` is ABSENT from the record (never an
+   * undefined-valued key — the gateway's JSON-safety pass rejects those),
+   * and on update preserves the stored value (the form does not edit
+   * logPath; clearing a server link goes through `updateExperiment`'s
+   * null). Either way `updatedAt` refreshes — ExperimentRecord carries no
+   * createdAt.
+   * @param request - the full-field payload.
+   * @returns the stored record after the upsert.
+   */
+  @Remote('saveExperiment')
+  async saveExperiment(request: { experiment: ExperimentInput }): Promise<ResearchSaveExperimentResult> {
+    const input = request.experiment
+    if (this.domain.table('projects').get(input.projectId) === undefined) {
+      return rejected({ code: 'project-not-found', projectId: input.projectId })
+    }
+    const invalid = validateExperimentInput(input)
+    if (invalid !== null) return rejected({ code: 'invalid-input', message: invalid })
+    if (input.serverId !== undefined
+      && this.domain.table('servers').get(input.serverId) === undefined) {
+      return rejected({ code: 'invalid-input', message: `unknown server: ${input.serverId}` })
+    }
+    const table = this.domain.table('experiments')
+    const now = new Date().toISOString()
+    if (input.id !== undefined) {
+      const existing = table.get(input.id)
+      if (existing === undefined) return rejected({ code: 'experiment-not-found', id: input.id })
+      const next: ExperimentRecord = {
+        ...existing,
+        projectId: input.projectId,
+        name: input.name,
+        status: input.status,
+        metrics: input.metrics,
+        ...(input.logPath === undefined ? {} : { logPath: input.logPath }),
+        ...(input.serverId === undefined ? {} : { serverId: input.serverId }),
+        updatedAt: now,
+      }
+      await table.put(input.id, next)
+      return success({ experiment: next })
+    }
+    const created: ExperimentRecord = {
+      id: `exp-${Date.now().toString(36)}`,
+      projectId: input.projectId,
+      name: input.name,
+      status: input.status,
+      metrics: input.metrics,
+      ...(input.logPath === undefined ? {} : { logPath: input.logPath }),
+      ...(input.serverId === undefined ? {} : { serverId: input.serverId }),
+      updatedAt: now,
+    }
+    await table.put(created.id, created)
+    return success({ experiment: created })
   }
 
   /**
