@@ -176,6 +176,8 @@ export function apply(ctx: ClientContext): void {
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
       reorderPaperSections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSections(projectId, moves, baseOutline),
+      reorderPaperSubsections: (projectId, moves, baseOutline) =>
+        controller.reorderPaperSubsections(projectId, moves, baseOutline),
       exportWiki: () => controller.exportWiki(),
       importWiki: (snapshot, mode, confirmReplace) => controller.importWiki(snapshot, mode, confirmReplace),
       dismissToast: (id) => { controller.dismissToast(id) },

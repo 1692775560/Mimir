@@ -94,6 +94,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     saveBibliography: missing('saveBibliography'),
     importPapersToBib: missing('importPapersToBib'),
     reorderPaperSections: missing('reorderPaperSections'),
+    reorderPaperSubsections: missing('reorderPaperSubsections'),
     updateExperiment: missing('updateExperiment'),
     saveExperiment: missing('saveExperiment'),
     listBackups: missing('listBackups'),
@@ -1269,6 +1270,41 @@ describe('ResearchController arXiv search and paper import', () => {
     await Promise.resolve()
     const failure = await controller.reorderPaperSections('p1', [{ title: 'Intro', targetIndex: 1 }], ['Intro'])
     expect(failure?.code).toBe('conflict')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(outlineReads).toBe(2)
+    expect(sourceReads).toBe(2)
+  })
+
+  it('reorderPaperSubsections forwards the nested baseOutline and refreshes on success', async () => {
+    let outlineReads = 0
+    let sourceReads = 0
+    const seen: { moves: unknown; baseOutline: unknown }[] = []
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: () => {
+        outlineReads += 1
+        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { nodes: [] } }))
+      },
+      getPaperSource: () => {
+        sourceReads += 1
+        return Promise.resolve(carried<ResearchPaperSourceResult>({ ok: true, value: { content: 'v1', mtimeMs: 1000 } }))
+      },
+      reorderPaperSubsections: (request) => {
+        seen.push({ moves: request.moves, baseOutline: request.baseOutline })
+        return Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.select('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const move = { sectionTitle: 'Method', title: 'Arch', targetSectionTitle: 'Intro', targetIndex: 0 }
+    const base = [
+      { title: 'Intro', subsections: ['Setup'] },
+      { title: 'Method', subsections: ['Arch', 'Training'] },
+    ]
+    const failure = await controller.reorderPaperSubsections('p1', [move], base)
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ moves: [move], baseOutline: base }])
     await Promise.resolve()
     await Promise.resolve()
     expect(outlineReads).toBe(2)

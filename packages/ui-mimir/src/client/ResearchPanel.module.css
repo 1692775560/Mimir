@@ -699,6 +699,25 @@ li.dropIndicator {
   display: block;
 }
 
+/* The slim target shown under a subsection-less section while a subsection
+   is mid-drag: dropping there moves the subsection into that section. */
+.outlineDropZone {
+  margin: 2px 0;
+  padding: 3px 6px;
+  border: 1px dashed var(--dsw-alias-border-secondary, #d3d9e4);
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.outlineDropZone[data-active] {
+  border-color: var(--dsw-alias-business-primary, #3861fb);
+  color: var(--dsw-alias-business-primary, #3861fb);
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
 .editorPane,
 .previewPane {
   display: flex;

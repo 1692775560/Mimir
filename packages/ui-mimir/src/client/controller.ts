@@ -61,9 +61,11 @@ import type {
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
   SectionMove,
+  SectionOutlineTitles,
   ServerInput,
   ServerRecord,
   ServerStatusView,
+  SubsectionMove,
 } from 'dsh-mimir/types'
 
 /**
@@ -130,6 +132,12 @@ export interface ResearchRemote {
     projectId: string
     moves: SectionMove[]
     baseOutline: string[]
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
+  reorderPaperSubsections: (request: {
+    projectId: string
+    moves: SubsectionMove[]
+    baseOutline: SectionOutlineTitles[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
   exportWiki: () => Promise<RemoteResult<ResearchExportWikiResult>>
@@ -615,6 +623,42 @@ export class ResearchController implements HostObservable<ResearchView> {
     try {
       const carried = await this.remote.reorderPaperSections({
         projectId, moves: [...moves], baseOutline: [...baseOutline], dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) {
+        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        return businessFailure(result.error)
+      }
+      this.refreshPaper(projectId)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Reorder the subsections of one project's `main.tex`, inside their own
+   * section or across sections. Same settlement contract as
+   * {@link ResearchController.reorderPaperSections}: the failure view is
+   * returned for the rail, and both a success and a conflict re-read the
+   * outline and the source from the Host.
+   * @param projectId - wiki project id.
+   * @param moves - the drops, applied in order.
+   * @param baseOutline - the section/subsection title tree the drag started from.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async reorderPaperSubsections(
+    projectId: string,
+    moves: readonly SubsectionMove[],
+    baseOutline: readonly SectionOutlineTitles[],
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.reorderPaperSubsections({
+        projectId,
+        moves: [...moves],
+        baseOutline: baseOutline.map(section => ({ title: section.title, subsections: [...section.subsections] })),
+        dir: this.dirOf(projectId),
       })
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value

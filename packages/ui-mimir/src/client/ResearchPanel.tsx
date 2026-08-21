@@ -118,7 +118,7 @@ export function ResearchPanel({
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
-  ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections,
+  ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -329,6 +329,7 @@ export function ResearchPanel({
             importPapersToBib={importPapersToBib}
             ensurePapers={ensurePapers}
             reorderPaperSections={reorderPaperSections}
+            reorderPaperSubsections={reorderPaperSubsections}
             fullscreen={paperFullscreen}
             setFullscreen={actions.setPaperFullscreen}
             t={t}
