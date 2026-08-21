@@ -18,6 +18,7 @@ import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
 import { createLatexCompileTool } from './tools/latex.ts'
+import { createFigureSaveTool } from './tools/figure.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
 import { registerReviewCommand } from './commands/review.ts'
@@ -28,7 +29,7 @@ import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
 import { startWikiBackupLoop } from './backup.ts'
 
-export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, JobRecord, JobStatus } from './types.ts'
+export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
 export type {
   FigureEntry,
   OutlineNode,
@@ -88,6 +89,7 @@ export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLat
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
+export { createFigureSaveTool } from './tools/figure.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
 export type { WikiSnapshotSource } from './wiki-snapshot.ts'
 export {
@@ -496,6 +498,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createPaperFetchTool())
   ctx.tools.register(createWikiNoteTool(domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
+  ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
 
   registerIdeaCommand(ctx, deps)
   registerPlanCommand(ctx, deps)

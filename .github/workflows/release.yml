@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - name: Verify tag matches package versions
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(node -p "require('./packages/mimir/package.json').version")"
+          test "$GITHUB_REF_NAME" = "v$(node -p "require('./packages/ui-mimir/package.json').version")"
+      - run: pnpm --filter dsh-mimir publish --access public --provenance --no-git-checks
+      - run: pnpm --filter dsh-client-ui-mimir publish --access public --provenance --no-git-checks

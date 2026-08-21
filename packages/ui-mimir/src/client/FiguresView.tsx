@@ -199,6 +199,8 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
                     : <img className={css.figureThumb} src={url(entry)} alt={entry.name} loading="lazy" />}
                 </button>
                 <span className={css.figureName} title={entry.relPath}>{entry.name}</span>
+                {entry.caption !== undefined && entry.caption !== '' && <span className={css.figureSize}>{entry.caption}</span>}
+                {entry.experimentId !== undefined && <span className={css.figureBadge}>#{entry.experimentId}</span>}
                 <span className={css.figureSize}>{formatSize(entry.sizeBytes)}</span>
                 <div className={css.figureActions}>
                   <button

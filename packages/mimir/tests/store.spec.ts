@@ -93,6 +93,18 @@ describe('researchWikiDomainSpec', () => {
     expect(reopened.table('servers').size).toBe(0)
   })
 
+  it('opens a v2 snapshot predating figure metadata with figures empty', async () => {
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness(pool)
+      await (await facility.open(researchWikiDomainSpec)).table('papers').put(paper.arxivId, paper)
+    }
+    pool.media.get('research_wiki')!.tables.delete('figures')
+    const { facility } = await harness(pool)
+    const reopened = await facility.open(researchWikiDomainSpec)
+    expect(reopened.table('figures').size).toBe(0)
+  })
+
   it('loads a paper record predating tags/projectIds with both defaulted empty', async () => {
     const pool = new MemoryMediaPool()
     {

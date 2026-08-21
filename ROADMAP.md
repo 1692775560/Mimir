@@ -7,6 +7,10 @@ polish round every few iterations.
 
 ## In progress
 
+- [x] Agent artifact ingestion (Issue #30): `figure_save` copies generated images into the selected project's `figures/` directory, records caption/source/experiment metadata in the wiki, and returns a LaTeX snippet; the figures view shows that metadata.
+- [x] Standard Playwright E2E suite (Issue #13): core six-view and literature-search scenarios, reusable against a mounted dsh Web URL, with CI artifact upload when `DSH_E2E_URL` is configured.
+- [x] npm release preparation (Issue #2): Node engines, pack verification, tag-triggered provenance workflow, and release documentation. First publication remains blocked on npm publisher authentication.
+
 ## Done
 
 - [x] Server tags + experiment server links: ServerRecord grew `tags`
