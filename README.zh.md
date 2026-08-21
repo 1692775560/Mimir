@@ -46,7 +46,7 @@
 
 ## 快速上手
 
-> **状态说明：** 两个包已具备 tag 触发、带 provenance 的发布流水线，但首次 npm 发布仍需要发布者认证。在 `npm view dsh-mimir` 可查询前，请继续使用下方源码安装方式。
+> **状态说明：** `dsh-mimir` 与 `dsh-client-ui-mimir` 已发布到 npm。普通使用安装宿主插件即可；当前 dsh web 的客户端组合仍需按第 5 步从源码注册 UI 插件。
 
 ### 前置要求
 
@@ -63,7 +63,13 @@
   ```
 - **arXiv 访问**——文献检索请求 `export.arxiv.org`；在代理环境下，启动 dsh 前导出 `HTTPS_PROXY`。
 
-### 1. 克隆并构建
+### 1. 安装宿主插件
+
+```sh
+dsh plugin --profile web add dsh-mimir
+```
+
+如需参与开发或集成 Web 工作台，再克隆并构建源码：
 
 ```sh
 git clone https://github.com/1692775560/Mimir.git
@@ -73,7 +79,7 @@ pnpm run build
 pnpm test          # 可选自检：vitest，覆盖两个包
 ```
 
-### 2. 把插件装进 web profile
+### 2. 从源码安装插件（仅开发/工作台集成）
 
 dsh 从 profile 目录（`~/.dsh/profiles/web`）解析 patch 里的插件名，**而不是**从当前目录——因此要把构建好的包 link 进 profile（profile 目录在 dsh 首次运行时创建）：
 
@@ -119,7 +125,7 @@ dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 
 ### 论文
 
-项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号、一键编译（标注引擎）、点击跳源码行的错误列表、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选股库论文追加）。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
+项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号、一键编译（标注引擎）、点击跳源码行的错误列表、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
 
 | 论文：语法高亮 | 论文：编译问题 | 论文：点击跳源码行 |
 | --- | --- | --- |

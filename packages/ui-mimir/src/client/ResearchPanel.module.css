@@ -165,6 +165,26 @@
   height: 16px;
 }
 
+.navLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navCount {
+  min-width: 18px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+}
+
 .navItem[data-active] .navIcon {
   opacity: 1;
 }
@@ -177,6 +197,19 @@
   background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 12%));
   color: var(--dsw-alias-state-business-primary, #4176e6);
   font-weight: 600;
+}
+
+.navItem[data-active] .navCount {
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.navItem:focus-visible,
+.iconButton:focus-visible,
+.close:focus-visible,
+.projectRow:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+  outline-offset: 2px;
 }
 
 /* The 3px accent bar on the active tab's left edge. */
@@ -2421,6 +2454,10 @@ li.dropIndicator {
 
   .navItem {
     flex: 0 0 auto;
+  }
+
+  .navCount {
+    display: none;
   }
 
   /* The active-tab accent moves from the left edge to the bottom edge. */
