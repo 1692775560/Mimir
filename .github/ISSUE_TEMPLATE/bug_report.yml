@@ -1,0 +1,26 @@
+name: Bug 报告
+description: 报告一个功能异常
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: 现象
+      description: 看到了什么？期望是什么？
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      description: 从启动服务开始的完整步骤；涉及 UI 的问题请附截图
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 环境
+      description: Node/pnpm 版本、操作系统、dsh 版本；LaTeX 引擎（tectonic/latexmk）及版本
+  - type: textarea
+    attributes:
+      label: 日志/报错
+      description: 终端输出、浏览器 console、编译 issue 列表等
+      render: text
