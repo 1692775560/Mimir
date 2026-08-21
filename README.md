@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 **Mimir is a research-lifecycle plugin suite for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh): arXiv literature search, a persistent research wiki, independent subagent review, and a closed LaTeX writing → compile → preview loop — plus a full web workbench.**
 
+![Mimir — open-source AI research workspace](docs/media/mimir-cover.png)
+
 ## Video demo
 
 [![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
