@@ -361,6 +361,76 @@ describe('ResearchService.importPaper / removePaper', () => {
   })
 })
 
+describe('ResearchService.fetchPaperPdf', () => {
+  /** Minimal PDF-ish payload for the stubbed download. */
+  const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])
+
+  it('downloads the PDF into the workspace and links it on the record', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', async (url: string) => {
+      requestedUrl = url
+      return new Response(PDF_BYTES, { status: 200 })
+    })
+    const { domain, workspaceDir, service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    const outcome = await service.fetchPaperPdf({ arxivId: ARXIV_ENTRY.id })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(requestedUrl).toBe(`https://arxiv.org/pdf/${ARXIV_ENTRY.id}`)
+    expect(outcome.value.paper.pdfPath).toBe('papers/2103.00020v2.pdf')
+    const stored = await readFile(join(workspaceDir, 'papers', '2103.00020v2.pdf'))
+    expect(new Uint8Array(stored)).toEqual(PDF_BYTES)
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.pdfPath).toBe('papers/2103.00020v2.pdf')
+  })
+
+  it('reports paper-not-found for an unknown id and never fetches', async () => {
+    let fetches = 0
+    vi.stubGlobal('fetch', async () => {
+      fetches += 1
+      return new Response(PDF_BYTES, { status: 200 })
+    })
+    const { service } = await harness()
+    await expect(service.fetchPaperPdf({ arxivId: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
+    expect(fetches).toBe(0)
+  })
+
+  it('settles HTTP and transport failures as operation-failed without touching the record', async () => {
+    const { domain, service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    vi.stubGlobal('fetch', async () => new Response('busy', { status: 404 }))
+    await expect(service.fetchPaperPdf({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('HTTP 404') } })
+    vi.stubGlobal('fetch', async () => { throw new Error('socket hangup') })
+    await expect(service.fetchPaperPdf({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: 'socket hangup' } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.pdfPath).toBeUndefined()
+  })
+
+  it('rejects an unconvertible arXiv id before any request', async () => {
+    let fetches = 0
+    vi.stubGlobal('fetch', async () => {
+      fetches += 1
+      return new Response(PDF_BYTES, { status: 200 })
+    })
+    const { domain, service } = await harness()
+    await domain.table('papers').put('bad id', {
+      arxivId: 'bad id',
+      title: 'Bad',
+      authors: [],
+      summary: '',
+      url: '',
+      notes: '',
+      tags: [],
+      projectIds: [],
+      addedAt: '2026-08-20T00:00:00.000Z',
+    })
+    await expect(service.fetchPaperPdf({ arxivId: 'bad id' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('invalid arXiv id') } })
+    expect(fetches).toBe(0)
+  })
+})
+
 describe('ResearchService.deleteExperiment', () => {
   it('deletes one experiment and reports experiment-not-found on a repeat', async () => {
     const { domain, service } = await harness()

@@ -22,6 +22,9 @@ export const paperRecord = z.object({
   // stored record predates them, so existing v2 JSON stores keep loading.
   tags: z.array(z.string()).default([]),
   projectIds: z.array(z.string()).default([]),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  pdfPath: z.string().optional(),
   addedAt: z.string(),
 })
 

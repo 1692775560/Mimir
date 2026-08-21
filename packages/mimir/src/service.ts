@@ -14,7 +14,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { readdir, readFile, mkdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -31,7 +31,7 @@ import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { isBackupFileName } from './backup.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
-import { fetchArxivSearch } from './tools/arxiv.ts'
+import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from './tools/arxiv.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
@@ -54,6 +54,7 @@ import type {
   ResearchExperimentsResult,
   ResearchExportWikiResult,
   ResearchFailure,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -172,6 +173,10 @@ async function pdfMtime(pdfPath: string): Promise<number | null> {
 const TCP_PROBE_TIMEOUT_MS = 4000
 /** Timeout of one arXiv API request made on the panel's behalf. */
 const ARXIV_FETCH_TIMEOUT_MS = 15_000
+/** Timeout of one panel-driven arXiv PDF download. */
+const ARXIV_PDF_FETCH_TIMEOUT_MS = 60_000
+/** Workspace-relative directory the fetched paper PDFs land in. */
+const PAPER_PDF_DIR = 'papers'
 /** Default result cap of one panel-driven arXiv search. */
 const ARXIV_SEARCH_DEFAULT_MAX_RESULTS = 10
 /** Hard result cap of one panel-driven arXiv search. */
@@ -492,6 +497,40 @@ export class ResearchService extends TypertRemoteService {
       projectIds: request.projectIds ?? existing.projectIds,
       notes: request.notes ?? existing.notes,
     }
+    await table.put(request.arxivId, next)
+    return success({ paper: next })
+  }
+
+  /**
+   * Download one remembered paper's arXiv PDF into the workspace and link it
+   * on the record: the bytes land at `papers/<arxiv id>.pdf` under the
+   * workspace root (same-name overwrite on a refetch, so a new arXiv version
+   * replaces the stale copy) and the record's `pdfPath` points at it. The
+   * panel reads the file back through the `/research/paper-pdf/<id>` route.
+   * An unknown arXiv id is `paper-not-found`; transport/HTTP/oversize
+   * failures settle as `operation-failed` with the underlying message.
+   * @param request - the bare arXiv id.
+   * @returns the stored record after the update.
+   */
+  @Remote('fetchPaperPdf')
+  async fetchPaperPdf(request: { arxivId: string }): Promise<ResearchFetchPaperPdfResult> {
+    const table = this.domain.table('papers')
+    const existing = table.get(request.arxivId)
+    if (existing === undefined) return rejected({ code: 'paper-not-found' })
+    let bytes: Uint8Array
+    try {
+      bytes = await fetchArxivPdf(request.arxivId, AbortSignal.timeout(ARXIV_PDF_FETCH_TIMEOUT_MS))
+    } catch (error) {
+      return rejected({
+        code: 'operation-failed',
+        message: error instanceof Error ? error.message : 'arXiv PDF download failed',
+      })
+    }
+    const relPath = `${PAPER_PDF_DIR}/${paperPdfFileName(request.arxivId)}`
+    const dir = join(this.workspaceDir, PAPER_PDF_DIR)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, paperPdfFileName(request.arxivId)), bytes)
+    const next: PaperRecord = { ...existing, pdfPath: relPath }
     await table.put(request.arxivId, next)
     return success({ paper: next })
   }

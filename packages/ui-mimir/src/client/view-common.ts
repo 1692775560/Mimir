@@ -217,6 +217,16 @@ export function bibEntryFromDraft(draft: BibEntryDraft): BibEntry | null {
 }
 
 /**
+ * Build the paper-PDF route URL of one remembered paper (the library card's
+ * embedded reader). `version` cache-busts a refetch: the route serves the
+ * same path after every fetch, and the no-cache reply alone does not force an
+ * already-open iframe to re-request.
+ */
+export function paperPdfUrl(arxivId: string, version: number): string {
+  return `/research/paper-pdf/${encodeURIComponent(arxivId)}?v=${version}`
+}
+
+/**
  * One-line summary of one bibliography entry (the bib panel's row): the
  * title when present, else the author/year pair, else the entry type.
  * Whitespace runs collapse; the result truncates at 80 characters.

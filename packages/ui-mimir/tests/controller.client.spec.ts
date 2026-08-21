@@ -20,6 +20,7 @@ import type {
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -76,6 +77,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     importPaper: missing('importPaper'),
     removePaper: missing('removePaper'),
     updatePaper: missing('updatePaper'),
+    fetchPaperPdf: missing('fetchPaperPdf'),
     listExperiments: missing('listExperiments'),
     deleteExperiment: missing('deleteExperiment'),
     readArtifact: missing('readArtifact'),
@@ -996,6 +998,33 @@ describe('ResearchController arXiv search and paper import', () => {
     expect(seen).toMatchObject({ arxivId: ENTRY.id, tags: ['baseline'], projectIds: ['p1'] })
     expect(lists).toBe(1)
     expect(controller.getSnapshot().papers).toMatchObject({ status: 'ready' })
+  })
+
+  it('fetchPaperPdf refreshes the list and toasts on success, surfaces failures', async () => {
+    let lists = 0
+    let seen: string | null = null
+    const controller = new ResearchController(stubRemote({
+      fetchPaperPdf: (request) => {
+        seen = request.arxivId
+        return Promise.resolve(carried<ResearchFetchPaperPdfResult>(
+          request.arxivId === PAPER.arxivId
+            ? { ok: true, value: { paper: { ...PAPER, pdfPath: 'papers/2103.00020v2.pdf' } } }
+            : { ok: false, error: { code: 'paper-not-found' } },
+        ))
+      },
+      listPapers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchPapersResult>({ ok: true, value: { papers: [PAPER] } }))
+      },
+    }))
+    const missing = await controller.fetchPaperPdf('nope')
+    expect(missing).toMatchObject({ code: 'paper-not-found' })
+    expect(lists).toBe(0)
+    const ok = await controller.fetchPaperPdf(PAPER.arxivId)
+    expect(ok).toBeNull()
+    expect(seen).toBe(PAPER.arxivId)
+    expect(lists).toBe(1)
+    expect(controller.getSnapshot().toasts.at(-1)?.copy).toBe('toast.pdfFetched')
   })
 
   it('ensureBibliography loads the entries once and keeps a ready view', async () => {
