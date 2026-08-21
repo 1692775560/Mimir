@@ -2525,3 +2525,93 @@ li.dropIndicator {
     opacity: 1;
   }
 }
+
+/* ── Remote jobs (the servers view's jobs section) ─────────────────────── */
+
+.jobsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.jobForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.jobForm .field[data-wide] {
+  flex: 1 1 320px;
+}
+
+.jobCommand {
+  display: inline-block;
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-family: var(--dsw-alias-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.jobStatus {
+  display: inline-block;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: var(--dsw-alias-markdown-code-block, #f1f3f5);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+}
+
+.jobStatus[data-status='running'] {
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 12%));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.jobStatus[data-status='succeeded'] {
+  background: var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 12%));
+  color: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.jobStatus[data-status='failed'] {
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 10%));
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.jobExitCode {
+  margin-left: 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+}
+
+.jobOutput {
+  margin-top: 8px;
+}
+
+.jobOutput pre {
+  max-height: 180px;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--dsw-alias-markdown-code-block, #f1f3f5);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-family: var(--dsw-alias-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.jobOutput pre[data-kind='stderr'] {
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}

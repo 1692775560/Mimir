@@ -100,6 +100,33 @@ export interface ExperimentRecord {
   readonly updatedAt: string
 }
 
+/** Lifecycle of one remote job submitted over ssh. */
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+
+/** One remote command submitted to a remembered server over ssh. */
+export interface JobRecord {
+  readonly id: string
+  /** Remembered server the command runs on. */
+  readonly serverId: string
+  /** The remote command line, executed by the server's login shell. */
+  readonly command: string
+  readonly status: JobStatus
+  /** Experiment record the job is linked to, when given at submit time. */
+  readonly experimentId?: string | undefined
+  /** Remote exit code; null until the job settles (and on a spawn/timeout failure). */
+  readonly exitCode: number | null
+  /** The last chunk of the job's stdout (empty until the job settles). */
+  readonly stdoutTail: string
+  /** The last chunk of the job's stderr (empty until the job settles). */
+  readonly stderrTail: string
+  /** ISO-8601 timestamp of the record's first write. */
+  readonly createdAt: string
+  /** ISO-8601 timestamp of the status flip to `running`. */
+  readonly startedAt?: string | undefined
+  /** ISO-8601 timestamp of the terminal settle. */
+  readonly finishedAt?: string | undefined
+}
+
 /** One issue raised by an independent review round. */
 export interface ReviewIssue {
   readonly severity: 'major' | 'minor'
@@ -157,6 +184,7 @@ export type ResearchFailure =
   | { readonly code: 'artifact-not-found'; readonly name: string }
   | { readonly code: 'invalid-artifact'; readonly name: string }
   | { readonly code: 'server-not-found'; readonly id: string }
+  | { readonly code: 'job-not-found'; readonly id: string }
   | { readonly code: 'experiment-not-found'; readonly id: string }
   | { readonly code: 'section-not-found'; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
@@ -312,6 +340,15 @@ export type ResearchDeleteServerResult = ResearchResult<{ readonly id: string }>
 
 /** `checkServer` result: the settled probe view. */
 export type ResearchCheckServerResult = ResearchResult<ServerStatusView>
+
+/** `submitJob` result: the queued record (the background run settles it later). */
+export type ResearchSubmitJobResult = ResearchResult<{ readonly job: JobRecord }>
+
+/** `listJobs` result: job records, most recently submitted first. */
+export type ResearchListJobsResult = ResearchResult<{ readonly jobs: readonly JobRecord[] }>
+
+/** `deleteJob` result: the deleted record's id. */
+export type ResearchDeleteJobResult = ResearchResult<{ readonly id: string }>
 
 /** `getBibliography` result: the parsed `references.bib` entries plus the file mtime (null when absent). */
 export type ResearchBibliographyResult = ResearchResult<{

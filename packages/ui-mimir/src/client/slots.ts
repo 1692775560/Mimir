@@ -157,6 +157,28 @@ export interface ResearchPanelInjected {
   checkServer: (id: string) => Promise<void>
   /** Probe every listed server that is not already being probed. */
   checkAllServers: () => void
+  /** Load the remote-job list once, on the jobs section's first open. */
+  ensureJobs: () => void
+  /**
+   * Re-poll the remote-job list (the jobs section's interval while any job
+   * is queued/running).
+   */
+  refreshJobs: () => void
+  /**
+   * Submit one remote command to a server over ssh, optionally linked to an
+   * experiment record (its status follows the job's terminal state).
+   * @param serverId - server record id.
+   * @param command - the remote command line.
+   * @param experimentId - the experiment to link, when given.
+   * @returns null on success, the settled failure otherwise.
+   */
+  submitJob: (serverId: string, command: string, experimentId?: string) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one job record, dropping it from the loaded list.
+   * @param id - job record id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteJob: (id: string) => Promise<ResearchFailureView | null>
   /**
    * Load one project's `references.bib` on the bib panel's first open.
    * @param projectId - wiki project id.

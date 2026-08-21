@@ -117,6 +117,7 @@ export function ResearchPanel({
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, updateExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
+  ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
@@ -139,6 +140,7 @@ export function ResearchPanel({
   const figures = useResearch(view => view.figures)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
+  const jobs = useResearch(view => view.jobs)
   const bib = useResearch(view => view.bib)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
@@ -379,6 +381,12 @@ export function ResearchPanel({
             deleteServer={deleteServer}
             checkServer={checkServer}
             checkAllServers={checkAllServers}
+            jobs={jobs}
+            experiments={experiments}
+            ensureJobs={ensureJobs}
+            refreshJobs={refreshJobs}
+            submitJob={submitJob}
+            deleteJob={deleteJob}
             t={t}
           />
         )}

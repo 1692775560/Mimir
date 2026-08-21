@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { ClaimRecord, ExperimentRecord, IdeaRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
+import type { ClaimRecord, ExperimentRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
 
 /** Durable shape of one remembered paper. */
 export const paperRecord = z.object({
@@ -84,14 +84,31 @@ export const serverRecord = z.object({
   updatedAt: z.string(),
 })
 
+/** Durable shape of one remote job submitted over ssh. */
+export const jobRecord = z.object({
+  id: z.string(),
+  serverId: z.string(),
+  command: z.string(),
+  status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+  experimentId: z.string().optional(),
+  exitCode: z.number().int().nullable(),
+  stdoutTail: z.string(),
+  stderrTail: z.string(),
+  createdAt: z.string(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+})
+
 /**
- * The research wiki domain spec: six tables, no global singleton. The spec
+ * The research wiki domain spec: seven tables, no global singleton. The spec
  * object is the single source of the domain's name, version, and schemas.
- * The `servers` table was added WITHOUT a version bump: the domain loader
- * fills a table missing from a stored snapshot with an empty map, so
- * existing v2 JSON stores open with `servers` empty, while a bump would make
- * the storage-json backend reject every existing file (`version-mismatch`)
- * with no migration path.
+ * The `servers` and `jobs` tables were added WITHOUT a version bump: the
+ * domain loader fills a table missing from a stored snapshot with an empty
+ * map, so existing v2 JSON stores open with them empty, while a bump would
+ * make the storage-json backend reject every existing file
+ * (`version-mismatch`) with no migration path. `jobs` holds runtime state
+ * rather than research data, so the wiki export/import snapshot (six tables)
+ * deliberately excludes it.
  */
 export const researchWikiDomainSpec = defineDomain({
   name: 'research_wiki',
@@ -103,6 +120,7 @@ export const researchWikiDomainSpec = defineDomain({
     projects: domainTable<string, ProjectRecord>(projectRecord),
     experiments: domainTable<string, ExperimentRecord>(experimentRecord),
     servers: domainTable<string, ServerRecord>(serverRecord),
+    jobs: domainTable<string, JobRecord>(jobRecord),
   },
 })
 
