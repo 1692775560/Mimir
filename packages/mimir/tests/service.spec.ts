@@ -706,3 +706,138 @@ describe('ResearchService.reorderPaperSections', () => {
     })).resolves.toMatchObject({ ok: false, error: { code: 'paper-not-found' } })
   })
 })
+
+describe('ResearchService.saveExperiment', () => {
+  /** Seed the owning project and one server; returns the server id. */
+  async function seed(h: Awaited<ReturnType<typeof harness>>) {
+    await h.domain.table('projects').put(PROJECT.id, PROJECT)
+    const created = await h.service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    return created.value.server.id
+  }
+
+  it('creates with a fresh exp- id and stores the full payload', async () => {
+    const h = await harness()
+    const serverId = await seed(h)
+    const created = await h.service.saveExperiment({
+      experiment: {
+        projectId: PROJECT.id,
+        name: 'bhx-v2',
+        status: 'running',
+        metrics: { mpjpe: 88.1, note: 'warmup' },
+        serverId,
+      },
+    })
+    expect(created).toMatchObject({
+      ok: true,
+      value: {
+        experiment: {
+          projectId: PROJECT.id, name: 'bhx-v2', status: 'running',
+          metrics: { mpjpe: 88.1, note: 'warmup' }, serverId,
+        },
+      },
+    })
+    if (!created.ok) throw new Error('unreachable')
+    expect(created.value.experiment.id).toMatch(/^exp-/)
+    expect(typeof created.value.experiment.updatedAt).toBe('string')
+    const listed = await h.service.listExperiments({ projectId: PROJECT.id })
+    expect(listed).toMatchObject({ ok: true, value: { experiments: [{ id: created.value.experiment.id }] } })
+  })
+
+  it('updates an existing record in place and refreshes updatedAt', async () => {
+    const h = await harness()
+    await seed(h)
+    await h.domain.table('experiments').put('e1', {
+      id: 'e1',
+      projectId: PROJECT.id,
+      name: 'bhx-base',
+      status: 'running',
+      metrics: { mpjpe: 99 },
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    })
+    const updated = await h.service.saveExperiment({
+      experiment: { id: 'e1', projectId: PROJECT.id, name: 'bhx-base-v2', status: 'success', metrics: { mpjpe: 92.4 } },
+    })
+    expect(updated).toMatchObject({
+      ok: true,
+      value: { experiment: { id: 'e1', name: 'bhx-base-v2', status: 'success', metrics: { mpjpe: 92.4 } } },
+    })
+    if (!updated.ok) throw new Error('unreachable')
+    expect(updated.value.experiment.updatedAt > '2026-08-10T00:00:00.000Z').toBe(true)
+    expect(h.domain.table('experiments').get('e1')?.name).toBe('bhx-base-v2')
+  })
+
+  it('rejects an unknown project as project-not-found', async () => {
+    const h = await harness()
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: 'missing', name: 'run', status: 'running', metrics: {} },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'project-not-found', projectId: 'missing' } })
+  })
+
+  it('rejects an empty name, a bad status, and bad metrics as invalid-input', async () => {
+    const h = await harness()
+    await seed(h)
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: '  ', status: 'running', metrics: {} },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: 'run', status: 'done' as 'running', metrics: {} },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: 'run', status: 'running', metrics: { '': 1 } },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: 'run', status: 'running', metrics: { acc: true as unknown as number } },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+
+  it('rejects an unknown serverId as invalid-input', async () => {
+    const h = await harness()
+    await seed(h)
+    await expect(h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: 'run', status: 'running', metrics: {}, serverId: 'srv-missing' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    expect(h.domain.table('experiments').get('exp-missing')).toBeUndefined()
+  })
+
+  it('reports experiment-not-found when updating an unknown id', async () => {
+    const h = await harness()
+    await seed(h)
+    await expect(h.service.saveExperiment({
+      experiment: { id: 'missing', projectId: PROJECT.id, name: 'run', status: 'running', metrics: {} },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'missing' } })
+  })
+
+  it('omits unset optional keys instead of writing undefined values', async () => {
+    const h = await harness()
+    await seed(h)
+    // `undefined` values would trip the gateway's JSON boundary validation and
+    // pollute the stored record, so optional fields must be absent, not undefined.
+    const created = await h.service.saveExperiment({
+      experiment: { projectId: PROJECT.id, name: 'local-run', status: 'running', metrics: {} },
+    })
+    if (!created.ok) throw new Error('create failed')
+    expect('logPath' in created.value.experiment).toBe(false)
+    expect('serverId' in created.value.experiment).toBe(false)
+    expect('logPath' in h.domain.table('experiments').get(created.value.experiment.id)!).toBe(false)
+  })
+
+  it('keeps the existing serverId when an update does not pass one', async () => {
+    const h = await harness()
+    const serverId = await seed(h)
+    await h.domain.table('experiments').put('e1', {
+      id: 'e1',
+      projectId: PROJECT.id,
+      name: 'bhx-base',
+      status: 'running',
+      metrics: {},
+      serverId,
+      updatedAt: '2026-08-10T00:00:00.000Z',
+    })
+    const updated = await h.service.saveExperiment({
+      experiment: { id: 'e1', projectId: PROJECT.id, name: 'bhx-base', status: 'success', metrics: {} },
+    })
+    if (!updated.ok) throw new Error('unreachable')
+    expect(updated.value.experiment.serverId).toBe(serverId)
+  })
+})
