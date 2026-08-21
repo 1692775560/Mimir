@@ -239,7 +239,13 @@ export function ResearchPanel({
       <div className={css.backdrop} aria-hidden />
       <aside className={css.side}>
         <div className={css.sideHead}>
-          <span className={css.title}>{t('panel.title')}</span>
+          <div className={css.brand}>
+            <span className={css.brandMark} aria-hidden>M</span>
+            <span className={css.brandCopy}>
+              <span className={css.title}>{t('panel.title')}</span>
+              <span className={css.brandSubtitle}>{t('panel.subtitle')}</span>
+            </span>
+          </div>
           <div className={css.headActions}>
             <button
               type="button"
@@ -259,8 +265,8 @@ export function ResearchPanel({
             >
               {locale === 'zh' ? '中' : 'EN'}
             </button>
-            <button type="button" className={css.close} onClick={() => { actions.setOpen(false) }}>
-              {t('panel.close')}
+            <button type="button" className={css.close} title={t('panel.close')} aria-label={t('panel.close')} onClick={() => { actions.setOpen(false) }}>
+              ×
             </button>
           </div>
         </div>
