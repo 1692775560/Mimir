@@ -20,7 +20,7 @@ import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
-import { parseTexOutline, reorderSections } from './outline.ts'
+import { parseTexOutline, reorderSections, reorderSubsections } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
@@ -82,6 +82,8 @@ import type {
   ResearchWikiSnapshot,
   ResearchWikiTableName,
   SectionMove,
+  SectionOutlineTitles,
+  SubsectionMove,
   ServerGpuView,
   ServerInput,
   ServerRecord,
@@ -810,6 +812,69 @@ export class ResearchService extends TypertRemoteService {
     }
     if (reordered.kind === 'invalid-move') {
       return rejected({ code: 'invalid-input', message: `section target index ${reordered.targetIndex} out of range` })
+    }
+    const outcome = await saveTextFileOptimistic(texPath, reordered.tex, snapshot.mtimeMs)
+    if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
+    if (outcome.kind === 'conflict') {
+      return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
+    }
+    return success({ mtimeMs: outcome.mtimeMs })
+  }
+
+  /**
+   * Reorder the `\subsection` blocks of the addressed project's paper
+   * `main.tex`, inside their own section or across sections. `baseOutline` is
+   * the section/subsection title tree the client's drag gesture was based on;
+   * when the file's current tree differs (the agent edited the document
+   * mid-gesture) the call rejects with `conflict` and writes nothing. The
+   * commit rides the same optimistic-concurrency path as `savePaperSource`,
+   * and everything outside the moved blocks survives byte-for-byte.
+   * @param request - the selected project, the ordered moves, the outline the
+   * client saw, and an optional explicit paper directory (relative to the
+   * workspace) overriding the record's `paperDir`.
+   * @returns the committed mtime, `project-not-found`, `paper-not-found`,
+   * `invalid-dir`, `section-not-found` for an unknown section title,
+   * `subsection-not-found` for an unknown subsection title, `invalid-input`
+   * for an out-of-range target, or `conflict`.
+   */
+  @Remote('reorderPaperSubsections')
+  async reorderPaperSubsections(request: {
+    projectId: string
+    moves: SubsectionMove[]
+    baseOutline: SectionOutlineTitles[]
+    dir?: string | undefined
+  }): Promise<ResearchSavePaperSourceResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const texPath = join(dir, 'main.tex')
+    const snapshot = await readPaperSource(texPath)
+    if (snapshot === undefined) return rejected({ code: 'paper-not-found' })
+    const outline: SectionOutlineTitles[] = parseTexOutline(snapshot.content)
+      .filter(node => node.level === 1)
+      .map(node => ({ title: node.title, subsections: node.children.map(child => child.title) }))
+    if (outline.length !== request.baseOutline.length
+      || outline.some((section, index) => {
+        const base = request.baseOutline[index]
+        return base === undefined || section.title !== base.title
+          || section.subsections.length !== base.subsections.length
+          || section.subsections.some((title, subIndex) => title !== base.subsections[subIndex])
+      })) {
+      return rejected({ code: 'conflict', currentMtimeMs: snapshot.mtimeMs })
+    }
+    if (request.moves.length === 0) return success({ mtimeMs: snapshot.mtimeMs })
+    const reordered = reorderSubsections(snapshot.content, request.moves)
+    if (reordered.kind === 'section-not-found') {
+      return rejected({ code: 'section-not-found', title: reordered.title })
+    }
+    if (reordered.kind === 'subsection-not-found') {
+      return rejected({ code: 'subsection-not-found', sectionTitle: reordered.sectionTitle, title: reordered.title })
+    }
+    if (reordered.kind === 'invalid-move') {
+      return rejected({ code: 'invalid-input', message: `subsection target index ${reordered.targetIndex} out of range` })
     }
     const outcome = await saveTextFileOptimistic(texPath, reordered.tex, snapshot.mtimeMs)
     if (outcome.kind === 'missing') return rejected({ code: 'paper-not-found' })
