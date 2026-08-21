@@ -24,7 +24,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build (ordered: mimir tsc+bundle, then ui-mimir tsc+bundle)
+      - name: "Build (ordered: mimir tsc+bundle, then ui-mimir tsc+bundle)"
         run: pnpm run build
 
       - name: Typecheck
