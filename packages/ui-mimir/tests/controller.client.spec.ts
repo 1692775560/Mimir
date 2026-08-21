@@ -17,11 +17,13 @@ import type {
   ResearchCompileStatusResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
+  ResearchDeleteJobResult,
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -32,6 +34,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
 } from 'dsh-mimir/types'
@@ -81,6 +84,9 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     saveServer: missing('saveServer'),
     deleteServer: missing('deleteServer'),
     checkServer: missing('checkServer'),
+    submitJob: missing('submitJob'),
+    listJobs: missing('listJobs'),
+    deleteJob: missing('deleteJob'),
     getBibliography: missing('getBibliography'),
     saveBibliography: missing('saveBibliography'),
     importPapersToBib: missing('importPapersToBib'),
@@ -708,6 +714,105 @@ describe('ResearchController servers and figure deletion', () => {
     expect(seen).toEqual([{ projectId: 'p1', relPath: 'figures/f1.png', dir: undefined }])
     await settle()
     expect(controller.getSnapshot().figures).toMatchObject({ projectId: 'p1', status: 'ready' })
+  })
+})
+
+describe('ResearchController remote jobs', () => {
+  /** Settle all queued microtasks of the void-fired loads. */
+  const settle = async (): Promise<void> => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  const JOB_RUNNING = {
+    id: 'job-1', serverId: 'srv-1', command: 'python train.py', status: 'running' as const,
+    experimentId: 'exp-1', exitCode: null, stdoutTail: '', stderrTail: '',
+    createdAt: '2026-08-02T00:00:00Z', startedAt: '2026-08-02T00:00:01.000Z',
+  }
+
+  it('loads the job list once on ensureJobs, and submitJob refreshes it with a toast', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      listJobs: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs: [JOB_RUNNING] } }))
+      },
+      submitJob: () => Promise.resolve(carried<ResearchSubmitJobResult>({
+        ok: true, value: { job: { ...JOB_RUNNING, status: 'queued' } },
+      })),
+    }))
+    expect(controller.getSnapshot().jobs.status).toBe('cold')
+    controller.ensureJobs()
+    expect(controller.getSnapshot().jobs.status).toBe('loading')
+    await settle()
+    expect(controller.getSnapshot().jobs).toMatchObject({ status: 'ready' })
+    expect(controller.getSnapshot().jobs.list[0]?.id).toBe('job-1')
+    controller.ensureJobs()
+    expect(lists).toBe(1)
+    const failure = await controller.submitJob('srv-1', 'python train.py', 'exp-1')
+    expect(failure).toBeNull()
+    await settle()
+    expect(lists).toBe(2)
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.jobSubmitted' })
+  })
+
+  it('submitJob surfaces the business failure without refreshing the list', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      listJobs: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs: [] } }))
+      },
+      submitJob: () => Promise.resolve(carried<ResearchSubmitJobResult>({
+        ok: false, error: { code: 'invalid-input', message: 'command must be non-empty' },
+      })),
+    }))
+    const failure = await controller.submitJob('srv-1', '   ')
+    expect(failure).toMatchObject({ code: 'invalid-input' })
+    expect(lists).toBe(0)
+  })
+
+  it('toasts the terminal flips observed between two polls', async () => {
+    let round = 0
+    const controller = new ResearchController(stubRemote({
+      listJobs: () => {
+        round += 1
+        const jobs = round === 1
+          ? [JOB_RUNNING]
+          : [{ ...JOB_RUNNING, status: 'failed' as const, exitCode: 3, finishedAt: '2026-08-02T00:01:00.000Z' }]
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs } }))
+      },
+    }))
+    controller.ensureJobs()
+    await settle()
+    expect(controller.getSnapshot().toasts).toHaveLength(0)
+    controller.refreshJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list[0]?.status).toBe('failed')
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({
+      kind: 'error', copy: 'toast.jobFailed', detail: 'python train.py',
+    })
+  })
+
+  it('deleteJob drops the row and reports the business failure on an unknown id', async () => {
+    const controller = new ResearchController(stubRemote({
+      listJobs: () => Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs: [JOB_RUNNING] } })),
+      deleteJob: ({ id }) => Promise.resolve(carried<ResearchDeleteJobResult>(
+        id === 'job-1'
+          ? { ok: true, value: { id } }
+          : { ok: false, error: { code: 'job-not-found', id } },
+      )),
+    }))
+    controller.ensureJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list).toHaveLength(1)
+    const missing = await controller.deleteJob('job-missing')
+    expect(missing).toMatchObject({ code: 'job-not-found' })
+    expect(controller.getSnapshot().jobs.list).toHaveLength(1)
+    const failure = await controller.deleteJob('job-1')
+    expect(failure).toBeNull()
+    expect(controller.getSnapshot().jobs.list).toHaveLength(0)
   })
 })
 

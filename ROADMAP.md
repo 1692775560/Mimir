@@ -42,6 +42,16 @@ polish round every few iterations.
       write the file under optimistic concurrency, conflicts reload)
 - [x] Figures view: upload / delete / copy-LaTeX-snippet image management
 - [x] Servers view: CRUD + TCP probe + SSH nvidia-smi GPU bars
+- [x] SSH remote jobs (Issue #6): the servers view's jobs section submits a
+      command to a remembered server (new `submitJob` / `listJobs` /
+      `deleteJob` Remotes over a new `jobs` wiki table — added without a
+      version bump, excluded from the six-table export snapshot). The host
+      runs the command over batch-mode ssh in the background (30-minute
+      session cap, 8 KB stdout/stderr tails kept on the record); the panel
+      polls every 2 s while anything is queued/running and toasts terminal
+      flips. A job linked to an experiment of the selected project flips
+      that experiment to running (+ server link) on submit and
+      success/failed on settle
 - [x] UI refresh: nav icons, view headers, stat chips, status pills
 - [x] In-panel arXiv search: search box in the literature view, one-click
       import into the wiki library (plus library card delete)
