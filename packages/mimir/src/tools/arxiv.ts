@@ -2,7 +2,8 @@
  * arXiv API tools: `arxiv_search` (query → paper list) and `paper_fetch`
  * (id → one paper). The Atom response is parsed with plain string handling;
  * both tools honor the execution's abort signal and reject on transport or
- * HTTP failure.
+ * HTTP failure. {@link fetchArxivPdf} downloads one paper's PDF bytes for the
+ * panel's literature workbench.
  * @module dsh-mimir/src/tools/arxiv
  */
 
@@ -84,6 +85,40 @@ async function fetchArxiv(url: string, signal: AbortSignal): Promise<string> {
 export async function fetchArxivSearch(query: string, maxResults: number, signal: AbortSignal): Promise<ArxivEntry[]> {
   const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${maxResults}`
   return parseArxivFeed(await fetchArxiv(url, signal))
+}
+
+/** Hard cap of one downloaded paper PDF (a safety invariant, not a tunable). */
+export const ARXIV_PDF_MAX_BYTES = 64 * 1024 * 1024
+
+/**
+ * Download one arXiv paper's PDF bytes. The id must be a bare arXiv id
+ * (letters, digits, dots, dashes, slashes, and the `v` version suffix —
+ * anything else is rejected before the request); transport, HTTP, empty, and
+ * over-cap ({@link ARXIV_PDF_MAX_BYTES}) bodies all reject, the caller maps
+ * them to its failure vocabulary.
+ * @param arxivId - the bare arXiv id.
+ * @param signal - abort/timeout signal of the caller.
+ * @returns the PDF bytes.
+ */
+export async function fetchArxivPdf(arxivId: string, signal: AbortSignal): Promise<Uint8Array> {
+  const id = arxivId.trim()
+  if (!/^[a-zA-Z0-9._/-]+$/.test(id)) throw new Error(`invalid arXiv id: ${arxivId}`)
+  const url = `https://arxiv.org/pdf/${id}`
+  const response = await fetch(url, { signal })
+  if (!response.ok) {
+    throw new Error(`arXiv PDF request failed: HTTP ${response.status} for ${url}`)
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  if (bytes.length === 0) throw new Error(`arXiv returned an empty PDF body for ${url}`)
+  if (bytes.length > ARXIV_PDF_MAX_BYTES) {
+    throw new Error(`arXiv PDF exceeds the ${String(ARXIV_PDF_MAX_BYTES)}-byte cap for ${url}`)
+  }
+  return bytes
+}
+
+/** File name (no directory) of one arXiv id's stored PDF; old-style slashes flatten. */
+export function paperPdfFileName(arxivId: string): string {
+  return `${arxivId.replace(/[^a-zA-Z0-9._-]/g, '_')}.pdf`
 }
 
 /** JSON-schema properties of one {@link ArxivEntry} in tool output. */

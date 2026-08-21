@@ -36,6 +36,7 @@ import type {
   ResearchExperimentsResult,
   ResearchExportWikiResult,
   ResearchFailure,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -66,7 +67,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-two Remote calls this controller needs, exactly as the
+ * The thirty-three Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -91,6 +92,7 @@ export interface ResearchRemote {
     projectIds?: string[] | undefined
     notes?: string | undefined
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
+  fetchPaperPdf: (request: { arxivId: string }) => Promise<RemoteResult<ResearchFetchPaperPdfResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   updateExperiment: (request: {
@@ -726,6 +728,28 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       await this.loadPapers()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Download one remembered paper's arXiv PDF into the workspace, then refresh
+   * the literature list so the card's read/fetch buttons repaint. The failure
+   * view of a rejected fetch is returned so the card can surface it.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async fetchPaperPdf(arxivId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.fetchPaperPdf({ arxivId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      this.notify('success', 'toast.pdfFetched')
       return null
     } catch (error) {
       return transportFailure(error)

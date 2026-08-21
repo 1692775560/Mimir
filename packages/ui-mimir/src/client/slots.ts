@@ -142,6 +142,13 @@ export interface ResearchPanelInjected {
     arxivId: string,
     patch: { tags?: string[]; projectIds?: string[]; notes?: string },
   ) => Promise<ResearchFailureView | null>
+  /**
+   * Download one paper's arXiv PDF into the workspace and link it on the
+   * record, then refresh the literature list.
+   * @param arxivId - the bare arXiv id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**

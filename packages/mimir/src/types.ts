@@ -31,6 +31,11 @@ export interface PaperRecord {
   tags: string[]
   /** Wiki projects this paper is linked to. */
   projectIds: string[]
+  /**
+   * Fetched PDF's path relative to the workspace root; absent until the
+   * workbench fetches the PDF (records predating the field read as absent).
+   */
+  readonly pdfPath?: string | undefined
   /** ISO-8601 timestamp of the record's first write. */
   readonly addedAt: string
 }
@@ -244,6 +249,9 @@ export type ResearchRemovePaperResult = ResearchResult<{ readonly arxivId: strin
 
 /** `updatePaper` result: the stored record after the partial update. */
 export type ResearchUpdatePaperResult = ResearchResult<{ readonly paper: PaperRecord }>
+
+/** `fetchPaperPdf` result: the stored record with its `pdfPath` set. */
+export type ResearchFetchPaperPdfResult = ResearchResult<{ readonly paper: PaperRecord }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>

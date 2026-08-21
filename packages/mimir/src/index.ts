@@ -44,6 +44,7 @@ export type {
   ResearchDeleteServerResult,
   ResearchExperimentsResult,
   ResearchFailure,
+  ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
   ResearchImportPaperResult,
   ResearchListBackupsResult,
@@ -84,7 +85,7 @@ export { runReview, renderReviewRound } from './reviewer.ts'
 export type { ReviewerOptions, ReviewRequest } from './reviewer.ts'
 export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEngine, parseTectonicErrors } from './tools/latex.ts'
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
-export { createArxivSearchTool, createPaperFetchTool, parseArxivFeed, fetchArxivSearch } from './tools/arxiv.ts'
+export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
@@ -268,6 +269,65 @@ function createPdfHandler(
   }
 }
 
+/**
+ * Stream one remembered paper's fetched PDF (the literature workbench's
+ * embedded reader). The arXiv id only selects WHICH paper's file may be read:
+ * an unknown id is a 404, as is a paper whose PDF was never fetched. The
+ * stored `pdfPath` is workspace-relative; a path escaping the workspace is a
+ * 400 (the fetch writer only ever produces `papers/<id>.pdf`, so a violating
+ * value means a hand-edited store).
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createPaperPdfHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const prefix = '/research/paper-pdf/'
+    if (!url.pathname.startsWith(prefix) || url.pathname.length === prefix.length) {
+      res.writeHead(404).end('expected /research/paper-pdf/<arxiv id>')
+      return
+    }
+    const arxivId = decodeURIComponent(url.pathname.slice(prefix.length))
+    const record = deps.domain.table('papers').get(arxivId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research paper')
+      return
+    }
+    if (record.pdfPath === undefined) {
+      res.writeHead(404).end('paper pdf not fetched yet')
+      return
+    }
+    const pdfPath = resolve(root, record.pdfPath)
+    if (!pdfPath.startsWith(root + sep)) {
+      res.writeHead(400).end('pdfPath escapes the research workspace')
+      return
+    }
+    const stats = await stat(pdfPath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) {
+      res.writeHead(404).end('paper pdf file is gone; fetch it again')
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Length': stats.size,
+      // Same cache-bust rationale as the compiled-paper route: a refetch
+      // overwrites the same file, and the panel busts with ?v=<timestamp>.
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
+    createReadStream(pdfPath).pipe(res)
+  }
+}
 /** Content-Type of one servable figure extension. */
 const FIGURE_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -408,8 +468,8 @@ function createFigureUploadHandler(
 /**
  * Mount the research suite: open the wiki domain, register the four tools and
  * the five commands, mount the research panel's Remote service and its HTTP
- * routes (PDF, figure, figure upload), and tie the domain's close to the
- * plugin lifecycle.
+ * routes (compiled-paper PDF, paper PDF, figure, figure upload), and tie the
+ * domain's close to the plugin lifecycle.
  * @param ctx - Plugin context.
  * @param config - Validated plugin config.
  * @returns resolution after the domain is open and every surface is registered.
@@ -467,6 +527,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       handler: createPdfHandler(deps),
     }),
     'mimir.pdfRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/paper-pdf',
+      handler: createPaperPdfHandler(deps),
+    }),
+    'mimir.paperPdfRoute',
   )
   ctx.effect(
     () => ctx.webServer.register({

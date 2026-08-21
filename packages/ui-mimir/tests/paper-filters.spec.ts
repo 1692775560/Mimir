@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { PaperRecord } from 'dsh-mimir/types'
-import { collectTags, filterPapers } from '../src/client/view-common.ts'
+import { collectTags, filterPapers, paperPdfUrl } from '../src/client/view-common.ts'
 
 /** One paper fixture; only the fields the helpers read. */
 function paper(arxivId: string, tags: string[], projectIds: string[]): PaperRecord {
@@ -42,5 +42,13 @@ describe('filterPapers', () => {
     expect(filterPapers(LIBRARY, 'mesh-recovery', 'p2').map(p => p.arxivId)).toEqual(['b'])
     // A combination nothing satisfies is empty, not an error.
     expect(filterPapers(LIBRARY, 'egocentric', 'p2')).toEqual([])
+  })
+})
+
+describe('paperPdfUrl', () => {
+  it('builds the paper-pdf route URL with the cache-bust version', () => {
+    expect(paperPdfUrl('2103.00020v2', 1724)).toBe('/research/paper-pdf/2103.00020v2?v=1724')
+    // Old-style ids carry a slash; it must be encoded.
+    expect(paperPdfUrl('hep-th/9901001', 1)).toBe('/research/paper-pdf/hep-th%2F9901001?v=1')
   })
 })
