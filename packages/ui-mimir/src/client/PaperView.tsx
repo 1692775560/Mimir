@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { OutlineNode, SectionMove } from 'dsh-mimir/types'
+import type { BibEntry, OutlineNode, SectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
@@ -155,7 +155,7 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel }: {
  */
 export function PaperView({
   outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
-  bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib,
+  bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
   ensurePapers, reorderPaperSections, fullscreen, setFullscreen, t,
 }: {
   readonly outline: ResearchOutlineView | null
@@ -171,6 +171,7 @@ export function PaperView({
   readonly ensureBibliography: (projectId: string) => void
   readonly reloadBibliography: () => void
   readonly deleteBibEntry: (key: string) => Promise<ResearchFailureView | null>
+  readonly updateBibEntry: (originalKey: string, entry: BibEntry) => Promise<ResearchFailureView | null>
   readonly importPapersToBib: (
     projectId: string,
     arxivIds: string[],
@@ -635,6 +636,7 @@ export function PaperView({
               ensureBibliography={ensureBibliography}
               reloadBibliography={reloadBibliography}
               deleteBibEntry={deleteBibEntry}
+              updateBibEntry={updateBibEntry}
               importPapersToBib={importPapersToBib}
               ensurePapers={ensurePapers}
               onClose={() => { setBibOpen(false) }}

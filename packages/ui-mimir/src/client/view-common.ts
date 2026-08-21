@@ -158,6 +158,65 @@ export function formatMetricValue(value: number | string): string {
 }
 
 /**
+ * Bibliography fields the bib panel edits through dedicated form inputs, in
+ * display order; every other field of the entry rides the raw name/value rows.
+ */
+export const COMMON_BIB_FIELDS = [
+  'title', 'author', 'year', 'journal', 'booktitle', 'eprint', 'archiveprefix', 'url', 'note',
+] as const
+
+/** One raw name/value field row of the bib entry editor. */
+export interface BibFieldDraft {
+  name: string
+  value: string
+}
+
+/** The bib entry editor's draft: citation key, entry type, the common-field inputs, and the raw rows. */
+export interface BibEntryDraft {
+  key: string
+  type: string
+  /** Common-field input values keyed by field name (absent names read as ''). */
+  common: Record<string, string>
+  extra: BibFieldDraft[]
+}
+
+/** Open the editor on one entry: common fields into their inputs, the rest as raw rows. */
+export function bibDraftFromEntry(entry: BibEntry): BibEntryDraft {
+  const common: Record<string, string> = {}
+  const extra: BibFieldDraft[] = []
+  for (const [name, value] of Object.entries(entry.fields)) {
+    if ((COMMON_BIB_FIELDS as readonly string[]).includes(name)) common[name] = value
+    else extra.push({ name, value })
+  }
+  return { key: entry.key, type: entry.type, common, extra }
+}
+
+/**
+ * Assemble the entry one draft saves to: key and type trimmed (an empty key
+ * or type rejects with null — the panel shows its own validation copy), empty
+ * common inputs dropped, empty-name or empty-value raw rows dropped, raw row
+ * names lowercased, and a raw row naming a common field overriding the form
+ * input (last write wins, matching the parser's field-merge rule).
+ */
+export function bibEntryFromDraft(draft: BibEntryDraft): BibEntry | null {
+  const key = draft.key.trim()
+  const type = draft.type.trim().toLowerCase()
+  if (key === '' || type === '') return null
+  const fields: Record<string, string> = {}
+  for (const name of COMMON_BIB_FIELDS) {
+    const value = (draft.common[name] ?? '').trim()
+    if (value !== '') fields[name] = value
+  }
+  for (const row of draft.extra) {
+    const name = row.name.trim().toLowerCase()
+    const value = row.value.trim()
+    if (name === '' || value === '') continue
+    fields[name] = value
+  }
+  return { key, type, fields }
+}
+
+/**
  * One-line summary of one bibliography entry (the bib panel's row): the
  * title when present, else the author/year pair, else the entry type.
  * Whitespace runs collapse; the result truncates at 80 characters.
