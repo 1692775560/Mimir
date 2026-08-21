@@ -1,17 +1,22 @@
 # Releasing Mimir
 
-Both packages share one version. Before the first release, authenticate an npm owner for
-`dsh-mimir` and `dsh-client-ui-mimir`, or configure npm trusted publishing for this
-repository's `Release` workflow and `npm` GitHub environment.
+The host and UI packages can be released independently. Configure npm trusted publishing
+for this repository's `Release` workflow and `npm` GitHub environment before pushing a
+release tag.
 
-1. Update both package versions together.
+1. Update the version of every package that changed.
 2. Run `pnpm install --frozen-lockfile && pnpm run build && pnpm run typecheck && pnpm test`.
-3. Inspect both tarballs with `pnpm --filter dsh-mimir pack --dry-run` and
-   `pnpm --filter dsh-client-ui-mimir pack --dry-run`.
-4. Push a tag matching the package version, for example `v0.1.0`.
+3. Inspect each changed tarball with `pnpm --filter <package> pack --dry-run`.
+4. Push the tag for the package being released:
 
-The tag workflow verifies the version, tests both packages, publishes the host package
-first, then the client package, and records npm provenance.
+   - `dsh-mimir-vX.Y.Z` publishes only `dsh-mimir`.
+   - `dsh-client-ui-mimir-vX.Y.Z` publishes only `dsh-client-ui-mimir`.
+   - `vX.Y.Z` remains available for a coordinated release when both packages have the
+     same version.
+
+The tag workflow verifies the selected package version, runs the full repository checks,
+publishes only the selected package (or both for a coordinated tag), and records npm
+provenance.
 
 ## Browser E2E
 
