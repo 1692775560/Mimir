@@ -57,6 +57,12 @@ export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiD
         createdAt: new Date().toISOString(),
       }
       await domain.table('figures').put(id, record)
+      const artifactPath = `${project.paperDir ?? 'paper'}/${relPath}`
+      await domain.table('projects').update(project.id, current => ({
+        ...current,
+        artifacts: [...new Set([...current.artifacts, artifactPath])],
+        updatedAt: new Date().toISOString(),
+      }))
       const label = name.slice(0, -extname(name).length).replace(/[^a-zA-Z0-9:-]+/g, '-')
       return { ok: true, relPath, record: record as unknown as JsonValue, latex: `\\includegraphics[width=0.8\\linewidth]{${relPath}}`, label: `fig:${label}` }
     },

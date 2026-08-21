@@ -34,6 +34,7 @@ describe('figure_save', () => {
     expect(value).toMatchObject({ ok: true, relPath: 'figures/loss.png' })
     expect(await readFile(join(workspaceDir, 'paper', 'figures', 'loss.png'))).toEqual(await readFile(source))
     expect(domain.table('figures').get('p1:figures/loss.png')).toMatchObject({ caption: 'Training loss', projectId: 'p1' })
+    expect(domain.table('projects').get('p1')?.artifacts).toContain('paper/figures/loss.png')
   })
 
   it('rejects unsupported files and cross-project experiment links', async () => {

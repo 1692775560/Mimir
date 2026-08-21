@@ -24,10 +24,10 @@
 
 | 工具 | 用途 |
 | --- | --- |
-| `arxiv_search` / `paper_fetch` | arXiv Atom API 检索与单篇抓取 |
+| `arxiv_search` / `paper_fetch` | arXiv 检索；单篇抓取自动归档到文献库并关联项目 |
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、主张、实验、项目） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
-| `figure_save` | 把生成图片保存到项目 `figures/`，记录 caption/实验关联，并返回 LaTeX 片段 |
+| `figure_save` | 保存生成图、记录 caption/实验关联、登记项目工件并返回 LaTeX 片段 |
 
 **Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：
 
@@ -195,8 +195,8 @@ dsh 会话里的典型循环：
 
 agent 在对话中途可以触达同一组能力：
 
-- `arxiv_search`——“搜一下最近的 whole-body mesh recovery 论文”（默认上限 `arxiv.maxResults`）。
-- `paper_fetch`——按 arXiv id 抓取单篇元数据。
+- `arxiv_search`——“搜一下最近的 whole-body mesh recovery 论文”（默认上限 `arxiv.maxResults`）；搜索结果不会直接污染文献库。
+- `paper_fetch`——按 arXiv id 抓取有价值的单篇文献，同时自动保存完整元数据、用途笔记与标签，并关联显式 `project_id`（未传时关联最近活跃项目）。重复抓取会刷新 arXiv 元数据，但保留已有笔记、标签、项目关联和本地 PDF。
 - `wiki_note`——wiki 的读写面，以 `action` 为键的一套扁平参数：`add_paper`、`add_idea`、`fail_idea`、`add_claim`、`set_claim`、`set_project`（把项目指向它的论文目录）、`add_experiment`、`set_experiment`（状态 `running`/`success`/`failed`），以及对五张表的 `list` 和 `get`。
 - `latex_compile`——“编译 `paper/` 里的论文”（`project_dir` 参数）；返回解析后的文件/行号诊断。
 

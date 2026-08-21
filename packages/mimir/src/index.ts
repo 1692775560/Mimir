@@ -495,7 +495,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
 
   ctx.tools.register(createArxivSearchTool(resolved.arxiv.maxResults))
-  ctx.tools.register(createPaperFetchTool())
+  ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
   ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
