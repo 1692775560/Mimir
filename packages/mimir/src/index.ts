@@ -294,7 +294,13 @@ function createPaperPdfHandler(
       res.writeHead(404).end('expected /research/paper-pdf/<arxiv id>')
       return
     }
-    const arxivId = decodeURIComponent(url.pathname.slice(prefix.length))
+    let arxivId: string
+    try {
+      arxivId = decodeURIComponent(url.pathname.slice(prefix.length))
+    } catch {
+      res.writeHead(400).end('invalid encoded arXiv id')
+      return
+    }
     const record = deps.domain.table('papers').get(arxivId)
     if (record === undefined) {
       res.writeHead(404).end('unknown research paper')
