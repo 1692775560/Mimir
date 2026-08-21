@@ -6,6 +6,12 @@
 
 **Mimir 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的科研生命周期插件套件：arXiv 文献检索、持久化研究 wiki、独立子代理评审，以及 LaTeX 写作 → 编译 → 预览闭环——外加一个完整的 web 工作台。**
 
+## 视频演示
+
+[![观看 Mimir 产品演示](docs/media/mimir-cover.png)](docs/media/mimir-demo.mp4)
+
+点击封面观看完整产品演示，内容涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，并通过平滑放大与缩小突出各个工作流程。
+
 ![论文工作台：大纲、源码编辑器、编译产物 PDF 预览](docs/screenshots/tab-paper-compiled.png)
 
 ## 功能
@@ -46,7 +52,17 @@
 
 ## 快速上手
 
-> **状态说明：** `dsh-mimir` 与 `dsh-client-ui-mimir` 已发布到 npm。普通使用安装宿主插件即可；当前 dsh web 的客户端组合仍需按第 5 步从源码注册 UI 插件。
+Mimir 由两个 npm 包组成：
+
+- `dsh-mimir`：研究命令、工具、wiki、评审循环与服务端接口。普通使用只需安装这个包。
+- `dsh-client-ui-mimir`：六视图 Web 工作台。它需要集成到 dsh 的 Web 客户端中，不能仅靠安装 npm 包自动出现在侧栏。
+
+当前发布版本可随时通过 npm 查询：
+
+```sh
+npm view dsh-mimir version
+npm view dsh-client-ui-mimir version
+```
 
 ### 前置要求
 
@@ -55,6 +71,7 @@
 - **dsh CLI**——已发布在 npm：
   ```sh
   npm install -g @deepseek-ai/dsh
+  dsh --version
   ```
 - **`DEEPSEEK_API_KEY`**——agent 会话必需（导出环境变量，或写入 dsh 的 `.env`）。
 - **LaTeX 引擎**——仅论文编译需要：PATH 上的 `latexmk` 或 `tectonic`。tectonic 是单二进制，最好装：
@@ -63,43 +80,37 @@
   ```
 - **arXiv 访问**——文献检索请求 `export.arxiv.org`；在代理环境下，启动 dsh 前导出 `HTTPS_PROXY`。
 
-### 1. 安装宿主插件
+### 1. 安装 Mimir
+
+推荐通过 dsh 的 `web` profile 安装最新版宿主插件：
 
 ```sh
-dsh plugin --profile web add dsh-mimir
+dsh plugin --profile web add dsh-mimir@latest
 ```
 
-如需参与开发或集成 Web 工作台，再克隆并构建源码：
+如果只想把包加入现有 Node.js 项目，也可以使用 npm：
+
+```sh
+npm install dsh-mimir@latest
+```
+
+### 2. 启动 Mimir
+
+仓库已经提供可直接使用的 dsh patch。克隆仓库后无需构建，即可用已安装的 npm 插件启动：
 
 ```sh
 git clone https://github.com/1692775560/Mimir.git
 cd Mimir
-pnpm install
-pnpm run build
-pnpm test          # 可选自检：vitest，覆盖两个包
-```
-
-### 2. 从源码安装插件（仅开发/工作台集成）
-
-dsh 从 profile 目录（`~/.dsh/profiles/web`）解析 patch 里的插件名，**而不是**从当前目录——因此要把构建好的包 link 进 profile（profile 目录在 dsh 首次运行时创建）：
-
-```sh
-dsh plugin --profile web add "$PWD/packages/mimir"
-```
-
-### 3. 启动示例
-
-```sh
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
 
-然后打开 http://127.0.0.1:3080。wiki 持久化在 `~/.dsh/storages/research_wiki.json`；科研工件落在工作区目录（默认 `./.research`，相对启动 dsh 时的目录）。
+然后打开 <http://127.0.0.1:3080>。wiki 默认保存在 `~/.dsh/storages/research_wiki.json`；文献、生成图、论文和实验等科研工件保存在启动目录下的 `./.research`。
 
-### 4. 第一个会话
+### 3. 开始使用
 
-在 dsh 会话中（web UI 或挂了同一 patch 的 TUI）：
+在 dsh 会话中（Web UI 或使用同一 patch 的 TUI）依次尝试：
 
-```
+```text
 /research-idea efficient long-context retrieval for code agents
 /research-plan
 /research-review plan EXPERIMENT_PLAN.md
@@ -107,9 +118,48 @@ dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 /paper-compile
 ```
 
-### 5. Web 工作台
+### 4. 升级
 
-六视图工作台以 `dsh-client-ui-mimir`（`packages/ui-mimir`）发布。有一个需要如实说明的限制：**已发布的 dsh web 组合早于 Mimir**——它既不加载这个客户端插件，也不挂载 `research` Remote 命名空间，因此仅靠 cordis patch 不会在侧栏出现 Mimir 按钮。今天要挂上面板，需要在 dsh 源码检出中注册客户端插件，并应用 [已知限制](#已知限制) 里的 Remote 装配一行。agent 侧的一切——斜杠命令、工具、wiki、评审循环、`/research/*` 路由——仅靠 patch 即可工作。
+重新安装 `latest` 即可升级宿主插件，完成后重启 `dsh web`：
+
+```sh
+dsh plugin --profile web add dsh-mimir@latest
+npm view dsh-mimir version
+```
+
+如果是在 Node.js 项目中直接安装的依赖，则运行：
+
+```sh
+npm install dsh-mimir@latest dsh-client-ui-mimir@latest
+```
+
+### 5. 完整 Web 工作台
+
+Web 工作台包可通过 npm 安装：
+
+```sh
+npm install dsh-client-ui-mimir@latest
+```
+
+但需要注意：当前已发布的 dsh Web 组合不会自动发现独立客户端插件，也不会自动挂载 `research` Remote 命名空间。因此，仅安装 `dsh-client-ui-mimir` 不会让 Mimir 按钮自动出现在侧栏。完整六视图界面目前需要在 dsh 源码项目中注册该客户端包，并完成 [已知限制](#已知限制) 中说明的 Remote 装配；宿主侧的研究命令、工具、wiki、自动保存和 `/research/*` 接口不受此限制。
+
+### 6. 从源码开发（可选）
+
+只有参与 Mimir 开发或集成完整 Web 工作台时才需要构建源码：
+
+```sh
+git clone https://github.com/1692775560/Mimir.git
+cd Mimir
+pnpm install
+pnpm run build
+pnpm test
+```
+
+dsh 从 profile 目录（`~/.dsh/profiles/web`）解析 patch 中的插件名，而不是从当前目录解析。要测试本地构建，请将本地包加入 profile：
+
+```sh
+dsh plugin --profile web add "$PWD/packages/mimir"
+```
 
 ## 使用指南
 

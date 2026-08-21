@@ -6,6 +6,12 @@ English | [中文](README.zh.md)
 
 **Mimir is a research-lifecycle plugin suite for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh): arXiv literature search, a persistent research wiki, independent subagent review, and a closed LaTeX writing → compile → preview loop — plus a full web workbench.**
 
+## Video demo
+
+[![Watch the Mimir product demo](docs/media/mimir-cover.png)](docs/media/mimir-demo.mp4)
+
+Click the cover to watch the complete product demo, including AI-assisted research, literature management, experiments, figure archiving, and paper writing. The video includes smooth zooms that highlight each workflow.
+
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
 ## Features
@@ -46,7 +52,17 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
 
 ## Quickstart
 
-> **Status:** `dsh-mimir` and `dsh-client-ui-mimir` are published on npm. Normal use only needs the host plugin; the current dsh web composition still needs the UI plugin registered from source as described in step 5.
+Mimir is distributed as two npm packages:
+
+- `dsh-mimir` provides the research commands, tools, wiki, reviewer loop, and server APIs. This is the only package required for normal use.
+- `dsh-client-ui-mimir` provides the six-view Web workbench. It must be integrated into the dsh Web client and does not appear in the sidebar merely by installing the npm package.
+
+Check the currently published versions at any time:
+
+```sh
+npm view dsh-mimir version
+npm view dsh-client-ui-mimir version
+```
 
 ### Prerequisites
 
@@ -55,6 +71,7 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
 - **dsh CLI** — published on npm:
   ```sh
   npm install -g @deepseek-ai/dsh
+  dsh --version
   ```
 - **`DEEPSEEK_API_KEY`** — required for agent sessions (export it, or put it in dsh's `.env`).
 - **A LaTeX engine** — only for paper compilation: `latexmk` or `tectonic` on PATH. Tectonic is a single binary and the easiest to install:
@@ -63,43 +80,37 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
   ```
 - **arXiv access** — literature search calls `export.arxiv.org`; behind a proxy, export `HTTPS_PROXY` before starting dsh.
 
-### 1. Install the host plugin
+### 1. Install Mimir
+
+The recommended method is to install the latest host plugin into dsh's `web` profile:
 
 ```sh
-dsh plugin --profile web add dsh-mimir
+dsh plugin --profile web add dsh-mimir@latest
 ```
 
-Clone and build the source only for development or web-workbench integration:
+To add the package directly to an existing Node.js project instead, use npm:
+
+```sh
+npm install dsh-mimir@latest
+```
+
+### 2. Start Mimir
+
+The repository includes a ready-to-use dsh patch. Clone it and start with the installed npm plugin; no source build is required:
 
 ```sh
 git clone https://github.com/1692775560/Mimir.git
 cd Mimir
-pnpm install
-pnpm run build
-pnpm test          # optional sanity check: vitest, both packages
-```
-
-### 2. Install from source (development/workbench integration only)
-
-dsh resolves patch plugin names from the profile directory (`~/.dsh/profiles/web`), **not** from the current directory — so link the built package into the profile (the profile directory is created on dsh's first run):
-
-```sh
-dsh plugin --profile web add "$PWD/packages/mimir"
-```
-
-### 3. Start the example
-
-```sh
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
 
-Then open http://127.0.0.1:3080. The wiki persists at `~/.dsh/storages/research_wiki.json`; research artifacts land in the workspace directory (default `./.research` under the directory you started dsh from).
+Then open <http://127.0.0.1:3080>. The wiki is stored at `~/.dsh/storages/research_wiki.json` by default. Research artifacts—including papers, generated figures, and experiments—are saved under `./.research` in the directory where dsh was started.
 
-### 4. First session
+### 3. First session
 
-In a dsh session (web UI or TUI with the same patch):
+Try these commands in a dsh session (the Web UI or a TUI using the same patch):
 
-```
+```text
 /research-idea efficient long-context retrieval for code agents
 /research-plan
 /research-review plan EXPERIMENT_PLAN.md
@@ -107,9 +118,48 @@ In a dsh session (web UI or TUI with the same patch):
 /paper-compile
 ```
 
-### 5. The web workbench
+### 4. Upgrade
 
-The six-view workbench ships as `dsh-client-ui-mimir` (`packages/ui-mimir`). One honest caveat: **the published dsh web composition predates Mimir** — it neither loads the client plugin nor mounts the `research` Remote namespace, so a cordis patch alone does not put the Mimir button in the sidebar. Mounting the panel today requires a dsh source checkout with the client plugin registered and the Remote assembly one-liner from [Known limitations](#known-limitations) applied. Everything agent-side — the slash commands, tools, wiki, reviewer loop, and the `/research/*` routes — works through the patch alone.
+Install `latest` again to upgrade the host plugin, then restart `dsh web`:
+
+```sh
+dsh plugin --profile web add dsh-mimir@latest
+npm view dsh-mimir version
+```
+
+For packages installed directly in a Node.js project, run:
+
+```sh
+npm install dsh-mimir@latest dsh-client-ui-mimir@latest
+```
+
+### 5. Full Web workbench
+
+Install the Web workbench package with npm:
+
+```sh
+npm install dsh-client-ui-mimir@latest
+```
+
+One important limitation: the currently published dsh Web composition does not automatically discover standalone client plugins or mount the `research` Remote namespace. Installing `dsh-client-ui-mimir` alone therefore does not add the Mimir sidebar button. The complete six-view UI currently requires registering the client package in a dsh source checkout and applying the Remote assembly described in [Known limitations](#known-limitations). The host-side research commands, tools, wiki, automatic artifact saving, and `/research/*` APIs work without that UI integration.
+
+### 6. Develop from source (optional)
+
+Build from source only when contributing to Mimir or integrating the complete Web workbench:
+
+```sh
+git clone https://github.com/1692775560/Mimir.git
+cd Mimir
+pnpm install
+pnpm run build
+pnpm test
+```
+
+dsh resolves patch plugin names from the profile directory (`~/.dsh/profiles/web`), not the current directory. Add the local package to the profile when testing a local build:
+
+```sh
+dsh plugin --profile web add "$PWD/packages/mimir"
+```
 
 ## Usage guide
 
