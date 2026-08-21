@@ -106,9 +106,11 @@ The six-view workbench ships as `dsh-client-ui-mimir` (`packages/ui-mimir`). One
 
 ## Usage guide
 
+Longer actions — compiles, imports, probe-alls, deletions, uploads — end with a small toast card in the workbench's bottom-right corner (green/blue/red accent by outcome, auto-dismissing after a few seconds, × for early dismissal).
+
 ### Overview
 
-The landing view: the selected project's five-stage pipeline progress, stat chips (papers / experiments / figures / servers), the artifact list, and timestamps. The **data card** exports the entire wiki as one dated JSON snapshot (`mimir-wiki-<date>.json`) for backup or migration, and imports one back: pick a file, review the per-table row counts, then choose merge (existing keys are skipped, never overwritten) or replace (wipes all six tables — a red second confirm guards it). A successful import refreshes every loaded view.
+The landing view: the selected project's five-stage pipeline progress, stat chips (papers / experiments / figures / servers), the artifact list, and timestamps. The **data card** exports the entire wiki as one dated JSON snapshot (`mimir-wiki-<date>.json`) for backup or migration, and imports one back: pick a file, review the per-table row counts, then choose merge (existing keys are skipped, never overwritten) or replace (wipes all six tables — a red second confirm guards it). A successful import refreshes every loaded view and reports the imported/skipped totals in a toast.
 
 | Overview | Overview: wiki export/import |
 | --- | --- |
