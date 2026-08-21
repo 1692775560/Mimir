@@ -2117,14 +2117,20 @@ li.dropIndicator {
   list-style: none;
 }
 
-.bibRow {
+.bibItem {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   border-radius: 10px;
   background: var(--dsw-specific-menu, #fff);
+}
+
+.bibRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .bibRowMain {
@@ -2159,6 +2165,60 @@ li.dropIndicator {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bibEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+}
+
+.bibEditGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.bibField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bibFieldLabel {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.bibFieldGroup {
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.bibExtraRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bibExtraRow .input:first-child {
+  flex: 0 0 160px;
+}
+
+.bibExtraRow .input:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.bibEditFoot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .bibImport {

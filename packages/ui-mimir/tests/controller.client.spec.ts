@@ -1069,6 +1069,72 @@ describe('ResearchController arXiv search and paper import', () => {
     expect(controller.getSnapshot().bib?.saveState).toBe('clean')
   })
 
+  it('updateBibEntry commits the edited entry in place under the current mtime', async () => {
+    const saves: Array<{ entries: Array<{ key: string }>; baseMtimeMs: number | null }> = []
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => Promise.resolve(carried(BIB)),
+      saveBibliography: (request) => {
+        saves.push(request)
+        return Promise.resolve(carried<ResearchSaveBibliographyResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const edited = { key: 'alpha2025', type: 'article', fields: { title: 'Alpha 2', year: '2025' } }
+    const failure = await controller.updateBibEntry('alpha2024', edited)
+    expect(failure).toBeNull()
+    expect(saves[0]?.baseMtimeMs).toBe(1000)
+    expect(saves[0]?.entries.map(entry => entry.key)).toEqual(['alpha2025', 'beta2023'])
+    const bib = controller.getSnapshot().bib
+    expect(bib?.entries[0]).toEqual(edited)
+    expect(bib?.mtimeMs).toBe(2000)
+    expect(bib?.saveState).toBe('saved')
+  })
+
+  it('updateBibEntry rejects a rename colliding with another entry without saving', async () => {
+    let saves = 0
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => Promise.resolve(carried(BIB)),
+      saveBibliography: () => {
+        saves += 1
+        return Promise.resolve(carried<ResearchSaveBibliographyResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const failure = await controller.updateBibEntry('alpha2024', { key: 'beta2023', type: 'misc', fields: {} })
+    expect(failure?.code).toBe('invalid-input')
+    expect(saves).toBe(0)
+    expect(controller.getSnapshot().bib?.entries.map(entry => entry.key)).toEqual(['alpha2024', 'beta2023'])
+  })
+
+  it('updateBibEntry rejects an empty key or an unknown original key without saving', async () => {
+    let saves = 0
+    const controller = new ResearchController(stubRemote({
+      getBibliography: () => Promise.resolve(carried(BIB)),
+      saveBibliography: () => {
+        saves += 1
+        return Promise.resolve(carried<ResearchSaveBibliographyResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.ensureBibliography('p1')
+    await Promise.resolve()
+    await Promise.resolve()
+    const emptyKey = await controller.updateBibEntry('alpha2024', { key: '', type: 'misc', fields: {} })
+    expect(emptyKey?.code).toBe('invalid-input')
+    const unknown = await controller.updateBibEntry('gamma2019', { key: 'gamma2019', type: 'misc', fields: {} })
+    expect(unknown?.code).toBe('invalid-input')
+    expect(saves).toBe(0)
+  })
+
+  it('updateBibEntry refuses while no bibliography is loaded', async () => {
+    const controller = new ResearchController(stubRemote({}))
+    const failure = await controller.updateBibEntry('alpha2024', { key: 'alpha2024', type: 'misc', fields: {} })
+    expect(failure?.code).toBe('bib-not-ready')
+  })
+
   it('importPapersToBib returns the counts and repaints the open panel', async () => {
     let reads = 0
     const seen: string[][] = []

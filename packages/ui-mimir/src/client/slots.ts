@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, BibEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -198,6 +198,14 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteBibEntry: (key: string) => Promise<ResearchFailureView | null>
+  /**
+   * Replace one entry of the open bibliography (the field editor's save) and
+   * commit the file.
+   * @param originalKey - the citation key the editor opened on.
+   * @param entry - the edited entry (its key may differ from `originalKey`).
+   * @returns null on success, the settled failure otherwise.
+   */
+  updateBibEntry: (originalKey: string, entry: BibEntry) => Promise<ResearchFailureView | null>
   /**
    * Append library papers to one project's `references.bib`.
    * @param projectId - wiki project id.
