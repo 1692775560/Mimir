@@ -108,17 +108,40 @@ export async function fetchArxivPdf(arxivId: string, signal: AbortSignal): Promi
   if (!response.ok) {
     throw new Error(`arXiv PDF request failed: HTTP ${response.status} for ${url}`)
   }
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  if (bytes.length === 0) throw new Error(`arXiv returned an empty PDF body for ${url}`)
-  if (bytes.length > ARXIV_PDF_MAX_BYTES) {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > ARXIV_PDF_MAX_BYTES) {
     throw new Error(`arXiv PDF exceeds the ${String(ARXIV_PDF_MAX_BYTES)}-byte cap for ${url}`)
+  }
+  if (response.body === null) throw new Error(`arXiv returned an empty PDF body for ${url}`)
+  const chunks: Uint8Array[] = []
+  let length = 0
+  const reader = response.body.getReader()
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    length += value.length
+    if (length > ARXIV_PDF_MAX_BYTES) {
+      await reader.cancel()
+      throw new Error(`arXiv PDF exceeds the ${String(ARXIV_PDF_MAX_BYTES)}-byte cap for ${url}`)
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(length)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  if (bytes.length === 0) throw new Error(`arXiv returned an empty PDF body for ${url}`)
+  if (bytes.length < 5 || String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-') {
+    throw new Error(`arXiv returned a non-PDF body for ${url}`)
   }
   return bytes
 }
 
-/** File name (no directory) of one arXiv id's stored PDF; old-style slashes flatten. */
+/** File name (no directory) of one arXiv id's stored PDF; percent encoding keeps old-style slashes collision-free. */
 export function paperPdfFileName(arxivId: string): string {
-  return `${arxivId.replace(/[^a-zA-Z0-9._-]/g, '_')}.pdf`
+  return `${encodeURIComponent(arxivId)}.pdf`
 }
 
 /** JSON-schema properties of one {@link ArxivEntry} in tool output. */

@@ -14,7 +14,8 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readdir, readFile, mkdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { readdir, readFile, mkdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -183,6 +184,18 @@ const PAPER_PDF_DIR = 'papers'
 const ARXIV_SEARCH_DEFAULT_MAX_RESULTS = 10
 /** Hard result cap of one panel-driven arXiv search. */
 const ARXIV_SEARCH_MAX_RESULTS = 50
+
+/** Atomically replace one binary file through a unique same-directory sibling. */
+async function writeBytesAtomic(filePath: string, bytes: Uint8Array): Promise<void> {
+  const tempPath = `${filePath}.${randomUUID()}.tmp`
+  try {
+    await writeFile(tempPath, bytes, { mode: 0o666 })
+    await rename(tempPath, filePath)
+  } catch (error) {
+    await unlink(tempPath).catch(() => {})
+    throw error
+  }
+}
 /** Timeout of the best-effort ssh `nvidia-smi` readout. */
 const GPU_PROBE_TIMEOUT_MS = 8000
 /** Connect timeout handed to the ssh client itself. */
@@ -531,7 +544,7 @@ export class ResearchService extends TypertRemoteService {
     const relPath = `${PAPER_PDF_DIR}/${paperPdfFileName(request.arxivId)}`
     const dir = join(this.workspaceDir, PAPER_PDF_DIR)
     await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, paperPdfFileName(request.arxivId)), bytes)
+    await writeBytesAtomic(join(dir, paperPdfFileName(request.arxivId)), bytes)
     const next: PaperRecord = { ...existing, pdfPath: relPath }
     await table.put(request.arxivId, next)
     return success({ paper: next })
