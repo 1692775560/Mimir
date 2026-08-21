@@ -2,7 +2,10 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
+      - 'dsh-mimir-v*'
+      - 'dsh-client-ui-mimir-v*'
 
 permissions:
   contents: read
@@ -24,9 +27,33 @@ jobs:
       - run: pnpm run build
       - run: pnpm run typecheck
       - run: pnpm test
-      - name: Verify tag matches package versions
+      - name: Select package and verify tag version
+        id: release
         run: |
-          test "$GITHUB_REF_NAME" = "v$(node -p "require('./packages/mimir/package.json').version")"
-          test "$GITHUB_REF_NAME" = "v$(node -p "require('./packages/ui-mimir/package.json').version")"
-      - run: pnpm --filter dsh-mimir publish --access public --provenance --no-git-checks
-      - run: pnpm --filter dsh-client-ui-mimir publish --access public --provenance --no-git-checks
+          host_version=$(node -p "require('./packages/mimir/package.json').version")
+          ui_version=$(node -p "require('./packages/ui-mimir/package.json').version")
+          case "$GITHUB_REF_NAME" in
+            "v$host_version")
+              test "$host_version" = "$ui_version"
+              echo "publish_host=true" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=true" >> "$GITHUB_OUTPUT"
+              ;;
+            "dsh-mimir-v$host_version")
+              echo "publish_host=true" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=false" >> "$GITHUB_OUTPUT"
+              ;;
+            "dsh-client-ui-mimir-v$ui_version")
+              echo "publish_host=false" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Tag $GITHUB_REF_NAME does not match a package version" >&2
+              exit 1
+              ;;
+          esac
+      - name: Publish dsh-mimir
+        if: steps.release.outputs.publish_host == 'true'
+        run: pnpm --filter dsh-mimir publish --access public --provenance --no-git-checks
+      - name: Publish dsh-client-ui-mimir
+        if: steps.release.outputs.publish_ui == 'true'
+        run: pnpm --filter dsh-client-ui-mimir publish --access public --provenance --no-git-checks
