@@ -46,7 +46,7 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
 
 ## Quickstart
 
-> **Status:** both packages are release-ready with a tag-triggered provenance workflow, but first publication still requires npm publisher authentication. Until `npm view dsh-mimir` succeeds, use the source installation below.
+> **Status:** `dsh-mimir` and `dsh-client-ui-mimir` are published on npm. Normal use only needs the host plugin; the current dsh web composition still needs the UI plugin registered from source as described in step 5.
 
 ### Prerequisites
 
@@ -63,7 +63,13 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
   ```
 - **arXiv access** — literature search calls `export.arxiv.org`; behind a proxy, export `HTTPS_PROXY` before starting dsh.
 
-### 1. Clone and build
+### 1. Install the host plugin
+
+```sh
+dsh plugin --profile web add dsh-mimir
+```
+
+Clone and build the source only for development or web-workbench integration:
 
 ```sh
 git clone https://github.com/1692775560/Mimir.git
@@ -73,7 +79,7 @@ pnpm run build
 pnpm test          # optional sanity check: vitest, both packages
 ```
 
-### 2. Install the plugin into the web profile
+### 2. Install from source (development/workbench integration only)
 
 dsh resolves patch plugin names from the profile directory (`~/.dsh/profiles/web`), **not** from the current directory — so link the built package into the profile (the profile directory is created on dsh's first run):
 

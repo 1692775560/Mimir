@@ -225,6 +225,12 @@ export function ResearchPanel({
       : null,
     servers: servers.status === 'ready' ? servers.list.length : null,
   }
+  const navCounts: Partial<Record<ResearchTab, number | null>> = {
+    papers: overviewStats.papers,
+    experiments: overviewStats.experiments,
+    figures: overviewStats.figures,
+    servers: overviewStats.servers,
+  }
 
   return (
     <div className={css.workbench} role="dialog" aria-label={t('panel.title')}>
@@ -265,10 +271,16 @@ export function ResearchPanel({
               type="button"
               className={css.navItem}
               data-active={tab === activeTab || undefined}
+              aria-current={tab === activeTab ? 'page' : undefined}
               onClick={() => { actions.setTab(tab) }}
             >
               <span className={css.navIcon} aria-hidden>{TAB_ICONS[tab]}</span>
-              {t(TAB_KEYS[tab])}
+              <span className={css.navLabel}>{t(TAB_KEYS[tab])}</span>
+              {navCounts[tab] !== undefined && navCounts[tab] !== null && (
+                <span className={css.navCount} aria-label={String(navCounts[tab])}>
+                  {navCounts[tab]}
+                </span>
+              )}
             </button>
           ))}
         </nav>
