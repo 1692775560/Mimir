@@ -8,11 +8,11 @@
 
 ## 视频演示
 
-[![观看 Mimir 产品演示](docs/media/mimir-cover.png)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+[![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
 
 ▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)**（22 MB）
 
-点击封面或上方链接即可观看完整产品演示，内容涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，并通过平滑放大与缩小突出各个工作流程。
+GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整产品演示，内容涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作；完整视频还通过平滑放大与缩小突出各个工作流程。
 
 ![论文工作台：大纲、源码编辑器、编译产物 PDF 预览](docs/screenshots/tab-paper-compiled.png)
 
