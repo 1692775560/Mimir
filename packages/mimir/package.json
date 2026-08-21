@@ -11,6 +11,7 @@
     "directory": "packages/mimir"
   },
   "type": "module",
+  "engines": { "node": ">=22" },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {

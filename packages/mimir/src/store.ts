@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { ClaimRecord, ExperimentRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
+import type { ClaimRecord, ExperimentRecord, FigureRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
 
 /** Durable shape of one remembered paper. */
 export const paperRecord = z.object({
@@ -71,6 +71,17 @@ export const experimentRecord = z.object({
   updatedAt: z.string(),
 })
 
+/** Durable metadata for one agent-saved paper figure. */
+export const figureRecord = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  relPath: z.string(),
+  caption: z.string(),
+  sourcePath: z.string(),
+  experimentId: z.string().optional(),
+  createdAt: z.string(),
+})
+
 /** Durable shape of one remembered compute server. */
 export const serverRecord = z.object({
   id: z.string(),
@@ -103,7 +114,7 @@ export const jobRecord = z.object({
 })
 
 /**
- * The research wiki domain spec: seven tables, no global singleton. The spec
+ * The research wiki domain spec: eight tables, no global singleton. The spec
  * object is the single source of the domain's name, version, and schemas.
  * The `servers` and `jobs` tables were added WITHOUT a version bump: the
  * domain loader fills a table missing from a stored snapshot with an empty
@@ -122,6 +133,7 @@ export const researchWikiDomainSpec = defineDomain({
     claims: domainTable<string, ClaimRecord>(claimRecord),
     projects: domainTable<string, ProjectRecord>(projectRecord),
     experiments: domainTable<string, ExperimentRecord>(experimentRecord),
+    figures: domainTable<string, FigureRecord>(figureRecord),
     servers: domainTable<string, ServerRecord>(serverRecord),
     jobs: domainTable<string, JobRecord>(jobRecord),
   },

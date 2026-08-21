@@ -707,7 +707,15 @@ export class ResearchService extends TypertRemoteService {
       if (isNotFound(error)) return rejected({ code: 'paper-not-found' })
       throw error
     }
-    return success({ figures: Object.freeze(await listPaperFigures(dir)) })
+    const metadata = new Map([...this.domain.table('figures').entries()]
+      .map(([, figure]) => figure)
+      .filter(figure => figure.projectId === request.projectId)
+      .map(figure => [figure.relPath, figure]))
+    const figures = (await listPaperFigures(dir)).map(figure => {
+      const meta = metadata.get(figure.relPath)
+      return meta === undefined ? figure : { ...figure, caption: meta.caption, experimentId: meta.experimentId }
+    })
+    return success({ figures: Object.freeze(figures) })
   }
 
   /**
@@ -1107,6 +1115,7 @@ export class ResearchService extends TypertRemoteService {
       if (isNotFound(error)) return rejected({ code: 'figure-not-found', relPath: request.relPath })
       throw error
     }
+    await this.domain.table('figures').delete(`${request.projectId}:${request.relPath}`)
     return success({ relPath: request.relPath })
   }
 

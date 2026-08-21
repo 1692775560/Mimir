@@ -105,6 +105,17 @@ export interface ExperimentRecord {
   readonly updatedAt: string
 }
 
+/** Metadata recorded when an agent saves a generated figure into a paper. */
+export interface FigureRecord {
+  readonly id: string
+  readonly projectId: string
+  readonly relPath: string
+  readonly caption: string
+  readonly sourcePath: string
+  readonly experimentId?: string | undefined
+  readonly createdAt: string
+}
+
 /** Lifecycle of one remote job submitted over ssh. */
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
@@ -293,6 +304,8 @@ export interface FigureEntry {
   readonly relPath: string
   readonly sizeBytes: number
   readonly mtimeMs: number
+  readonly caption?: string | undefined
+  readonly experimentId?: string | undefined
 }
 
 /** `listFigures` result: image files of the project's paper directory. */
@@ -389,7 +402,7 @@ export type ResearchImportBibResult = ResearchResult<{
   readonly skipped: readonly string[]
 }>
 
-/** The six research-wiki tables, in domain order. */
+/** The six research-wiki tables included in backup/export. */
 export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers'
 
 /** One wiki export snapshot's table payload. */

@@ -20,13 +20,14 @@
 | `/paper-write [项目]` | 脚手架 `main.tex` 骨架并驱动撰写，直到编译干净 |
 | `/paper-compile [目录]` | 用与工具相同的引擎路径直接产出编译报告 |
 
-**四个 agent 工具**
+**五个 agent 工具**
 
 | 工具 | 用途 |
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv Atom API 检索与单篇抓取 |
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、主张、实验、项目） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
+| `figure_save` | 把生成图片保存到项目 `figures/`，记录 caption/实验关联，并返回 LaTeX 片段 |
 
 **Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：
 
@@ -45,11 +46,11 @@
 
 ## 快速上手
 
-> **状态说明：** `dsh-mimir` / `dsh-client-ui-mimir` 尚未发布到 npm（发布计划中）；目前唯一的安装方式是从源码构建本仓库。
+> **状态说明：** 两个包已具备 tag 触发、带 provenance 的发布流水线，但首次 npm 发布仍需要发布者认证。在 `npm view dsh-mimir` 可查询前，请继续使用下方源码安装方式。
 
 ### 前置要求
 
-- **Node.js**——未声明 `engines` 约束；在 Node v24 上开发并验证。
+- **Node.js**——v22 或更高；在 Node v24 上开发并验证。
 - **pnpm**——在 v11.18 上验证。
 - **dsh CLI**——已发布在 npm：
   ```sh

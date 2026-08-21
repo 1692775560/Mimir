@@ -20,13 +20,14 @@ English | [中文](README.zh.md)
 | `/paper-write [project]` | Scaffolds the `main.tex` skeleton and drives drafting to a clean compile |
 | `/paper-compile [dir]` | Direct compile report over the same engine path as the tool |
 
-**Four agent tools**
+**Five agent tools**
 
 | Tool | Purpose |
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv Atom API search and single-paper fetch |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
+| `figure_save` | Saves a generated image into a project's `figures/` directory with caption/experiment metadata and returns a LaTeX snippet |
 
 **Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay:
 
@@ -45,11 +46,11 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
 
 ## Quickstart
 
-> **Status:** `dsh-mimir` / `dsh-client-ui-mimir` are not on npm yet (publication planned); the only install path today is building this repository from source.
+> **Status:** both packages are release-ready with a tag-triggered provenance workflow, but first publication still requires npm publisher authentication. Until `npm view dsh-mimir` succeeds, use the source installation below.
 
 ### Prerequisites
 
-- **Node.js** — no `engines` constraint is declared; developed and verified on Node v24.
+- **Node.js** — v22 or newer; developed and verified on Node v24.
 - **pnpm** — verified on v11.18.
 - **dsh CLI** — published on npm:
   ```sh
