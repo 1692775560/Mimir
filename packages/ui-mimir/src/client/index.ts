@@ -171,6 +171,7 @@ export function apply(ctx: ClientContext): void {
       ensureBibliography: (projectId) => { controller.ensureBibliography(projectId) },
       reloadBibliography: () => { controller.reloadBibliography() },
       deleteBibEntry: key => controller.deleteBibEntry(key),
+      updateBibEntry: (originalKey, entry) => controller.updateBibEntry(originalKey, entry),
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
       reorderPaperSections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSections(projectId, moves, baseOutline),

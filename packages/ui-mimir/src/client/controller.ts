@@ -778,12 +778,62 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (bib === null || bib.status !== 'ready' || bib.saveState === 'saving') {
       return failureOf('bib-not-ready', 'bibliography is not loaded')
     }
-    const entries = bib.entries.filter(entry => entry.key !== key)
+    return this.commitBibEntries(bib.entries.filter(entry => entry.key !== key), 'toast.deleted')
+  }
+
+  /**
+   * Replace one entry of the open bibliography (the field editor's save) and
+   * commit the file under the same optimistic concurrency as the delete. The
+   * edited entry keeps its list position; a rename to another entry's key is
+   * rejected client-side (`invalid-input`), as are an empty key or type and
+   * an edit addressed to a key no longer listed. The failure view is returned
+   * so the editor stays open with the rejection surfaced.
+   * @param originalKey - the citation key the editor opened on.
+   * @param entry - the edited entry (its key may differ from `originalKey`).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async updateBibEntry(originalKey: string, entry: BibEntry): Promise<ResearchFailureView | null> {
+    const bib = this.view.bib
+    if (bib === null || bib.status !== 'ready' || bib.saveState === 'saving') {
+      return failureOf('bib-not-ready', 'bibliography is not loaded')
+    }
+    if (entry.key === '' || entry.type === '') {
+      return failureOf('invalid-input', 'citation key and entry type must be non-empty')
+    }
+    if (!bib.entries.some(existing => existing.key === originalKey)) {
+      return failureOf('invalid-input', `entry not found: ${originalKey}`)
+    }
+    if (bib.entries.some(existing => existing.key !== originalKey && existing.key === entry.key)) {
+      return failureOf('invalid-input', `citation key already exists: ${entry.key}`)
+    }
+    return this.commitBibEntries(
+      bib.entries.map(existing => (existing.key === originalKey ? entry : existing)),
+      'toast.bibSaved',
+    )
+  }
+
+  /**
+   * Commit one next entry list of the open bibliography through
+   * `saveBibliography`'s optimistic concurrency: publish `saving`, land the
+   * new mtime and entries on success, freeze the panel on a conflict. Shared
+   * by the entry delete and the field editor's save.
+   * @param entries - the complete next entry list.
+   * @param toast - the success toast's copy key.
+   * @returns null on success, the settled failure otherwise.
+   */
+  private async commitBibEntries(
+    entries: readonly BibEntry[],
+    toast: 'toast.deleted' | 'toast.bibSaved',
+  ): Promise<ResearchFailureView | null> {
+    const bib = this.view.bib
+    if (bib === null || bib.status !== 'ready') {
+      return failureOf('bib-not-ready', 'bibliography is not loaded')
+    }
     const generation = this.bibGeneration
     this.publish({ bib: Object.freeze({ ...bib, saveState: 'saving', failure: null }) })
     try {
       const carried = await this.remote.saveBibliography({
-        projectId: bib.projectId, entries, baseMtimeMs: bib.mtimeMs, dir: this.dirOf(bib.projectId),
+        projectId: bib.projectId, entries: [...entries], baseMtimeMs: bib.mtimeMs, dir: this.dirOf(bib.projectId),
       })
       if (this.disposed || generation !== this.bibGeneration) return null
       const current = this.view.bib
@@ -811,7 +861,7 @@ export class ResearchController implements HostObservable<ResearchView> {
           saveState: 'saved', failure: null,
         }),
       })
-      this.notify('success', 'toast.deleted')
+      this.notify('success', toast)
       return null
     } catch (error) {
       const failure = transportFailure(error)
