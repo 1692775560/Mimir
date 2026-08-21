@@ -17,6 +17,7 @@ import type {
   ArxivEntry,
   BibEntry,
   ExperimentRecord,
+  ExperimentInput,
   FigureEntry,
   JobRecord,
   OutlineNode,
@@ -50,6 +51,7 @@ import type {
   ResearchProjectView,
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
+  ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -64,7 +66,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-one Remote calls this controller needs, exactly as the
+ * The thirty-two Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -95,6 +97,7 @@ export interface ResearchRemote {
     id: string
     serverId?: string | null | undefined
   }) => Promise<RemoteResult<ResearchUpdateExperimentResult>>
+  saveExperiment: (request: { experiment: ExperimentInput }) => Promise<RemoteResult<ResearchSaveExperimentResult>>
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
@@ -946,6 +949,41 @@ export class ResearchController implements HostObservable<ResearchView> {
           }),
         })
       }
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Create or update one experiment (the inline form's save), patch the
+   * loaded experiments slice with the returned record (replace when the id
+   * was already listed, append otherwise), and toast the success. The
+   * failure view of a rejected save is returned so the form surfaces it.
+   * @param experiment - the full-field upsert payload; `id` present updates.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveExperiment(experiment: ExperimentInput): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.saveExperiment({ experiment })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const saved = result.value.experiment
+      const current = this.view.experiments
+      if (current !== null) {
+        const listed = current.list.some(record => record.id === saved.id)
+        this.publish({
+          experiments: Object.freeze({
+            ...current,
+            list: Object.freeze(listed
+              ? current.list.map(record => record.id === saved.id ? saved : record)
+              : [...current.list, saved]),
+          }),
+        })
+      }
+      this.notify('success', 'toast.experimentSaved')
       return null
     } catch (error) {
       return transportFailure(error)

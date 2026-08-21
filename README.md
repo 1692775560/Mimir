@@ -33,7 +33,7 @@ English | [中文](README.zh.md)
 - **Overview** — pipeline stage progress, stat chips, artifact list, and a data card that exports/imports the whole wiki as one dated JSON snapshot (merge skips existing keys; replace arms a red second confirm).
 - **Paper** — outline rail with drag-to-reorder sections, autosaving `main.tex` editor with LaTeX syntax highlighting, one-click compile, click-to-jump error list, inline PDF preview, and a `references.bib` panel; resizable panes, fullscreen, persisted layout.
 - **Library** — remembered papers with editable tags and per-project links, a tag/current-project filter bar, in-panel arXiv search with one-click import, and add-to-`references.bib` per card.
-- **Experiments** — run records with metric-comparison bar charts (inline SVG), expandable metrics, linked-server badges with inline relink, and a rendered `EXPERIMENT_LOG.md`.
+- **Experiments** — run records with metric-comparison bar charts (inline SVG), expandable metrics, an inline create/edit form (metrics key/value editor, server link), linked-server badges with inline relink, and a rendered `EXPERIMENT_LOG.md`.
 - **Figures** — paper-directory image grid with preview, upload (button or drag-and-drop), delete, and copy-LaTeX-reference actions.
 - **Servers** — remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars and tag filters; the jobs section submits a remote command over SSH (queued → running → succeeded/failed polled live, stdout/stderr tails expandable, optional link to an experiment record whose status follows the job).
 
@@ -138,7 +138,7 @@ Every remembered paper as a card grid (summaries collapse to three lines): edita
 
 ### Experiments
 
-Run records from the wiki: a status pill per row, metric-comparison bar charts for numeric metrics shared by ≥2 runs, per-run expandable metrics, a linked-server badge with an inline relink dropdown, and row delete. Below the table, `EXPERIMENT_LOG.md` renders with the built-in restricted Markdown renderer (headings, emphasis, code, fences, lists, quotes, rules, tables, links — non-http(s) URLs are neutralized to plain text).
+Run records from the wiki: a status pill per row, metric-comparison bar charts for numeric metrics shared by ≥2 runs, per-run expandable metrics, a linked-server badge with an inline relink dropdown, and row edit/delete. The toolbar's **New experiment** opens an inline form (name, status, a metrics key/value row editor — values that parse as numbers are stored as numbers —, an optional server link) backed by the `saveExperiment` Remote upsert; a row's **Edit** backfills the same form. Below the table, `EXPERIMENT_LOG.md` renders with the built-in restricted Markdown renderer (headings, emphasis, code, fences, lists, quotes, rules, tables, links — non-http(s) URLs are neutralized to plain text).
 
 | Experiments |
 | --- |

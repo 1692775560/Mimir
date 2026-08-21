@@ -28,7 +28,7 @@ import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
 import { startWikiBackupLoop } from './backup.ts'
 
-export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, JobRecord, JobStatus } from './types.ts'
+export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, JobRecord, JobStatus } from './types.ts'
 export type {
   FigureEntry,
   OutlineNode,
@@ -57,6 +57,7 @@ export type {
   ResearchRejected,
   ResearchRemovePaperResult,
   ResearchResult,
+  ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,

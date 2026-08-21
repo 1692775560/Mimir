@@ -2615,3 +2615,17 @@ li.dropIndicator {
 .jobOutput pre[data-kind='stderr'] {
   color: var(--dsw-alias-state-error-primary, #d93026);
 }
+
+/* Experiments inline form: the metrics key/value row editor. */
+.metricRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metricRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}

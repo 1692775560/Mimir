@@ -254,6 +254,21 @@ export type ResearchDeleteExperimentResult = ResearchResult<{ readonly id: strin
 /** `updateExperiment` result: the record after the update. */
 export type ResearchUpdateExperimentResult = ResearchResult<{ readonly experiment: ExperimentRecord }>
 
+/** `saveExperiment` input: the full-field upsert payload; an omitted `id` creates. */
+export interface ExperimentInput {
+  readonly id?: string | undefined
+  readonly projectId: string
+  readonly name: string
+  readonly status: ExperimentStatus
+  /** Scalar metrics keyed by name (numbers or strings). */
+  readonly metrics: Record<string, number | string>
+  readonly logPath?: string | undefined
+  readonly serverId?: string | undefined
+}
+
+/** `saveExperiment` result: the stored record after the upsert. */
+export type ResearchSaveExperimentResult = ResearchResult<{ readonly experiment: ExperimentRecord }>
+
 /** `readArtifact` result: the markdown artifact's full text. */
 export type ResearchArtifactResult = ResearchResult<{
   readonly name: string

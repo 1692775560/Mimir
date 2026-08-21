@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
+import type { ArxivEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, ServerInput } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -126,6 +126,12 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
+  /**
+   * Create or update one experiment from the inline form.
+   * @param experiment - the full-field upsert payload; `id` present updates.
+   * @returns null on success, the settled failure otherwise.
+   */
+  saveExperiment: (experiment: ExperimentInput) => Promise<ResearchFailureView | null>
   /**
    * Partially update one paper's tags, project links, and notes.
    * @param arxivId - the bare arXiv id.
