@@ -3,11 +3,12 @@
  * pipeline progress (idea→plan→experiment→writing→done), review-round count,
  * paper directory, artifact list, and the last-updated timestamp — preceded
  * by the stat chips (papers/experiments/figures counts gathered from the
- * other views) and followed by the data section (wiki export/import).
+ * other views) and followed by the data section (scheduled-backup status,
+ * wiki export/import).
  * @module dsh-client-ui-mimir/client/OverviewView
  */
 
-import type { ResearchImportWikiMode, ResearchProjectView, ResearchWikiSnapshot } from 'dsh-mimir/types'
+import type { ResearchBackupStatusView, ResearchImportWikiMode, ResearchProjectView, ResearchWikiSnapshot } from 'dsh-mimir/types'
 import type { ResearchKey } from './locales.ts'
 import type { ResearchFailureView } from './controller.ts'
 import { STAGE_KEYS, STAGES } from './view-common.ts'
@@ -31,9 +32,11 @@ export interface OverviewStats {
  * verbs, and copy.
  * @returns the overview card, or the no-selection hint.
  */
-export function OverviewView({ project, stats, exportWiki, importWiki, t }: {
+export function OverviewView({ project, stats, backup, exportWiki, importWiki, t }: {
   readonly project: ResearchProjectView | undefined
   readonly stats: OverviewStats
+  /** Scheduled-backup status line; null hides it (not loaded yet). */
+  readonly backup: ResearchBackupStatusView | null
   readonly exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
   readonly importWiki: (
     snapshot: unknown,
@@ -100,7 +103,7 @@ export function OverviewView({ project, stats, exportWiki, importWiki, t }: {
             </ul>
           )}
       </div>
-      <DataSection exportWiki={exportWiki} importWiki={importWiki} t={t} />
+      <DataSection backup={backup} exportWiki={exportWiki} importWiki={importWiki} t={t} />
     </div>
   )
 }

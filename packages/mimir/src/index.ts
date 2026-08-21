@@ -26,12 +26,14 @@ import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
 import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
+import { startWikiBackupLoop } from './backup.ts'
 
 export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage } from './types.ts'
 export type {
   FigureEntry,
   OutlineNode,
   ResearchArtifactResult,
+  ResearchBackupStatusView,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileState,
@@ -43,6 +45,7 @@ export type {
   ResearchFailure,
   ResearchFiguresResult,
   ResearchImportPaperResult,
+  ResearchListBackupsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -80,6 +83,19 @@ export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLat
 export { createArxivSearchTool, createPaperFetchTool, parseArxivFeed, fetchArxivSearch } from './tools/arxiv.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
+export { buildWikiSnapshot } from './wiki-snapshot.ts'
+export type { WikiSnapshotSource } from './wiki-snapshot.ts'
+export {
+  backupFileName,
+  isBackupFileName,
+  pruneBackupNames,
+  runWikiBackup,
+  startWikiBackupLoop,
+  WIKI_BACKUP_FIRST_DELAY_MS,
+  WIKI_BACKUP_PREFIX,
+  WIKI_BACKUP_SUFFIX,
+} from './backup.ts'
+export type { WikiBackupLoopOptions } from './backup.ts'
 
 /** Cordis plugin name. */
 export const name = 'mimir'
@@ -114,6 +130,20 @@ export interface Config {
     /** Default result cap for `arxiv_search` (default 10). */
     maxResults?: number
   }
+  /** Scheduled wiki backup knobs. */
+  backup?: {
+    /** Master switch (default true); false disables the timer entirely. */
+    enabled?: boolean
+    /** Backup cadence in minutes (default 60, >= 1). */
+    intervalMinutes?: number
+    /** How many of the newest backups to keep (default 24, >= 1). */
+    keep?: number
+    /**
+     * Backup directory, resolved against `workspaceDir` unless absolute
+     * (default `'backups'`).
+     */
+    dir?: string
+  }
 }
 
 /** Schemastery configuration for the research suite. */
@@ -130,6 +160,12 @@ export const Config: z<Config> = z.object({
   arxiv: z.object({
     maxResults: z.number().step(1).min(1).max(100).default(10),
   }).default({ maxResults: 10 }),
+  backup: z.object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(60),
+    keep: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(24),
+    dir: z.string().default('backups'),
+  }).default({ enabled: true, intervalMinutes: 60, keep: 24, dir: 'backups' }),
 })
 
 /** Fully defaulted config view used by tools and commands. */
@@ -138,6 +174,12 @@ interface ResolvedConfig {
   readonly reviewer: { readonly provider: string; readonly maxRounds: number }
   readonly latex: { readonly engine: string; readonly timeoutMs: number }
   readonly arxiv: { readonly maxResults: number }
+  readonly backup: {
+    readonly enabled: boolean
+    readonly intervalMinutes: number
+    readonly keep: number
+    readonly dir: string
+  }
 }
 
 /** Validate defaults even when a caller invokes apply() without Loader normalization. */
@@ -146,13 +188,22 @@ function resolveConfig(config: Config): ResolvedConfig {
   const reviewer = { provider: config.reviewer?.provider ?? 'spawn', maxRounds: config.reviewer?.maxRounds ?? 3 }
   const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
   const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
+  const backup = {
+    enabled: config.backup?.enabled ?? true,
+    intervalMinutes: config.backup?.intervalMinutes ?? 60,
+    keep: config.backup?.keep ?? 24,
+    dir: config.backup?.dir ?? 'backups',
+  }
   if (workspaceDir.trim().length === 0) throw new TypeError('workspaceDir must be a non-empty path')
   if (reviewer.provider.trim().length === 0) throw new TypeError('reviewer.provider must be a non-empty provider name')
   if (!Number.isSafeInteger(reviewer.maxRounds) || reviewer.maxRounds < 1) throw new TypeError('reviewer.maxRounds must be a positive safe integer')
   if (latex.engine.trim().length === 0) throw new TypeError('latex.engine must be a non-empty engine selection')
   if (!Number.isSafeInteger(latex.timeoutMs) || latex.timeoutMs < 1) throw new TypeError('latex.timeoutMs must be a positive safe integer')
   if (!Number.isSafeInteger(arxiv.maxResults) || arxiv.maxResults < 1) throw new TypeError('arxiv.maxResults must be a positive safe integer')
-  return { workspaceDir, reviewer, latex, arxiv }
+  if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
+  if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
+  if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
+  return { workspaceDir, reviewer, latex, arxiv, backup }
 }
 
 /**
@@ -381,11 +432,30 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   registerReviewCommand(ctx, deps)
   registerPaperCommands(ctx, deps)
 
+  // Scheduled wiki backup: first pass one minute after start (startup stays
+  // fast), then every intervalMinutes; failures warn and the loop retries
+  // next cycle. The effect ties the timers to the plugin lifecycle; the
+  // service gets the resolved knobs either way so listBackups can report
+  // `enabled: false` when the timer is configured off.
+  const backupDir = resolve(deps.workspaceDir, resolved.backup.dir)
   ctx.plugin(ResearchService, {
     workspaceDir: deps.workspaceDir,
     domain,
     latex: resolved.latex,
+    backup: { ...resolved.backup, dir: backupDir },
   })
+  if (resolved.backup.enabled) {
+    ctx.effect(
+      () => startWikiBackupLoop({
+        domain,
+        dir: backupDir,
+        intervalMs: resolved.backup.intervalMinutes * 60_000,
+        keep: resolved.backup.keep,
+        onError: (error) => { console.warn('[mimir] wiki backup failed:', error) },
+      }),
+      'mimir.wikiBackup',
+    )
+  }
   ctx.effect(
     () => ctx.webServer.register({
       kind: 'prefix',

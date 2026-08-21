@@ -363,3 +363,21 @@ export type ResearchImportWikiResult = ResearchResult<{
   readonly imported: Record<ResearchWikiTableName, number>
   readonly skipped: Record<ResearchWikiTableName, number>
 }>
+
+/**
+ * `listBackups` view: the scheduled-backup knobs plus what is on disk.
+ * `enabled: false` means the timer is configured off (or the service was
+ * built without backup knobs); the numeric fields then carry zeros.
+ */
+export interface ResearchBackupStatusView {
+  readonly enabled: boolean
+  readonly intervalMinutes: number
+  readonly keep: number
+  /** Backup files currently under the backup directory. */
+  readonly count: number
+  /** Newest backup's filename; null while none exists. */
+  readonly latestName: string | null
+}
+
+/** `listBackups` result: the backup status line for the overview. */
+export type ResearchListBackupsResult = ResearchResult<{ readonly backup: ResearchBackupStatusView }>

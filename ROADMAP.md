@@ -107,6 +107,27 @@ polish round every few iterations.
       through a summary card (per-table row counts), a merge/replace choice
       (replace arms a red second confirm), and the settled imported/skipped
       counts, then re-fetches every loaded slice.
+- [x] Scheduled wiki auto-backup: a host-side timer (new `backup` config
+      section — `enabled`/`intervalMinutes`/`keep`/`dir`, schemastery +
+      resolveConfig validated) snapshots the wiki through the same
+      `buildWikiSnapshot` constructor `exportWiki` uses (extracted into
+      wiki-snapshot.ts, no copied logic) into
+      `<workspaceDir>/backups/mimir-wiki-YYYYMMDD-HHmmss.json` (UTC, so
+      lexicographic = chronological), atomic write via dsh-atomic-write,
+      oldest pruned past `keep`; first pass one minute after start (startup
+      stays fast), both timers unref'd, failures warn and retry next cycle,
+      dispose clears the timers through the plugin effect lifecycle. A new
+      `listBackups` Remote (28 methods) feeds the overview data section's
+      status line (cadence · keep · on-disk count, or "off"); auto-backup
+      files import back through the existing import flow unchanged.
+- [x] Panel toast notifications: a corner stack bottom-right of the workbench
+      (`toasts.ts` pure queue rules — 4s TTL, 4-card cap dropping the oldest,
+      same copy+detail pushes refresh in place instead of stacking — plus a
+      `ToastHost` render+timer component with a single sweep timer armed at
+      the next expiry). Toasts carry locale keys so the controller stays
+      locale-free; kinds map to green/blue/red accents. Triggers: compile
+      ok/failed (with the failure message), paper/bib/wiki imports (with
+      counts), probe-all settling, figure uploads, and every delete.
 
 ## Queue
 

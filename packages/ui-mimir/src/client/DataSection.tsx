@@ -1,5 +1,7 @@
 /**
- * The overview's data section: wiki backup and migration. Export downloads
+ * The overview's data section: wiki backup and migration. The header line
+ * reports the host's scheduled-backup knobs and on-disk count (hidden until
+ * `listBackups` settles). Export downloads
  * the whole wiki as one dated JSON snapshot; import walks a three-step flow
  * — pick a file, review its summary (per-table row counts and the export
  * timestamp), then choose merge (existing keys are skipped, never
@@ -10,7 +12,7 @@
  */
 
 import { useRef, useState } from 'react'
-import type { ResearchImportWikiMode, ResearchWikiSnapshot } from 'dsh-mimir/types'
+import type { ResearchBackupStatusView, ResearchImportWikiMode, ResearchWikiSnapshot } from 'dsh-mimir/types'
 import type { ResearchFailureView } from './controller.ts'
 import { failureCopy, type ResearchT } from './view-common.ts'
 import {
@@ -34,7 +36,9 @@ function totalOf(counts: Record<string, number>): number {
  * @returns the data card: two actions, then the pending-import summary or
  * the settled result.
  */
-export function DataSection({ exportWiki, importWiki, t }: {
+export function DataSection({ backup, exportWiki, importWiki, t }: {
+  /** Scheduled-backup status; null hides the line (not loaded yet). */
+  readonly backup: ResearchBackupStatusView | null
   readonly exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
   readonly importWiki: (
     snapshot: unknown,
@@ -112,6 +116,14 @@ export function DataSection({ exportWiki, importWiki, t }: {
   return (
     <div className={css.dataSection}>
       <h3 className={css.sectionTitle}>{t('overview.data')}</h3>
+      {backup !== null && (
+        <p className={css.hint}>
+          {t('overview.backup')}
+          ：{backup.enabled
+            ? `${t('overview.backupEvery')} ${backup.intervalMinutes} ${t('overview.backupMinutes')} · ${t('overview.backupKeep')} ${backup.keep} · ${backup.count} ${t('overview.backupStored')}`
+            : t('overview.backupDisabled')}
+        </p>
+      )}
       <div className={css.dataActions}>
         <button type="button" className={css.btn} disabled={busy} onClick={onExport}>
           {t('overview.exportWiki')}

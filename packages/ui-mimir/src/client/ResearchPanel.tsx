@@ -22,6 +22,7 @@ import { PapersView } from './PapersView.tsx'
 import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
 import { ServersView } from './ServersView.tsx'
+import { ToastHost } from './ToastHost.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Locale key of one tab label. */
@@ -117,7 +118,7 @@ export function ResearchPanel({
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   deleteExperiment, updateExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureBibliography, reloadBibliography, deleteBibEntry, importPapersToBib, reorderPaperSections,
-  exportWiki, importWiki,
+  exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
   const open = useStore(state => state.open)
@@ -139,6 +140,8 @@ export function ResearchPanel({
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const bib = useResearch(view => view.bib)
+  const toasts = useResearch(view => view.toasts)
+  const backup = useResearch(view => view.backup)
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -303,7 +306,7 @@ export function ResearchPanel({
       </aside>
       <main className={css.content}>
         {activeTab === 'overview' && (
-          <OverviewView project={selectedProject} stats={overviewStats} exportWiki={exportWiki} importWiki={importWiki} t={t} />
+          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} exportWiki={exportWiki} importWiki={importWiki} t={t} />
         )}
         {activeTab === 'paper' && (
           <PaperView
@@ -380,6 +383,7 @@ export function ResearchPanel({
           />
         )}
       </main>
+      <ToastHost toasts={toasts} dismissToast={dismissToast} pruneToasts={pruneToasts} t={t} />
     </div>
   )
 }
