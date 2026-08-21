@@ -21,6 +21,7 @@ import type {
   OutlineNode,
   PaperRecord,
   ResearchArtifactResult,
+  ResearchBackupStatusView,
   ResearchBibliographyResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
@@ -37,6 +38,7 @@ import type {
   ResearchImportPaperResult,
   ResearchImportWikiMode,
   ResearchImportWikiResult,
+  ResearchListBackupsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -58,7 +60,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The twenty-seven Remote calls this controller needs, exactly as the
+ * The twenty-eight Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -120,6 +122,7 @@ export interface ResearchRemote {
     mode: ResearchImportWikiMode
     confirmReplace?: boolean
   }) => Promise<RemoteResult<ResearchImportWikiResult>>
+  listBackups: () => Promise<RemoteResult<ResearchListBackupsResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -247,6 +250,8 @@ export interface ResearchView {
   readonly bib: ResearchBibView | null
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
+  /** Scheduled-backup status for the overview; null until loaded (or on failure). */
+  readonly backup: ResearchBackupStatusView | null
 }
 
 const INITIAL_VIEW: ResearchView = Object.freeze({
@@ -265,6 +270,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   serverChecks: Object.freeze({}),
   bib: null,
   toasts: Object.freeze([]),
+  backup: null,
 })
 
 /** Translate one settled Remote envelope or business branch into a failure view. */
@@ -291,6 +297,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private view = INITIAL_VIEW
   private readonly listeners = new Set<() => void>()
   private loadPromise: Promise<void> | null = null
+  private backupPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
   private serversPromise: Promise<void> | null = null
   private outlineGeneration = 0
@@ -326,12 +333,31 @@ export class ResearchController implements HostObservable<ResearchView> {
   ensure(): void {
     if (this.view.projectsStatus === 'ready' || this.loadPromise !== null) return
     this.loadPromise = this.loadProjects().finally(() => { this.loadPromise = null })
+    this.backupPromise ??= this.loadBackup().finally(() => { this.backupPromise = null })
   }
 
   /** Re-read the project list (the retry entry and the reconnect resync). */
   resync(): void {
     if (this.view.projectsStatus === 'cold') return
     this.loadPromise ??= this.loadProjects().finally(() => { this.loadPromise = null })
+    this.backupPromise ??= this.loadBackup().finally(() => { this.backupPromise = null })
+  }
+
+  /**
+   * Fetch the scheduled-backup status for the overview's data section.
+   * Informational only: any failure leaves the slice null, hiding the line
+   * instead of surfacing an error.
+   */
+  private async loadBackup(): Promise<void> {
+    try {
+      const carried = await this.remote.listBackups()
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run during the await.
+      if (this.disposed) return
+      if (!carried.ok || !carried.value.ok) return
+      this.publish({ backup: carried.value.value.backup })
+    } catch {
+      // Quiet by design: the line simply stays hidden.
+    }
   }
 
   /**

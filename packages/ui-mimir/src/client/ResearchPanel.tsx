@@ -141,6 +141,7 @@ export function ResearchPanel({
   const serverChecks = useResearch(view => view.serverChecks)
   const bib = useResearch(view => view.bib)
   const toasts = useResearch(view => view.toasts)
+  const backup = useResearch(view => view.backup)
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -305,7 +306,7 @@ export function ResearchPanel({
       </aside>
       <main className={css.content}>
         {activeTab === 'overview' && (
-          <OverviewView project={selectedProject} stats={overviewStats} exportWiki={exportWiki} importWiki={importWiki} t={t} />
+          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} exportWiki={exportWiki} importWiki={importWiki} t={t} />
         )}
         {activeTab === 'paper' && (
           <PaperView

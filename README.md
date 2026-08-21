@@ -110,7 +110,7 @@ Longer actions — compiles, imports, probe-alls, deletions, uploads — end wit
 
 ### Overview
 
-The landing view: the selected project's five-stage pipeline progress, stat chips (papers / experiments / figures / servers), the artifact list, and timestamps. The **data card** exports the entire wiki as one dated JSON snapshot (`mimir-wiki-<date>.json`) for backup or migration, and imports one back: pick a file, review the per-table row counts, then choose merge (existing keys are skipped, never overwritten) or replace (wipes all six tables — a red second confirm guards it). A successful import refreshes every loaded view and reports the imported/skipped totals in a toast.
+The landing view: the selected project's five-stage pipeline progress, stat chips (papers / experiments / figures / servers), the artifact list, and timestamps. The **data card** shows the scheduled-backup status (cadence, keep cap, on-disk count) and exports the entire wiki as one dated JSON snapshot (`mimir-wiki-<date>.json`) for backup or migration, and imports one back: pick a file (an auto-backup from `<workspaceDir>/backups/` works as-is), review the per-table row counts, then choose merge (existing keys are skipped, never overwritten) or replace (wipes all six tables — a red second confirm guards it). A successful import refreshes every loaded view and reports the imported/skipped totals in a toast.
 
 | Overview | Overview: wiki export/import |
 | --- | --- |
@@ -205,6 +205,10 @@ All keys are optional; these are the defaults from `packages/mimir/src/index.ts`
 | `latex.engine` | `auto` | `auto` (probe `latexmk` then `tectonic` on PATH), an engine name, or an absolute binary path (basename picks the dialect) |
 | `latex.timeoutMs` | `120000` | Compile kill timeout (ms); raise it for tectonic's first network fetch |
 | `arxiv.maxResults` | `10` | Default `arxiv_search` result cap |
+| `backup.enabled` | `true` | Scheduled wiki backup timer; `false` disables it entirely |
+| `backup.intervalMinutes` | `60` | Backup cadence in minutes (positive integer); the first pass runs one minute after plugin start |
+| `backup.keep` | `24` | Keep the newest N backups, prune the rest (positive integer) |
+| `backup.dir` | `backups` | Backup directory, resolved against `workspaceDir` unless absolute |
 
 Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-agent/cordis.yml).
 
@@ -215,7 +219,7 @@ Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-age
 - **LaTeX engine not found** — install tectonic (single binary): `brew install tectonic` on macOS, or see <https://tectonic-typesetting.github.io>. Alternatively point `latex.engine` at an absolute binary path. `engine: auto` probes `latexmk` first, then `tectonic`.
 - **Compile errors** — `/paper-compile` prints parsed file/line diagnostics; in the workbench's Paper view, clicking an error jumps the editor to that source line. First tectonic runs download packages over the network — raise `latex.timeoutMs` if the initial compile times out.
 - **arXiv search fails** — the tools call `export.arxiv.org`; check connectivity, and export `HTTPS_PROXY`/`HTTP_PROXY` before starting dsh when you are behind a proxy.
-- **Where is my data / how do I back it up** — the wiki lives at `~/.dsh/storages/research_wiki.json`, research artifacts under `workspaceDir` (default `./.research`). Use the Overview view's data card to export the whole wiki as one JSON snapshot (and import it back later — merge is non-destructive).
+- **Where is my data / how do I back it up** — the wiki lives at `~/.dsh/storages/research_wiki.json`, research artifacts under `workspaceDir` (default `./.research`). Two backup tracks: the host writes a full snapshot to `<workspaceDir>/backups/mimir-wiki-<UTC timestamp>.json` every `backup.intervalMinutes` (keeps the newest `backup.keep`, atomic writes, failures only warn and retry next cycle), and the Overview view's data card exports the same snapshot manually on demand. Both files import back through the data card (merge is non-destructive) — to restore from an auto-backup, pick the file under `backups/` in the import flow.
 
 ## Known limitations
 

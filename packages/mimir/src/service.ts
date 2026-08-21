@@ -11,7 +11,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readFile, stat, unlink } from 'node:fs/promises'
+import { readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -22,10 +22,10 @@ import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact }
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
 import {
-  snapshotEnvelopeError, tableRowsError, WIKI_SNAPSHOT_FORMAT, WIKI_SNAPSHOT_VERSION,
-  WIKI_TABLE_KEY, WIKI_TABLE_NAMES,
+  buildWikiSnapshot, snapshotEnvelopeError, tableRowsError, WIKI_TABLE_KEY, WIKI_TABLE_NAMES,
 } from './wiki-snapshot.ts'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import { isBackupFileName } from './backup.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
 import { fetchArxivSearch } from './tools/arxiv.ts'
@@ -33,11 +33,8 @@ import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
   BibEntry,
-  ClaimRecord,
   ExperimentRecord,
-  IdeaRecord,
   PaperRecord,
-  ProjectRecord,
   ResearchArtifactResult,
   ResearchBibliographyResult,
   ResearchCheckServerResult,
@@ -55,6 +52,7 @@ import type {
   ResearchImportPaperResult,
   ResearchImportWikiMode,
   ResearchImportWikiResult,
+  ResearchListBackupsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
@@ -94,6 +92,16 @@ export interface ResearchServiceConfig {
   readonly domain: ResearchWikiDomain
   /** Resolved LaTeX deployment knobs. */
   readonly latex: LatexToolOptions
+  /**
+   * Resolved scheduled-backup knobs (`dir` already absolute); absent in
+   * tests and direct constructions — `listBackups` then reports disabled.
+   */
+  readonly backup?: {
+    readonly enabled: boolean
+    readonly intervalMinutes: number
+    readonly keep: number
+    readonly dir: string
+  }
 }
 
 /** Status-map key for a compile addressed to no specific project. */
@@ -261,6 +269,7 @@ export class ResearchService extends TypertRemoteService {
   private readonly workspaceDir: string
   private readonly domain: ResearchWikiDomain
   private readonly latex: LatexToolOptions
+  private readonly backup: ResearchServiceConfig['backup']
   private readonly compileStatus = new Map<string, ResearchCompileStatusView>()
 
   /**
@@ -275,6 +284,7 @@ export class ResearchService extends TypertRemoteService {
     this.workspaceDir = config.workspaceDir
     this.domain = config.domain
     this.latex = config.latex
+    this.backup = config.backup
   }
 
   /**
@@ -1023,23 +1033,7 @@ export class ResearchService extends TypertRemoteService {
    */
   @Remote('exportWiki')
   exportWiki(): Promise<ResearchExportWikiResult> {
-    const rows = (name: ResearchWikiTableName): readonly unknown[] =>
-      [...this.domain.table(name).entries()].map(([, record]) => record)
-    return Promise.resolve(success({
-      snapshot: {
-        format: WIKI_SNAPSHOT_FORMAT,
-        version: WIKI_SNAPSHOT_VERSION,
-        exportedAt: new Date().toISOString(),
-        tables: {
-          papers: Object.freeze(rows('papers')) as readonly PaperRecord[],
-          ideas: Object.freeze(rows('ideas')) as readonly IdeaRecord[],
-          claims: Object.freeze(rows('claims')) as readonly ClaimRecord[],
-          projects: Object.freeze(rows('projects')) as readonly ProjectRecord[],
-          experiments: Object.freeze(rows('experiments')) as readonly ExperimentRecord[],
-          servers: Object.freeze(rows('servers')) as readonly ServerRecord[],
-        },
-      },
-    }))
+    return Promise.resolve(success({ snapshot: buildWikiSnapshot(this.domain) }))
   }
 
   /**
@@ -1102,6 +1096,34 @@ export class ResearchService extends TypertRemoteService {
       }
     }
     return success({ imported, skipped })
+  }
+
+  /**
+   * The scheduled-backup status line for the overview's data section: the
+   * resolved knobs plus how many backups are on disk (and the newest one's
+   * name). A missing/unreadable directory reads as zero backups; a service
+   * built without backup knobs reports `enabled: false`.
+   * @returns the backup status view.
+   */
+  @Remote('listBackups')
+  async listBackups(): Promise<ResearchListBackupsResult> {
+    if (this.backup === undefined || !this.backup.enabled) {
+      return success({
+        backup: { enabled: false, intervalMinutes: 0, keep: 0, count: 0, latestName: null },
+      })
+    }
+    const names = (await readdir(this.backup.dir).catch(() => [] as string[]))
+      .filter(isBackupFileName)
+      .sort()
+    return success({
+      backup: {
+        enabled: true,
+        intervalMinutes: this.backup.intervalMinutes,
+        keep: this.backup.keep,
+        count: names.length,
+        latestName: names.at(-1) ?? null,
+      },
+    })
   }
 }
 
