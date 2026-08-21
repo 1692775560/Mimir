@@ -56,6 +56,17 @@ describe('researchWikiDomainSpec', () => {
     expect(domain.table('projects').size).toBe(0)
   })
 
+  it('round-trips a paper carrying the optional pdfPath and reads older records without it', async () => {
+    const { facility } = await harness()
+    const domain = await facility.open(researchWikiDomainSpec)
+    const linked: PaperRecord = { ...paper, pdfPath: 'papers/2103.00020v2.pdf' }
+    await domain.table('papers').put(linked.arxivId, linked)
+    expect(domain.table('papers').get(linked.arxivId)).toEqual(linked)
+    // The field is optional: the pdfPath-less fixture validates unchanged.
+    await domain.table('papers').put('2406.01079v1', { ...paper, arxivId: '2406.01079v1' })
+    expect(domain.table('papers').get('2406.01079v1')?.pdfPath).toBeUndefined()
+  })
+
   it('reopens stored records from the shared medium after a simulated restart', async () => {
     const pool = new MemoryMediaPool()
     {

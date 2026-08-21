@@ -3,7 +3,9 @@
  * with one click), then the literature library as a card grid — title (linked
  * to the arXiv page), authors, added date, a three-line-clamped summary the
  * reader can expand, tag pills and linked-project badges, the agent's working
- * notes, and edit/delete actions. The edit action opens an inline editor
+ * notes, a PDF section (fetch the arXiv PDF into the workspace, then read it
+ * in the embedded iframe on the `/research/paper-pdf/<id>` route), and
+ * edit/delete actions. The edit action opens an inline editor
  * (tags, project links, notes); a filter bar above the grid narrows the
  * library by one tag and/or the currently selected project; each card can be
  * appended to the selected project's `references.bib` in one click.
@@ -15,7 +17,7 @@ import type { ArxivEntry, PaperRecord, ResearchProjectView } from 'dsh-mimir/typ
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
 } from './controller.ts'
-import { collectTags, failureCopy, filterPapers, type ResearchT } from './view-common.ts'
+import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -32,6 +34,73 @@ type AddToBibState = 'idle' | 'adding' | 'added' | 'exists'
 
 /** How long the added/exists feedback shows before the button resets. */
 const ADD_TO_BIB_RESET_MS = 2000
+
+/**
+ * One card's PDF section: a fetch button (downloads the arXiv PDF into the
+ * workspace through `fetchPaperPdf`, labeled refetch once linked) and, once
+ * the record carries a `pdfPath`, a read toggle opening the embedded iframe
+ * reader on the `/research/paper-pdf/<id>` route. A successful fetch bumps
+ * the cache-bust version and opens the reader.
+ */
+function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
+  readonly paper: PaperRecord
+  readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly onError: (message: string) => void
+  readonly t: ResearchT
+}) {
+  const [fetching, setFetching] = useState(false)
+  const [readerOpen, setReaderOpen] = useState(false)
+  const [version, setVersion] = useState(() => Date.now())
+
+  const fetchPdf = (): void => {
+    if (fetching) return
+    setFetching(true)
+    void fetchPaperPdf(paper.arxivId)
+      .then((failure) => {
+        if (failure === null) {
+          setVersion(Date.now())
+          setReaderOpen(true)
+        } else {
+          onError(`${t('papers.fetchPdfFailed')}：${failure.message}`)
+        }
+      })
+      .finally(() => { setFetching(false) })
+  }
+
+  return (
+    <div className={css.paperPdf}>
+      {paper.pdfPath !== undefined && readerOpen && (
+        <iframe
+          className={css.paperPdfFrame}
+          title={`${t('papers.readPdf')}：${paper.title}`}
+          src={paperPdfUrl(paper.arxivId, version)}
+        />
+      )}
+      <div className={css.paperPdfActions}>
+        <button
+          type="button"
+          className={css.btn}
+          disabled={fetching}
+          onClick={fetchPdf}
+        >
+          {fetching
+            ? t('papers.fetchingPdf')
+            : paper.pdfPath === undefined ? t('papers.fetchPdf') : t('papers.refetchPdf')}
+        </button>
+        {paper.pdfPath !== undefined && (
+          <button
+            type="button"
+            className={css.btn}
+            data-active={readerOpen || undefined}
+            onClick={() => { setReaderOpen(prev => !prev) }}
+          >
+            {readerOpen ? t('papers.closePdf') : t('papers.readPdf')}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 /**
  * One card's "add to bibliography" button: appends the paper to the selected
@@ -99,7 +168,7 @@ function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
  */
 export function PapersView({
   papers, arxivSearch, projects, selectedProjectId, ensurePapers, searchArxiv,
-  importPaper, updatePaper, removePaper, importPapersToBib, t,
+  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, t,
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
@@ -114,6 +183,7 @@ export function PapersView({
     projectId: string,
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
+  readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -440,6 +510,12 @@ export function PapersView({
                         </div>
                       </div>
                     )}
+                    <PaperPdfSection
+                      paper={paper}
+                      fetchPaperPdf={fetchPaperPdf}
+                      onError={setActionError}
+                      t={t}
+                    />
                     <div className={css.paperCardFoot}>
                       {editing !== paper.arxivId && (
                         <button
