@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, BibEntry, ExperimentInput, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
+import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
@@ -113,6 +113,16 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /**
+   * Insert one figure's standard LaTeX block into the project's `main.tex` —
+   * or, when the draft already references the file, just jump there — then
+   * switch the workbench to the paper view. Failures surface as toasts.
+   * @param projectId - wiki project id.
+   * @param entry - the figure card's entry.
+   */
+  insertFigure: (projectId: string, entry: FigureEntry) => Promise<void>
+  /** Clear the paper view's consumed jump ticket. */
+  consumePaperJump: () => void
   /**
    * Delete one experiment record, dropping its row from the loaded slice.
    * @param id - experiment record id.
