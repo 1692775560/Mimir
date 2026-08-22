@@ -395,6 +395,7 @@ export function ResearchPanel({
             compileView={compileView}
             source={source}
             projectId={selectedProjectId}
+            projectTitle={selectedProject?.title}
             dir={selectedProject?.paperDir}
             editSource={editSource}
             reloadSource={reloadSource}
