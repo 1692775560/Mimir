@@ -756,6 +756,19 @@
   gap: 12px;
 }
 
+/* Slim label naming the project whose paper is being edited. */
+.paperProject {
+  margin: 0;
+  align-self: center;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .outlineRail {
   flex: 0 0 200px;
   min-height: 0;

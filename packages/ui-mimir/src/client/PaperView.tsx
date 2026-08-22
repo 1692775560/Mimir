@@ -286,7 +286,7 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
  * @returns the editing surface.
  */
 export function PaperView({
-  outline, compileView, source, projectId, dir, editSource, reloadSource, compile, requestCompileFix,
+  outline, compileView, source, projectId, projectTitle, dir, editSource, reloadSource, compile, requestCompileFix,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
   ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen, t,
 }: {
@@ -294,6 +294,8 @@ export function PaperView({
   readonly compileView: ResearchCompileView
   readonly source: ResearchSourceView | null
   readonly projectId: string | null
+  /** Title of the selected project, shown as a strip on top of the panes. */
+  readonly projectTitle: string | undefined
   readonly dir: string | undefined
   readonly editSource: (content: string) => void
   readonly reloadSource: () => void
@@ -768,6 +770,11 @@ export function PaperView({
       >
         <div className={css.editorHead}>
           <h3 className={css.sectionTitle}>{t('editor.title')}</h3>
+          {projectTitle !== undefined && (
+            <span className={css.paperProject} title={`${t('paper.project')}：${projectTitle}`}>
+              {projectTitle}
+            </span>
+          )}
           {paneTabs}
           <div className={css.paneHeadActions}>
             {currentSource !== null && currentSource.status === 'ready' && (
