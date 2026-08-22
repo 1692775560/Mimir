@@ -32,6 +32,9 @@
     0 40px 100px rgb(15 23 42 / 25%);
   pointer-events: auto;
   overflow: hidden;
+  /* Native widgets (select popups, checkboxes, scrollbars) follow the light
+     palette; the dark override below flips them together with the tokens. */
+  color-scheme: light;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   --mimir-accent: #4f7cff;
@@ -245,12 +248,47 @@
   color: var(--dsw-alias-state-business-primary, #4176e6);
 }
 
+/* One visible focus ring for every keyboard-reachable control in the panel.
+   Text inputs/textarea keep their border+shadow :focus treatment (below);
+   everything else gets the outline. */
 .navItem:focus-visible,
 .iconButton:focus-visible,
 .close:focus-visible,
-.projectRow:focus-visible {
+.projectRow:focus-visible,
+.btn:focus-visible,
+.btnPrimary:focus-visible,
+.retry:focus-visible,
+.compileButton:focus-visible,
+.bibToggle:focus-visible,
+.metricsToggle:focus-visible,
+.tagPill:focus-visible,
+.tagRemove:focus-visible,
+.outlineItem:focus-visible,
+.issue:focus-visible,
+.paperSummary:focus-visible,
+.figurePreview:focus-visible,
+.figureAction:focus-visible,
+.figureLightbox:focus-visible,
+.railToggle:focus-visible,
+.paperTab:focus-visible,
+.toastClose:focus-visible,
+.serverSelect:focus-visible,
+.paperCardTitle a:focus-visible,
+.experimentLog a:focus-visible,
+.projectCheck input:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
   outline-offset: 2px;
+}
+
+/* The split handles are focusable separators (arrow keys nudge the panes);
+   light up the grip line plus a ring while focused. */
+.splitHandle:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+  outline-offset: -2px;
+}
+
+.splitHandle:focus-visible::after {
+  background: var(--dsw-alias-state-business-primary, #4176e6);
 }
 
 /* The 3px accent bar on the active tab's left edge. */
@@ -2151,13 +2189,17 @@ li.dropIndicator {
   white-space: nowrap;
 }
 
+/* The native selects (experiment relink, job form): painted from the same
+   menu/label tokens as .input so they follow the dark palette, and the
+   workbench's color-scheme makes the dropped-down option list match. */
 .serverSelect {
   max-width: 140px;
-  padding: 2px 6px;
-  border: 1px solid var(--dsw-alias-line-border, #d4d9e3);
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   border-radius: 6px;
-  background: var(--dsw-alias-bg-primary, #fff);
-  color: var(--dsw-alias-label-secondary, #3c4557);
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-primary, #17233d);
   font-size: 12px;
 }
 
@@ -2304,6 +2346,12 @@ li.dropIndicator {
 .input:focus {
   border-color: var(--dsw-alias-state-business-primary, #4176e6);
   box-shadow: 0 0 0 3px var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 15%));
+}
+
+.input:disabled {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  cursor: default;
+  opacity: 0.7;
 }
 
 .serverFormActions {
@@ -2545,6 +2593,7 @@ li.dropIndicator {
    syntax colors are picked for it (all ≥ 4.5:1 against it). */
 :global(body[data-ds-dark-theme]) .workbench {
   border-color: rgb(255 255 255 / 10%);
+  color-scheme: dark;
   --mimir-accent: #6f9cff;
   --mimir-accent-strong: #5b86ee;
   --mimir-accent-soft: rgb(111 156 255 / 15%);
