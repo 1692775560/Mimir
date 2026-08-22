@@ -8,7 +8,7 @@
  * @module dsh-client-ui-mimir/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the Client assembly's ctx.remote merge. NOTE: the published
 // @deepseek-ai/dsh-api-remotes does not mount the research namespace; the
 // augmentation below supplies its types (see README "Known limitations").
@@ -45,8 +45,8 @@ export type { ResearchKey } from './locales.ts'
 /** Dictionary namespace owned by this plugin. */
 const NS = 'research'
 
-/** Required services: the slot registry, the Remote namespace, the copy, and the theme preference. */
-export const inject = ['slots', 'remote', 'remote.research', 'locale', 'theme']
+/** Required services: the slot registry, the Remote namespace, the sessions domain, the copy, and the theme preference. */
+export const inject = ['slots', 'remote', 'remote.research', 'sessions', 'locale', 'theme']
 
 /**
  * Upload one figure file through the host's upload route. The route answers
@@ -73,6 +73,12 @@ async function uploadOneFigure(projectId: string, dir: string | undefined, file:
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-mimir: dictionaries')
+
+  // The browser `ctx.sessions` is the client runtime's ISessions, but the
+  // host-side dsh-session package (pulled in by dsh-mimir's types) merges the
+  // same Context key with its own SessionStore, and in this mixed program
+  // that declaration wins — narrow explicitly.
+  const sessions = ctx.sessions as unknown as ISessions
 
   const panel = createResearchPanelStore()
   const controller = new ResearchController(ctx.remote.research)
@@ -136,6 +142,24 @@ export function apply(ctx: ClientContext): void {
         controller.select(projectId)
       },
       compile: (projectId) => { void controller.compile(projectId) },
+      // The per-issue "fix with AI" button: queue the assembled prompt as one
+      // user message in the current session. The agent's edits land on disk;
+      // the panel's conflict/reload and re-compile flow takes it from there.
+      requestCompileFix: async (prompt) => {
+        const current = sessions.list.getSnapshot().current
+        const binding = current === undefined ? undefined : sessions.binding(current)
+        if (binding === undefined) {
+          controller.notify('error', 'toast.fixNoSession')
+          return
+        }
+        try {
+          const result = await binding.session.prompt([{ type: 'text', text: prompt }], 'queue')
+          if (result.ok) controller.notify('success', 'toast.fixSent')
+          else controller.notify('error', 'toast.fixSendFailed', result.error.message)
+        } catch (error) {
+          controller.notify('error', 'toast.fixSendFailed', error instanceof Error ? error.message : String(error))
+        }
+      },
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
