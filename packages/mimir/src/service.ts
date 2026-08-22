@@ -15,7 +15,7 @@
 
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { readdir, readFile, mkdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { readdir, readFile, mkdir, appendFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -39,6 +39,7 @@ import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
   BibEntry,
+  ExperimentJobOutcome,
   ExperimentRecord,
   ExperimentStatus,
   ExperimentInput,
@@ -223,6 +224,29 @@ const JOB_OUTPUT_TAIL_CHARS = 8192
 /** Keep the trailing window of one job output stream. */
 function tailOf(text: string): string {
   return text.length <= JOB_OUTPUT_TAIL_CHARS ? text : text.slice(text.length - JOB_OUTPUT_TAIL_CHARS)
+}
+
+/** Non-empty lines kept of one settled job's log summary written back to the experiment. */
+const JOB_SUMMARY_LINES = 5
+/** Character cap of one settled job's log summary. */
+const JOB_SUMMARY_MAX_CHARS = 400
+
+/**
+ * Trailing log excerpt of one settled job: the last non-empty lines of the
+ * stream that explains the outcome (stderr on failure, stdout on success,
+ * the other stream as the fallback), capped at {@link JOB_SUMMARY_LINES}
+ * lines and {@link JOB_SUMMARY_MAX_CHARS} characters. Silent jobs yield an
+ * empty summary.
+ * @param job - the settled job record.
+ * @returns the log excerpt.
+ */
+function jobSummaryOf(job: JobRecord): string {
+  const primary = job.status === 'failed' ? job.stderrTail : job.stdoutTail
+  const fallback = job.status === 'failed' ? job.stdoutTail : job.stderrTail
+  const source = primary.trim() !== '' ? primary : fallback
+  const lines = source.split('\n').map(line => line.trimEnd()).filter(line => line.trim() !== '')
+  const summary = lines.slice(-JOB_SUMMARY_LINES).join('\n')
+  return summary.length <= JOB_SUMMARY_MAX_CHARS ? summary : `…${summary.slice(summary.length - JOB_SUMMARY_MAX_CHARS)}`
 }
 
 /** Outcome of one TCP reachability probe. */
@@ -1339,7 +1363,9 @@ export class ResearchService extends TypertRemoteService {
    * TCP-only record cannot run jobs). A given `experimentId` must name an
    * experiment record (`experiment-not-found`): a linked experiment flips
    * to `running` with the server link on submit, then to
-   * `success`/`failed` when the job settles.
+   * `success`/`failed` when the job settles — the settle also records the
+   * job's outcome (exit code, duration, log excerpt) as the experiment's
+   * `lastJob` and appends one line to the workspace's `EXPERIMENT_LOG.md`.
    * @param request - the target server, the command line, and the optional
    * experiment link.
    * @returns the queued record.
@@ -1485,9 +1511,63 @@ export class ResearchService extends TypertRemoteService {
     // command still finished, but nothing is written back.
     if (table.get(id) === undefined) return
     await table.put(id, settled)
-    if (settled.experimentId !== undefined) {
-      await this.markExperiment(settled.experimentId, settled.status === 'succeeded' ? 'success' : 'failed')
+    await this.writeBackExperiment(settled)
+  }
+
+  /**
+   * Write one settled job's outcome back to its linked experiment: flip the
+   * lifecycle status (`succeeded` → `success`, otherwise `failed`), record
+   * the outcome (exit code, wall-clock duration, finished timestamp,
+   * trailing log excerpt) as the record's `lastJob`, and append one line to
+   * the workspace's `EXPERIMENT_LOG.md`. An unlinked or deleted experiment
+   * is skipped; the log append is best-effort and never fails the settle.
+   * @param job - the settled job record.
+   */
+  private async writeBackExperiment(job: JobRecord): Promise<void> {
+    if (job.experimentId === undefined) return
+    const table = this.domain.table('experiments')
+    const existing = table.get(job.experimentId)
+    if (existing === undefined) return
+    const finishedAt = job.finishedAt ?? new Date().toISOString()
+    const startedMs = job.startedAt !== undefined ? Date.parse(job.startedAt) : Number.NaN
+    const finishedMs = Date.parse(finishedAt)
+    const outcome: ExperimentJobOutcome = {
+      jobId: job.id,
+      status: job.status === 'succeeded' ? 'succeeded' : 'failed',
+      exitCode: job.exitCode,
+      durationMs: Number.isFinite(startedMs) && Number.isFinite(finishedMs)
+        ? Math.max(0, finishedMs - startedMs)
+        : null,
+      finishedAt,
+      summary: jobSummaryOf(job),
     }
+    await table.put(existing.id, {
+      ...existing,
+      status: outcome.status === 'succeeded' ? 'success' : 'failed',
+      lastJob: outcome,
+      updatedAt: new Date().toISOString(),
+    })
+    // Best-effort: a read-only workspace must not break the settle.
+    await this.appendExperimentLog(existing.name, outcome).catch(() => {})
+  }
+
+  /**
+   * Append one settled-job line to the workspace's `EXPERIMENT_LOG.md`
+   * (created on first write): timestamp, experiment name, job id and
+   * outcome, exit code, wall-clock seconds, and the summary's first line
+   * (truncated to 120 characters).
+   * @param experimentName - the linked experiment's display name.
+   * @param outcome - the settled job's write-back outcome.
+   */
+  private async appendExperimentLog(experimentName: string, outcome: ExperimentJobOutcome): Promise<void> {
+    const seconds = outcome.durationMs === null ? null : (outcome.durationMs / 1000).toFixed(1)
+    const firstLine = outcome.summary.split('\n')[0] ?? ''
+    const detail = firstLine.length > 120 ? `${firstLine.slice(0, 119)}…` : firstLine
+    const line = `- ${outcome.finishedAt} \`${experimentName}\` job ${outcome.jobId} ${outcome.status}`
+      + ` (exit ${outcome.exitCode === null ? 'n/a' : String(outcome.exitCode)}`
+      + `${seconds === null ? '' : `, ${seconds}s`})`
+      + `${detail === '' ? '' : `: ${detail}`}`
+    await appendFile(join(this.workspaceDir, 'EXPERIMENT_LOG.md'), `${line}\n`, 'utf8')
   }
 
   /**

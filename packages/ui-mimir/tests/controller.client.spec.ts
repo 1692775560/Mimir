@@ -850,6 +850,69 @@ describe('ResearchController remote jobs', () => {
     })
   })
 
+  it('refreshes the loaded experiments slice when a linked job settles', async () => {
+    let round = 0
+    let experimentLoads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => {
+        experimentLoads += 1
+        return Promise.resolve(carried<ResearchExperimentsResult>({ ok: true, value: { experiments: [] } }))
+      },
+      listJobs: () => {
+        round += 1
+        const jobs = round === 1
+          ? [JOB_RUNNING]
+          : [{ ...JOB_RUNNING, status: 'succeeded' as const, exitCode: 0, finishedAt: '2026-08-02T00:01:00.000Z' }]
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs } }))
+      },
+    }))
+    controller.select('p1')
+    controller.ensureJobs()
+    await settle()
+    expect(experimentLoads).toBe(1)
+    controller.refreshJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list[0]?.status).toBe('succeeded')
+    // The settle wrote back to the linked experiment: the slice reloads once.
+    expect(experimentLoads).toBe(2)
+  })
+
+  it('leaves the experiments slice alone when an UNLINKED job settles', async () => {
+    let round = 0
+    let experimentLoads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => {
+        experimentLoads += 1
+        return Promise.resolve(carried<ResearchExperimentsResult>({ ok: true, value: { experiments: [] } }))
+      },
+      listJobs: () => {
+        round += 1
+        const unlinked = { ...JOB_RUNNING, experimentId: undefined }
+        const jobs = round === 1
+          ? [unlinked]
+          : [{ ...unlinked, status: 'succeeded' as const, exitCode: 0, finishedAt: '2026-08-02T00:01:00.000Z' }]
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs } }))
+      },
+    }))
+    controller.select('p1')
+    controller.ensureJobs()
+    await settle()
+    controller.refreshJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list[0]?.status).toBe('succeeded')
+    expect(experimentLoads).toBe(1)
+  })
+
   it('deleteJob drops the row and reports the business failure on an unknown id', async () => {
     const controller = new ResearchController(stubRemote({
       listJobs: () => Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs: [JOB_RUNNING] } })),

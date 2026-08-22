@@ -1472,15 +1472,28 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
   }
 
-  /** Toast each job whose poll-observed status newly flipped terminal. */
+  /**
+   * Toast each job whose poll-observed status newly flipped terminal, then
+   * refresh the loaded experiments slice when a LINKED job settled: the
+   * Host's write-back flipped that experiment's status and recorded the
+   * outcome as `lastJob`, and the row should show both without a reselect.
+   */
   private notifyJobTransitions(prev: readonly JobRecord[], next: readonly JobRecord[]): void {
     const before = new Map(prev.map(job => [job.id, job.status]))
+    let linkedSettled = false
     for (const job of next) {
       const prior = before.get(job.id)
       if (prior === undefined || prior === job.status) continue
       const detail = job.command.length > 60 ? `${job.command.slice(0, 59)}…` : job.command
       if (job.status === 'succeeded') this.notify('success', 'toast.jobSucceeded', detail)
       else if (job.status === 'failed') this.notify('error', 'toast.jobFailed', detail)
+      if ((job.status === 'succeeded' || job.status === 'failed') && job.experimentId !== undefined) {
+        linkedSettled = true
+      }
+    }
+    const experiments = this.view.experiments
+    if (linkedSettled && experiments !== null && experiments.status === 'ready') {
+      void this.loadExperiments(experiments.projectId, this.outlineGeneration)
     }
   }
 
