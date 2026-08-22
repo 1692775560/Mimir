@@ -13,6 +13,8 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
 import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths } from './figure-insert.ts'
+import { metricFigureCaption, metricFigureFileName, metricFigureSvg } from './metric-figure.ts'
+import type { MetricChartRow } from './view-common.ts'
 import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
@@ -56,6 +58,7 @@ import type {
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
@@ -108,6 +111,13 @@ export interface ResearchRemote {
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
   convertFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchConvertFigureResult>>
+  saveFigure: (request: {
+    projectId: string
+    name: string
+    content: string
+    caption?: string | undefined
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSaveFigureResult>>
   listServers: () => Promise<RemoteResult<ResearchListServersResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
@@ -693,6 +703,56 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.loadFigures(projectId, true)
     }
     return inserted.line
+  }
+
+  /**
+   * Generate one metric's comparison chart as a paper figure (the experiments
+   * view's per-chart button): render the rows as a standalone SVG document,
+   * save it through the host (`saveFigure` — writes `figures/metric-<key>.svg`,
+   * registers the caption in the wiki's figures table, and runs the SVG
+   * conversion pipeline), then insert the figure block exactly like the
+   * figures view's insert button (the SVG branch of `insertFigureIntoPaper`
+   * reuses the just-converted product, references it, jumps, and toasts). A
+   * rejected save toasts the reason and touches nothing.
+   * @param projectId - wiki project id.
+   * @param metricKey - the metric the chart compares.
+   * @param rows - the chart's rows (runs carrying a finite value, oldest first).
+   * @returns the 1-based target line for the paper view to jump to, or null
+   * when the save or insert failed (a toast already carries the reason).
+   */
+  async generateMetricFigure(projectId: string, metricKey: string, rows: readonly MetricChartRow[]): Promise<number | null> {
+    if (rows.length === 0) return null
+    const name = metricFigureFileName(metricKey)
+    const caption = metricFigureCaption(metricKey, rows)
+    const content = metricFigureSvg(metricKey, rows)
+    let saved: { relPath: string; caption: string }
+    try {
+      const carried = await this.remote.saveFigure({ projectId, name, content, caption, dir: this.dirOf(projectId) })
+      if (!carried.ok) {
+        this.notify('error', 'toast.metricFigureFailed', carried.error.message)
+        return null
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.notify('error', 'toast.metricFigureFailed', businessFailure(result.error).message)
+        return null
+      }
+      saved = result.value
+    } catch (error) {
+      this.notify('error', 'toast.metricFigureFailed', transportFailure(error).message)
+      return null
+    }
+    if (this.disposed) return null
+    // The figures view's cached scan does not know the new file yet.
+    this.figuresInFlight = false
+    this.loadFigures(projectId, true)
+    return this.insertFigureIntoPaper(projectId, {
+      name: saved.relPath.split('/').pop() ?? name,
+      relPath: saved.relPath,
+      sizeBytes: content.length,
+      mtimeMs: Date.now(),
+      caption: saved.caption,
+    })
   }
 
   /** Clear the consumed paper-editor jump ticket (the paper view's callback). */

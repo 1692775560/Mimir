@@ -235,6 +235,8 @@ export type ResearchFailure =
   | { readonly code: 'section-not-found'; readonly title: string }
   | { readonly code: 'subsection-not-found'; readonly sectionTitle: string; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
+  | { readonly code: 'invalid-name'; readonly name: string }
+  | { readonly code: 'invalid-content' }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
   | { readonly code: 'operation-failed'; readonly message: string }
 
@@ -355,6 +357,21 @@ export type ResearchDeleteFigureResult = ResearchResult<{ readonly relPath: stri
 export type ResearchConvertFigureResult = ResearchResult<{
   readonly relPath: string
   readonly converter: string
+}>
+
+/**
+ * `saveFigure` result: the paper-directory-relative path of the SVG the
+ * client generated (the experiments view's metric-comparison charts), the
+ * caption registered in the wiki's figures table, and — when a converter is
+ * available — the LaTeX-embeddable product written next to the SVG (the same
+ * pipeline `convertFigure` runs). A machine with no usable converter reports
+ * `warning` instead; the save itself still succeeded.
+ */
+export type ResearchSaveFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly caption: string
+  readonly converted?: { readonly relPath: string; readonly converter: string } | undefined
+  readonly warning?: string | undefined
 }>
 
 /** One remembered compute server (a GPU box the experiments run on). */

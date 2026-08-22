@@ -1841,6 +1841,23 @@ li.dropIndicator {
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
 }
 
+.metricChartHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.metricChartHead h4 {
+  margin: 0;
+  padding-top: 5px;
+}
+
+.metricChartHead .retry {
+  flex-shrink: 0;
+}
+
 .metricChart h4 {
   margin: 0 0 6px;
   overflow: hidden;

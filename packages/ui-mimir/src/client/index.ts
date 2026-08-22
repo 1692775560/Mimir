@@ -196,6 +196,11 @@ export function apply(ctx: ClientContext): void {
         const line = await controller.insertFigureIntoPaper(projectId, entry)
         if (line !== null) actions.setTab('paper')
       },
+      // The metric chart's paper-figure button rides the same insert path.
+      generateMetricFigure: async (projectId, metricKey, rows) => {
+        const line = await controller.generateMetricFigure(projectId, metricKey, rows)
+        if (line !== null) actions.setTab('paper')
+      },
       consumePaperJump: () => { controller.consumePaperJump() },
       deleteExperiment: (id) => controller.deleteExperiment(id),
       updateExperiment: (id, serverId) => controller.updateExperiment(id, serverId),

@@ -21,11 +21,12 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
 import { ResearchService } from '../src/service.ts'
+import type { ResearchServiceConfig } from '../src/service.ts'
 import { ARXIV_PDF_MAX_BYTES, paperPdfFileName, parseArxivFeed } from '../src/tools/arxiv.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
 /** Boot a service over a memory-backed domain and a fresh temp workspace. */
-async function harness() {
+async function harness(svg?: ResearchServiceConfig['svg']) {
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = new MemoryStorageBackend(new MemoryMediaPool())
@@ -39,6 +40,7 @@ async function harness() {
     workspaceDir,
     domain,
     latex: { engine: 'auto', timeoutMs: 1000 },
+    ...(svg === undefined ? {} : { svg }),
   })
   return { ctx, domain, workspaceDir, service }
 }
@@ -96,6 +98,73 @@ describe('ResearchService.deleteFigure', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'figure-not-found', relPath: 'figures/missing.png' } })
     await expect(service.deleteFigure({ projectId: 'missing', relPath: 'figures/plot.png' }))
       .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found', projectId: 'missing' } })
+  })
+})
+
+describe('ResearchService.saveFigure', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="110"><title>mpjpe</title></svg>\n'
+
+  /** A fake rsvg-convert that writes a marker PDF at the -o target. */
+  const FAKE_CONVERTER = {
+    probe: (command: string) => Promise.resolve(command === 'rsvg-convert' ? '/fake/bin/rsvg-convert' : null),
+    run: async (_executable: string, args: readonly string[]) => {
+      await writeFile(String(args[args.indexOf('-o') + 1]), '%PDF-fake')
+      return { ok: true as const, message: '' }
+    },
+  }
+
+  it('writes the SVG, registers the caption, lists the artifact, and converts', async () => {
+    const { domain, workspaceDir, service } = await harness(FAKE_CONVERTER)
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    const outcome = await service.saveFigure({
+      projectId: 'p1', name: 'metric-mpjpe.svg', content: SVG,
+      caption: 'Comparison of mpjpe across experiments.',
+    })
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        relPath: 'figures/metric-mpjpe.svg',
+        caption: 'Comparison of mpjpe across experiments.',
+        converted: { relPath: 'figures/metric-mpjpe.pdf', converter: 'rsvg-convert' },
+      },
+    })
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'metric-mpjpe.svg'), 'utf8')).toBe(SVG)
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'metric-mpjpe.pdf'), 'utf8')).toBe('%PDF-fake')
+    expect(domain.table('figures').get('p1:figures/metric-mpjpe.svg'))
+      .toMatchObject({ caption: 'Comparison of mpjpe across experiments.' })
+    expect(domain.table('projects').get('p1')?.artifacts).toContain('paper/figures/metric-mpjpe.svg')
+    // The figures view's scan merges the registered caption.
+    const listed = await service.listFigures({ projectId: 'p1' })
+    expect(listed.ok && listed.value.figures.some(
+      entry => entry.relPath === 'figures/metric-mpjpe.svg' && entry.caption === 'Comparison of mpjpe across experiments.',
+    )).toBe(true)
+  })
+
+  it('still saves and registers with a warning when no converter is available', async () => {
+    const { domain, workspaceDir, service } = await harness({ probe: () => Promise.resolve(null) })
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    const outcome = await service.saveFigure({ projectId: 'p1', name: 'm.svg', content: SVG, caption: 'c' })
+    expect(outcome).toMatchObject({ ok: true, value: { relPath: 'figures/m.svg', caption: 'c' } })
+    expect(outcome.ok && outcome.value.warning).toContain('No SVG converter found')
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'm.svg'), 'utf8')).toBe(SVG)
+    expect(domain.table('figures').get('p1:figures/m.svg')).toMatchObject({ caption: 'c' })
+  })
+
+  it('rejects non-SVG names, traversal, and empty content without writing', async () => {
+    const { domain, workspaceDir, service } = await harness(FAKE_CONVERTER)
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    await expect(service.saveFigure({ projectId: 'p1', name: 'plot.png', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+    await expect(service.saveFigure({ projectId: 'p1', name: '../escape.svg', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+    await expect(service.saveFigure({ projectId: 'p1', name: 'm.svg', content: '  \n' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-content' } })
+    await expect(service.saveFigure({ projectId: 'missing', name: 'm.svg', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    expect([...domain.table('figures').entries()]).toEqual([])
   })
 })
 
