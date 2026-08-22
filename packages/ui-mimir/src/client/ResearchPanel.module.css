@@ -1803,6 +1803,28 @@ li.dropIndicator {
   font-size: 11px;
 }
 
+.figureCaption {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.figureExpBadge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-business-quaternary, rgb(56 97 251 / 10%));
+  color: var(--dsw-alias-business-primary, #3861fb);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .figureLightbox {
   position: fixed;
   inset: 0;
