@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  figureBlockOf, figureLabelOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure,
+  figureBlockOf, figureLabelOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths,
 } from '../src/client/figure-insert.ts'
 
 describe('isSvgFigure', () => {
@@ -15,6 +15,23 @@ describe('isSvgFigure', () => {
     expect(isSvgFigure('plot.png')).toBe(false)
     expect(isSvgFigure('plot.pdf')).toBe(false)
     expect(isSvgFigure('svg-notes.png')).toBe(false)
+  })
+})
+
+describe('svgConvertedRelPaths', () => {
+  it('lists the vector product first, then the raster fallback, in the same directory', () => {
+    expect(svgConvertedRelPaths('figures/arch.svg')).toEqual(['figures/arch.pdf', 'figures/arch.png'])
+    expect(svgConvertedRelPaths('plot.SVG')).toEqual(['plot.pdf', 'plot.png'])
+  })
+
+  it('is empty for non-SVG figures', () => {
+    expect(svgConvertedRelPaths('figures/plot.png')).toEqual([])
+  })
+
+  it('feeds the duplicate guard: a converted product reference counts as inserted', () => {
+    const content = '\\begin{figure}[t]\n  \\includegraphics{figures/arch.pdf}\n\\end{figure}\n'
+    const candidates = ['figures/arch.svg', ...svgConvertedRelPaths('figures/arch.svg')]
+    expect(candidates.map(candidate => findFigureReferenceLine(content, candidate))).toEqual([null, 2, null])
   })
 })
 

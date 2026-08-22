@@ -17,12 +17,14 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile, mkdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
-import { join, resolve, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { parseTexOutline, reorderSections, reorderSubsections } from './outline.ts'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from './artifacts.ts'
+import { convertSvgFigure, svgConverterNames } from './svg-convert.ts'
+import type { SvgConversionDeps } from './svg-convert.ts'
 import { isNotFound, readPaperSource, resolvePaperDir, savePaperSourceFile, saveTextFileOptimistic } from './paper-source.ts'
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from './bibtex.ts'
 import {
@@ -48,6 +50,7 @@ import type {
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchConvertFigureResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -116,6 +119,11 @@ export interface ResearchServiceConfig {
     readonly keep: number
     readonly dir: string
   }
+  /**
+   * Probe/run overrides for the SVG conversion behind `convertFigure`;
+   * absent outside tests, where the real PATH probe and process runner apply.
+   */
+  readonly svg?: SvgConversionDeps
 }
 
 /** Status-map key for a compile addressed to no specific project. */
@@ -333,6 +341,7 @@ export class ResearchService extends TypertRemoteService {
   private readonly domain: ResearchWikiDomain
   private readonly latex: LatexToolOptions
   private readonly backup: ResearchServiceConfig['backup']
+  private readonly svg: ResearchServiceConfig['svg']
   private readonly compileStatus = new Map<string, ResearchCompileStatusView>()
   /** Monotonic suffix of generated job ids (same-millisecond submits stay distinct). */
   private jobSeq = 0
@@ -350,6 +359,7 @@ export class ResearchService extends TypertRemoteService {
     this.domain = config.domain
     this.latex = config.latex
     this.backup = config.backup
+    this.svg = config.svg
   }
 
   /**
@@ -1135,6 +1145,64 @@ export class ResearchService extends TypertRemoteService {
     // Drop the metadata row with the file so a stale caption never outlives it.
     await this.domain.table('figures').delete(`${request.projectId}:${request.relPath}`)
     return success({ relPath: request.relPath })
+  }
+
+  /**
+   * Convert one SVG figure of the addressed project's paper directory into a
+   * LaTeX-embeddable product next to the source (`figures/foo.svg` →
+   * `figures/foo.pdf`; the macOS Quick Look fallback writes `foo.png`). The
+   * figures view's "insert into paper" flow calls this before referencing an
+   * SVG. A fresh existing product (mtime at or after the SVG's) is reused
+   * instead of re-converted. Path confinement matches `deleteFigure`; a
+   * non-SVG path is `invalid-path`, a missing source `figure-not-found`, and
+   * a machine with no usable converter a descriptive `operation-failed`.
+   * @param request - the selected project, the paper-directory-relative SVG
+   * path, and an optional explicit paper directory (relative to the
+   * workspace) overriding the record's `paperDir`.
+   * @returns the product's relative path and the converter used, or a
+   * business failure.
+   */
+  @Remote('convertFigure')
+  async convertFigure(request: { projectId: string; relPath: string; dir?: string | undefined }): Promise<ResearchConvertFigureResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const figurePath = resolve(dir, request.relPath)
+    if (!figurePath.startsWith(dir + sep) || !isFigureFile(request.relPath) || !request.relPath.toLowerCase().endsWith('.svg')) {
+      return rejected({ code: 'invalid-path', path: request.relPath })
+    }
+    let sourceStats
+    try {
+      sourceStats = await stat(figurePath)
+    } catch (error) {
+      if (isNotFound(error)) return rejected({ code: 'figure-not-found', relPath: request.relPath })
+      throw error
+    }
+    // Reuse a fresh product instead of re-converting: PDF first (the vector
+    // pipeline's output), then the raster fallback's PNG.
+    for (const ext of ['pdf', 'png'] as const) {
+      const productRel = request.relPath.replace(/\.svg$/i, `.${ext}`)
+      try {
+        const productStats = await stat(resolve(dir, productRel))
+        if (productStats.mtimeMs >= sourceStats.mtimeMs) {
+          return success({ relPath: productRel, converter: 'cached' })
+        }
+      } catch (error) {
+        if (!isNotFound(error)) throw error
+      }
+    }
+    const outcome = await convertSvgFigure(figurePath, this.svg ?? {})
+    if (!outcome.ok) {
+      const message = outcome.code === 'no-converter'
+        ? `No SVG converter found on this machine (looked for ${svgConverterNames().join(', ')}). Install one of them, or export the figure as PNG or PDF yourself.`
+        : `${outcome.converter} failed to convert the SVG: ${outcome.message}`
+      return rejected({ code: 'operation-failed', message })
+    }
+    const relPath = relative(dir, outcome.productPath).split(sep).join('/')
+    return success({ relPath, converter: outcome.converter })
   }
 
   /**

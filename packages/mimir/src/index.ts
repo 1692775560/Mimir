@@ -40,6 +40,7 @@ export type {
   ResearchCompileState,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchConvertFigureResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
@@ -80,6 +81,8 @@ export type { PaperSourceSnapshot, SavePaperOutcome } from './paper-source.ts'
 export { DEFAULT_PAPER_DIR } from './paper-source.ts'
 export { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact, ARTIFACT_NAMES } from './artifacts.ts'
 export type { ArtifactName, FigureFile } from './artifacts.ts'
+export { convertSvgFigure, svgConverterNames, svgProductName, whichOnPath, SVG_CONVERTERS } from './svg-convert.ts'
+export type { SvgConversion, SvgConversionDeps, SvgConverterKind, SvgConverterSpec, SvgRunner } from './svg-convert.ts'
 export { ResearchService } from './service.ts'
 export type { ResearchServiceConfig } from './service.ts'
 export { runReview, renderReviewRound } from './reviewer.ts'

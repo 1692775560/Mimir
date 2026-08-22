@@ -36,7 +36,7 @@ GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整�
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv 检索；单篇抓取自动归档到文献库并关联项目 |
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、主张、实验、项目） |
-| `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块 |
+| `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块（机器上有可用转换器时 SVG 会自动转换为 PDF，兜底为 PNG） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
 | `figure_save` | 保存生成图、记录 caption/实验关联、登记项目工件并返回 LaTeX 片段 |
 
@@ -46,7 +46,7 @@ GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整�
 - **论文**——大纲栏顶层章节可拖拽重排、`main.tex` 自动保存编辑器带 LaTeX 语法高亮、一键编译、点击跳源码行的错误列表、内嵌 PDF 预览、`references.bib` 面板；分栏可调宽、可全屏、布局持久化。
 - **文献**——已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`。
 - **实验**——运行记录：指标对比条形图（内联 SVG）、可展开指标、新增/编辑内联表单（指标键值对编辑器、服务器关联）、服务器关联 badge 内联换绑，以及渲染后的 `EXPERIMENT_LOG.md`。
-- **图表**——论文目录图片网格：预览、上传（按钮或拖拽）、删除、复制 LaTeX 引用；经 `figure_save` 入库的图会显示 caption 和关联实验徽标。
+- **图表**——论文目录图片网格：预览、上传（按钮或拖拽）、删除、复制 LaTeX 引用、插入论文（SVG 卡片会先在宿主侧自动转换为 PDF/PNG）；经 `figure_save` 入库的图会显示 caption 和关联实验徽标。
 - **服务器**——登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；任务区块可经 SSH 提交远程命令（queued → running → succeeded/failed 实时轮询、stdout/stderr 尾部可展开、可关联实验记录并联动其状态）。
 
 面板头部带深色/浅色主题切换和中/EN 语言切换；快捷键：`1–6` 切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译。窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。

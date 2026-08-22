@@ -323,6 +323,17 @@ export type ResearchFiguresResult = ResearchResult<{ readonly figures: readonly 
 /** `deleteFigure` result: the deleted file's paper-directory-relative path. */
 export type ResearchDeleteFigureResult = ResearchResult<{ readonly relPath: string }>
 
+/**
+ * `convertFigure` result: the paper-directory-relative path of the converted
+ * product (`figures/foo.svg` → `figures/foo.pdf`, or `foo.png` from the
+ * raster fallback) plus the converter that produced it (`cached` when a
+ * fresh product already existed and was reused).
+ */
+export type ResearchConvertFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly converter: string
+}>
+
 /** One remembered compute server (a GPU box the experiments run on). */
 export interface ServerRecord {
   readonly id: string

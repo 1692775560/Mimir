@@ -53,6 +53,12 @@ export interface ResearchPanelInjected {
    */
   compile: (projectId: string) => void
   /**
+   * Hand one assembled compile-fix prompt to the current session's agent (the
+   * paper view's per-issue "fix with AI" button); the outcome lands in toasts.
+   * @param prompt - the assembled fix request (issue, location, source window).
+   */
+  requestCompileFix: (prompt: string) => Promise<void>
+  /**
    * Apply one editor change to the draft; autosaves after a short debounce.
    * @param content - the textarea's full next value.
    */

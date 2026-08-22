@@ -12,11 +12,25 @@
 /**
  * Whether one figure file name is an SVG. LaTeX's `\includegraphics` cannot
  * embed SVG directly and the paper scaffold carries no SVG convention (no
- * inkscape/`svg` package), so the panel rejects the insert with a clear
- * message instead of writing a block that breaks the compile.
+ * inkscape/`svg` package), so the insert flow first asks the host to convert
+ * the SVG into an embeddable product (see {@link svgConvertedRelPaths})
+ * instead of writing a block that breaks the compile.
  */
 export function isSvgFigure(name: string): boolean {
   return name.toLowerCase().endsWith('.svg')
+}
+
+/**
+ * The paper-directory-relative paths one SVG's converted product can land on,
+ * most preferred first: the vector pipeline's `foo.pdf`, then the raster
+ * fallback's `foo.png` (same directory, same stem). The duplicate guard
+ * checks these alongside the SVG's own path so an already-inserted product
+ * reads as "already inserted" instead of converting again.
+ */
+export function svgConvertedRelPaths(relPath: string): string[] {
+  if (!isSvgFigure(relPath)) return []
+  const stem = relPath.replace(/\.svg$/i, '')
+  return [`${stem}.pdf`, `${stem}.png`]
 }
 
 /**

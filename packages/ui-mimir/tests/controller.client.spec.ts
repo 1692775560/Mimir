@@ -15,6 +15,7 @@ import type {
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
+  ResearchConvertFigureResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -83,6 +84,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     readArtifact: missing('readArtifact'),
     listFigures: missing('listFigures'),
     deleteFigure: missing('deleteFigure'),
+    convertFigure: missing('convertFigure'),
     listServers: missing('listServers'),
     saveServer: missing('saveServer'),
     deleteServer: missing('deleteServer'),
@@ -1392,15 +1394,89 @@ describe('ResearchController figure insert', () => {
     expect(view.toasts.at(-1)).toMatchObject({ kind: 'info', copy: 'toast.figureAlreadyInserted' })
   })
 
-  it('rejects an SVG figure with a clear toast and never reads the source', async () => {
-    let reads = 0
+  it('converts an SVG figure on the host and inserts the block referencing the product', async () => {
+    let convertCalls = 0
     const controller = new ResearchController(stubRemote({
-      getPaperSource: () => { reads += 1; return Promise.resolve(carried(sourceOk(TEX, 1000))) },
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+      convertFigure: (request) => {
+        convertCalls += 1
+        expect(request).toMatchObject({ projectId: 'p1', relPath: 'figures/plot.svg' })
+        return Promise.resolve(carried<ResearchConvertFigureResult>({
+          ok: true, value: { relPath: 'figures/plot.pdf', converter: 'rsvg-convert' },
+        }))
+      },
+      // The conversion rescans the figures view so the new product card shows.
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
     }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBe(6)
+    expect(convertCalls).toBe(1)
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toContain('\\includegraphics[width=\\linewidth]{figures/plot.pdf}')
+    expect(view.source?.content).toContain('\\label{fig:plot}')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureConvertedSvg', detail: 'plot.svg → plot.pdf' })
+  })
+
+  it('treats an already-referenced converted product as inserted, never converting again', async () => {
+    let convertCalls = 0
+    const withProduct = TEX.replace('text', '\\begin{figure}[t]\n  \\includegraphics{figures/plot.pdf}\n\\end{figure}')
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(withProduct, 1000))),
+      convertFigure: () => {
+        convertCalls += 1
+        return Promise.reject(new Error('should not be called'))
+      },
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBe(5)
+    expect(convertCalls).toBe(0)
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toBe(withProduct)
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'info', copy: 'toast.figureAlreadyInserted', detail: 'plot.svg' })
+  })
+
+  it('toasts the reason and inserts nothing when the SVG conversion fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      convertFigure: () => Promise.resolve(carried<ResearchConvertFigureResult>({
+        ok: false, error: { code: 'operation-failed', message: 'No SVG converter found on this machine (looked for rsvg-convert, inkscape, magick).' },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
     const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
     expect(line).toBeNull()
-    expect(reads).toBe(0)
-    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureSvg', detail: 'plot.svg' })
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toBe(TEX)
+    expect(view.toasts.at(-1)).toMatchObject({
+      kind: 'error',
+      copy: 'toast.figureSvgConvertFailed',
+      detail: 'No SVG converter found on this machine (looked for rsvg-convert, inkscape, magick).',
+    })
+  })
+
+  it('toasts the transport failure when the SVG conversion call itself fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      convertFigure: () => Promise.reject(new Error('socket closed')),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({
+      kind: 'error', copy: 'toast.figureSvgConvertFailed', detail: 'socket closed',
+    })
   })
 
   it('toasts the failure when the paper source cannot be loaded', async () => {

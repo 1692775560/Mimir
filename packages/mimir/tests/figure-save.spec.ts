@@ -20,10 +20,11 @@ import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.
 import { researchWikiDomainSpec } from '../src/store.ts'
 import { createFigureSaveTool } from '../src/tools/figure.ts'
 import { ResearchService } from '../src/service.ts'
+import type { SvgConversionDeps } from '../src/svg-convert.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
 /** Boot a memory-backed domain plus a fresh temp workspace, service, and tool. */
-async function harness() {
+async function harness(svg?: SvgConversionDeps) {
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = new MemoryStorageBackend(new MemoryMediaPool())
@@ -43,7 +44,7 @@ async function harness() {
     domain,
     latex: { engine: 'auto', timeoutMs: 1000 },
   })
-  return { domain, workspaceDir, service, tool: createFigureSaveTool(workspaceDir, domain) }
+  return { domain, workspaceDir, service, tool: createFigureSaveTool(workspaceDir, domain, svg ?? {}) }
 }
 
 /** The tool's execute needs a ToolRunContext it never reads in these paths. */
@@ -111,6 +112,37 @@ describe('figure_save', () => {
     await expect(tool.execute({ path: 'nope.png', project_id: 'p1' }, NO_EXEC))
       .rejects.toThrow('source file not found')
     expect([...domain.table('figures').entries()]).toEqual([])
+  })
+
+  it('auto-converts an SVG save and points the LaTeX block at the product', async () => {
+    const { domain, workspaceDir, tool } = await harness({
+      probe: (command) => Promise.resolve(command === 'rsvg-convert' ? '/fake/bin/rsvg-convert' : null),
+      run: async (_executable, args) => {
+        await writeFile(String(args[args.indexOf('-o') + 1]), '%PDF-fake')
+        return { ok: true, message: '' }
+      },
+    })
+    const source = join(workspaceDir, 'plot.svg')
+    await writeFile(source, '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const value = await tool.execute({ path: source, project_id: 'p1', caption: 'Architecture' }, NO_EXEC) as Record<string, unknown>
+    expect(value['relPath']).toBe('figures/plot.svg')
+    expect(value['converted']).toEqual({ relPath: 'figures/plot.pdf', converter: 'rsvg-convert' })
+    expect(String(value['latex'])).toContain('\\includegraphics[width=0.8\\linewidth]{figures/plot.pdf}')
+    expect(String(value['latex'])).toContain('\\caption{Architecture}')
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'plot.pdf'), 'utf8')).toBe('%PDF-fake')
+    // The metadata row still tracks the SVG (the managed file).
+    expect(domain.table('figures').get('p1:figures/plot.svg')).toMatchObject({ caption: 'Architecture' })
+  })
+
+  it('keeps the .svg block with a warning when no converter is available', async () => {
+    const { workspaceDir, tool } = await harness({ probe: () => Promise.resolve(null) })
+    const source = join(workspaceDir, 'plot.svg')
+    await writeFile(source, '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const value = await tool.execute({ path: source, project_id: 'p1' }, NO_EXEC) as Record<string, unknown>
+    expect(value['relPath']).toBe('figures/plot.svg')
+    expect(value['converted']).toBeUndefined()
+    expect(String(value['warning'])).toContain('No SVG converter found')
+    expect(String(value['latex'])).toContain('{figures/plot.svg}')
   })
 })
 

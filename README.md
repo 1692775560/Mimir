@@ -36,7 +36,7 @@ The GIF preview plays automatically. Click it or the link above to watch the com
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv search; selected-paper fetch automatically archives and links it |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
-| `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block |
+| `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block (SVG sources are auto-converted to PDF — PNG as the raster fallback — when a converter is available) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
 | `figure_save` | Saves a generated image with metadata, registers a project artifact, and returns LaTeX |
 
@@ -46,7 +46,7 @@ The GIF preview plays automatically. Click it or the link above to watch the com
 - **Paper** — outline rail with drag-to-reorder sections, autosaving `main.tex` editor with LaTeX syntax highlighting, one-click compile, click-to-jump error list, inline PDF preview, and a `references.bib` panel; resizable panes, fullscreen, persisted layout.
 - **Library** — remembered papers with editable tags and per-project links, a tag/current-project filter bar, in-panel arXiv search with one-click import, and add-to-`references.bib` per card.
 - **Experiments** — run records with metric-comparison bar charts (inline SVG), expandable metrics, an inline create/edit form (metrics key/value editor, server link), linked-server badges with inline relink, and a rendered `EXPERIMENT_LOG.md`.
-- **Figures** — paper-directory image grid with preview, upload (button or drag-and-drop), delete, and copy-LaTeX-reference actions; figures saved via `figure_save` show their caption and a linked-experiment badge.
+- **Figures** — paper-directory image grid with preview, upload (button or drag-and-drop), delete, copy-LaTeX-reference, and insert-into-paper actions (SVG cards auto-convert to PDF/PNG on the host first); figures saved via `figure_save` show their caption and a linked-experiment badge.
 - **Servers** — remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars and tag filters; the jobs section submits a remote command over SSH (queued → running → succeeded/failed polled live, stdout/stderr tails expandable, optional link to an experiment record whose status follows the job).
 
 Dark/light theme and 中/EN language toggles live in the panel header; keyboard shortcuts: `1–6` switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).

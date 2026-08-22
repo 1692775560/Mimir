@@ -24,6 +24,7 @@ import type {
   ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
 import { wrapIndex } from './focus.ts'
+import { buildCompileFixPrompt } from './compile-fix.ts'
 import { EDITOR_LINE_HEIGHT_PX, splitTokensByLine, visibleLineRange, widestLine } from './highlight-window.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import {
@@ -285,7 +286,7 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
  * @returns the editing surface.
  */
 export function PaperView({
-  outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
+  outline, compileView, source, projectId, dir, editSource, reloadSource, compile, requestCompileFix,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
   ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen, t,
 }: {
@@ -297,6 +298,8 @@ export function PaperView({
   readonly editSource: (content: string) => void
   readonly reloadSource: () => void
   readonly compile: (projectId: string) => void
+  /** Send one issue's assembled fix prompt to the current session's agent. */
+  readonly requestCompileFix: (prompt: string) => Promise<void>
   readonly bib: ResearchBibView | null
   readonly papers: ResearchPapersView
   readonly ensureBibliography: (projectId: string) => void
@@ -341,6 +344,8 @@ export function PaperView({
   const [bibOpen, setBibOpen] = useState(false)
   // The last rejected section reorder, surfaced in the rail.
   const [reorderError, setReorderError] = useState<ResearchFailureView | null>(null)
+  // The issue row whose fix prompt is in flight (one send at a time).
+  const [fixingIndex, setFixingIndex] = useState<number | null>(null)
   // The textarea's viewport in lines/px: drives the windowed gutter and
   // highlight overlay. Coarsened to whole lines so mid-line scrolls don't
   // re-render.
@@ -581,6 +586,20 @@ export function PaperView({
   // Hidden sizer keeping the overlay's horizontal scroll extent in step with
   // the textarea even when the widest line is outside the window.
   const sizerLine = useMemo(() => widestLine(sourceLines), [sourceLines])
+
+  // One "fix with AI" click: assemble the prompt from the issue and the
+  // current draft window, then queue it into the current session. Toasts
+  // carry the outcome; the agent's edits re-enter through reload/compile.
+  const onFixIssue = (index: number, issue: ResearchCompileView['issues'][number]): void => {
+    if (fixingIndex !== null) return
+    setFixingIndex(index)
+    const prompt = buildCompileFixPrompt({
+      issue,
+      source: currentSource !== null && currentSource.status === 'ready' ? currentSource.content : null,
+      dir,
+    })
+    void requestCompileFix(prompt).finally(() => { setFixingIndex(null) })
+  }
 
   // The overlay remounts when highlighting toggles; re-sync its scroll after
   // every token recompute so it never lags the textarea.
@@ -886,7 +905,7 @@ export function PaperView({
         {compileView.issues.length > 0 && (
           <ul className={css.issueList} aria-label={t('issues.title')}>
             {compileView.issues.map((issue, index) => (
-              <li key={`${index}:${issue.message}`}>
+              <li key={`${index}:${issue.message}`} className={css.issueRow}>
                 <button
                   type="button"
                   className={css.issue}
@@ -905,6 +924,16 @@ export function PaperView({
                       <span className={css.issueWhere}>{issue.file}</span>
                     )}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  className={css.issueFix}
+                  disabled={fixingIndex !== null}
+                  title={t('issues.fixWithAi')}
+                  aria-label={t('issues.fixWithAi')}
+                  onClick={() => { onFixIssue(index, issue) }}
+                >
+                  {fixingIndex === index ? t('issues.fixingWithAi') : t('issues.fixWithAi')}
                 </button>
               </li>
             ))}
