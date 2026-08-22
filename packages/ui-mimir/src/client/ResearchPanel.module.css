@@ -3048,6 +3048,22 @@ li.dropIndicator {
   font-size: 11px;
 }
 
+/* The experiment row's last-job write-back badge, under the status pill. */
+.experimentLastJob {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+}
+
+.experimentLastJob .jobStatus {
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
 .jobOutput {
   margin-top: 8px;
 }

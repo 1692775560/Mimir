@@ -19,9 +19,11 @@ import {
   barWidthPercents,
   chartNameLines,
   failureCopy,
+  formatDurationMs,
   formatMetricValue,
   metricChartRows,
   numericMetricKeys,
+  relativeTime,
   type MetricChartRow,
   type ResearchT,
 } from './view-common.ts'
@@ -211,6 +213,21 @@ export function ExperimentsView({
                         <span className={css.experimentStatus} data-status={record.status}>
                           {t(`experimentStatus.${record.status}`)}
                         </span>
+                        {record.lastJob !== undefined && (
+                          <span
+                            className={css.experimentLastJob}
+                            title={record.lastJob.summary !== '' ? record.lastJob.summary : undefined}
+                          >
+                            {t('experiments.lastJob')}
+                            <span className={css.jobStatus} data-status={record.lastJob.status}>
+                              {t(`jobStatus.${record.lastJob.status}`)}
+                            </span>
+                            {record.lastJob.durationMs !== null && (
+                              <span>{formatDurationMs(record.lastJob.durationMs)}</span>
+                            )}
+                            <span>{relativeTime(t, record.lastJob.finishedAt)}</span>
+                          </span>
+                        )}
                       </td>
                       <td>
                         {entries.length > 0 && (

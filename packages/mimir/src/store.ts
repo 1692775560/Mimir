@@ -68,6 +68,16 @@ export const experimentRecord = z.object({
   // Added WITHOUT a version bump: `.optional()` leaves the field absent on
   // records that predate it, so existing v2 JSON stores keep loading.
   serverId: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  lastJob: z.object({
+    jobId: z.string(),
+    status: z.enum(['succeeded', 'failed']),
+    exitCode: z.number().int().nullable(),
+    durationMs: z.number().nonnegative().nullable(),
+    finishedAt: z.string(),
+    summary: z.string(),
+  }).optional(),
   updatedAt: z.string(),
 })
 

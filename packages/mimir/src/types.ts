@@ -88,6 +88,24 @@ export interface ProjectRecord {
 /** Lifecycle of one experiment run. */
 export type ExperimentStatus = 'running' | 'success' | 'failed'
 
+/**
+ * The settled outcome of the remote job most recently linked to one
+ * experiment, written back when the job reaches `succeeded`/`failed`.
+ */
+export interface ExperimentJobOutcome {
+  /** The settled job record's id. */
+  readonly jobId: string
+  readonly status: 'succeeded' | 'failed'
+  /** Remote exit code; null when the ssh session itself failed. */
+  readonly exitCode: number | null
+  /** Wall-clock run time in ms; null when the job never reached `running`. */
+  readonly durationMs: number | null
+  /** ISO-8601 timestamp of the job's terminal settle. */
+  readonly finishedAt: string
+  /** Trailing log excerpt (the job's last output lines, whitespace-trimmed). */
+  readonly summary: string
+}
+
 /** One experiment tracked against a project. */
 export interface ExperimentRecord {
   readonly id: string
@@ -101,6 +119,11 @@ export interface ExperimentRecord {
   readonly logPath?: string | undefined
   /** Remembered server the run executed on, when linked. */
   readonly serverId?: string | undefined
+  /**
+   * Outcome of the most recently settled linked remote job; absent until a
+   * linked job settles (records predating the field read as absent).
+   */
+  readonly lastJob?: ExperimentJobOutcome | undefined
   /** ISO-8601 timestamp of the last write. */
   readonly updatedAt: string
 }

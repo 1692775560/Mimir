@@ -1,6 +1,7 @@
 /**
  * Shared presentational helpers for the research workbench views: the stage
- * label map, failure-copy translation, byte-size formatting, the figure route
+ * label map, failure-copy translation, byte-size and run-duration formatting,
+ * the figure route
  * URL builder, the experiments comparison-chart helpers (numeric metric
  * keys, chart rows, bar widths, value formatting), the library tag
  * collection/filter helpers, and the figure-upload drop filter
@@ -77,6 +78,15 @@ export function relativeTime(t: ResearchT, iso: string): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours} ${t('time.hoursAgo')}`
   return `${Math.floor(hours / 24)} ${t('time.daysAgo')}`
+}
+
+/** Human-readable run duration (a job's wall-clock time): `900ms`, `12.3s`, `3.2min`. */
+export function formatDurationMs(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return ''
+  if (durationMs < 1000) return `${Math.round(durationMs)}ms`
+  const seconds = durationMs / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  return `${(seconds / 60).toFixed(1)}min`
 }
 
 /**
