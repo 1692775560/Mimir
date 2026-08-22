@@ -205,6 +205,7 @@ export function JobsSection({
                         <button
                           type="button"
                           className={css.metricsToggle}
+                          aria-expanded={open}
                           onClick={() => {
                             setOpenOutput(prev => ({ ...prev, [record.id]: !prev[record.id] }))
                           }}

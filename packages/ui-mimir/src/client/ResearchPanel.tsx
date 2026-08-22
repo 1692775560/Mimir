@@ -11,9 +11,10 @@
  * @module dsh-client-ui-mimir/client/ResearchPanel
  */
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
+import { arrowTab, trapFocusIndex } from './focus.ts'
 import { shortcutFor, TABS } from './shortcuts.ts'
 import type { ResearchPanelProps } from './slots.ts'
 import { OverviewView } from './OverviewView.tsx'
@@ -107,6 +108,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 
+/** The focusable elements the dialog's Tab trap cycles through. */
+const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+
 /**
  * The frame-level research workbench entry.
  * @param props - the shared panel store, the injected research face, and copy.
@@ -144,6 +148,7 @@ export function ResearchPanel({
   const bib = useResearch(view => view.bib)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -182,14 +187,48 @@ export function ResearchPanel({
     }
   }, [open, activeTab, selectedProjectId, loadFigures])
 
+  // Dialog focus management: opening the panel moves focus into the rail (to
+  // the active tab), and closing returns it to the element that held it
+  // before (the sidebar toggle), so keyboard users never lose their place.
+  // Runs only on open/close — a tab switch must not yank focus out of the
+  // view the user is working in.
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const root = rootRef.current
+    const tabs = root?.querySelectorAll<HTMLElement>('[role="tab"]')
+    const active = tabs?.[TABS.indexOf(activeTab)]
+    ;(active ?? root?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR))?.focus()
+    return () => { previous?.focus() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [open])
+
   // Workbench keyboard shortcuts, live only while the panel is open: digits
   // pick the rail tab, Escape exits a fullscreened pane first and closes the
   // panel only when nothing is fullscreened, ⌘/Ctrl+Enter compiles in the
   // paper view. Text-entry surfaces keep their keystrokes (shortcutFor's
-  // guard).
+  // guard). Tab is trapped inside the dialog: past the last focusable it
+  // wraps to the first (and Shift+Tab the reverse), and focus stranded
+  // outside the panel is pulled back in.
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Tab') {
+        const root = rootRef.current
+        if (root === null) return
+        const focusables = [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)]
+          .filter(element => element.getClientRects().length > 0)
+        const target = trapFocusIndex(
+          focusables.indexOf(document.activeElement as HTMLElement),
+          focusables.length,
+          event.shiftKey,
+        )
+        if (target !== null) {
+          event.preventDefault()
+          focusables[target]?.focus()
+        }
+        return
+      }
       const action = shortcutFor({
         key: event.key,
         metaKey: event.metaKey,
@@ -235,7 +274,7 @@ export function ResearchPanel({
   }
 
   return (
-    <div className={css.workbench} role="dialog" aria-label={t('panel.title')}>
+    <div ref={rootRef} className={css.workbench} role="dialog" aria-modal="true" aria-label={t('panel.title')}>
       {/* Fixed full-viewport dimmer; painted behind the window's own content
           (negative z-index inside the workbench stacking context). */}
       <div className={css.backdrop} aria-hidden />
@@ -254,6 +293,7 @@ export function ResearchPanel({
               className={css.iconButton}
               title={t('panel.theme')}
               aria-label={t('panel.theme')}
+              aria-pressed={dark}
               onClick={toggleTheme}
             >
               {dark ? SUN_ICON : MOON_ICON}
@@ -272,14 +312,29 @@ export function ResearchPanel({
             </button>
           </div>
         </div>
-        <nav className={css.nav}>
+        {/* The six views as a tablist: 1–6 and ArrowUp/Down/Left/Right all
+            switch, aria-selected carries the active tab to AT. */}
+        <nav
+          className={css.nav}
+          role="tablist"
+          aria-label={t('panel.views')}
+          onKeyDown={(event) => {
+            const next = arrowTab(activeTab, event.key)
+            if (next === null) return
+            event.preventDefault()
+            actions.setTab(next)
+            const tabs = event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')
+            tabs[TABS.indexOf(next)]?.focus()
+          }}
+        >
           {TABS.map(tab => (
             <button
               key={tab}
               type="button"
+              role="tab"
               className={css.navItem}
               data-active={tab === activeTab || undefined}
-              aria-current={tab === activeTab ? 'page' : undefined}
+              aria-selected={tab === activeTab}
               onClick={() => { actions.setTab(tab) }}
             >
               <span className={css.navIcon} aria-hidden>{TAB_ICONS[tab]}</span>
@@ -327,7 +382,7 @@ export function ResearchPanel({
         </div>
         <p className={css.sideFoot}>{t('shortcuts.hint')}</p>
       </aside>
-      <main className={css.content}>
+      <main className={css.content} role="tabpanel" aria-label={t(TAB_KEYS[activeTab])}>
         {activeTab === 'overview' && (
           <OverviewView project={selectedProject} stats={overviewStats} backup={backup} jobs={jobs} experiments={experiments} exportWiki={exportWiki} importWiki={importWiki} t={t} />
         )}

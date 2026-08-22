@@ -217,6 +217,7 @@ export function ExperimentsView({
                           <button
                             type="button"
                             className={css.metricsToggle}
+                            aria-expanded={open}
                             onClick={() => {
                               setOpenMetrics(prev => ({ ...prev, [record.id]: !prev[record.id] }))
                             }}
