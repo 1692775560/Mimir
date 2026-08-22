@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import type { ExperimentRecord } from 'dsh-mimir/types'
 import {
   barWidthPercents,
+  chartNameLines,
   formatMetricValue,
   metricChartRows,
   numericMetricKeys,
@@ -75,5 +76,36 @@ describe('formatMetricValue', () => {
     expect(formatMetricValue(0.002345678)).toBe('0.002346')
     expect(formatMetricValue(123456)).toBe('123456')
     expect(formatMetricValue('n/a')).toBe('n/a')
+  })
+})
+
+describe('chartNameLines', () => {
+  it('keeps a short name on one line', () => {
+    expect(chartNameLines('消融：FAPE 编码开关')).toEqual(['消融：FAPE 编码开关'])
+    expect(chartNameLines('full model')).toEqual(['full model'])
+  })
+
+  it('wraps a long name greedily at a word boundary without ellipsizing the tail', () => {
+    expect(chartNameLines('基线复现：EgoHMR 在 EgoBody 上的指标')).toEqual([
+      '基线复现：EgoHMR 在',
+      'EgoBody 上的指标',
+    ])
+  })
+
+  it('wraps a long latin name at the last space inside the budget', () => {
+    const [first, second] = chartNameLines('full model: EgoSync whole body recovery')
+    expect(first).toBe('full model: EgoSync')
+    expect(second).toBe('whole body recovery')
+  })
+
+  it('ellipsizes the second line when two lines still overflow', () => {
+    const [first, second] = chartNameLines(
+      '完整模型：EgoSync-full 在 EgoBody3D 全量数据集上的长序列压力测试指标',
+    )
+    expect(first).toBe('完整模型：')
+    expect(second?.endsWith('…')).toBe(true)
+    // The ellipsized tail keeps the full name out of the bar lane.
+    expect(chartNameLines('完整模型：EgoSync-full 在 EgoBody3D 全量数据集上的长序列压力测试指标')[1])
+      .not.toContain('指标')
   })
 })

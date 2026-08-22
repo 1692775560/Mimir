@@ -18,8 +18,8 @@ export interface PaperLayout {
 /** localStorage key the layout persists under. */
 export const PAPER_LAYOUT_STORAGE_KEY = 'mimir.paperLayout'
 
-/** Shipped layout: 200px rail, editor/preview at the historical 3:2. */
-export const PAPER_LAYOUT_DEFAULT: PaperLayout = Object.freeze({ rail: 200, editor: 0.6 })
+/** Shipped layout: 180px rail, editor/preview at roughly 7:5. */
+export const PAPER_LAYOUT_DEFAULT: PaperLayout = Object.freeze({ rail: 180, editor: 0.58 })
 
 /** The rail never grows past this (px). */
 export const RAIL_MAX_WIDTH = 320

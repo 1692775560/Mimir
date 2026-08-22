@@ -3,15 +3,17 @@
  * pipeline progress (idea→plan→experiment→writing→done), review-round count,
  * paper directory, artifact list, and the last-updated timestamp — preceded
  * by the stat chips (papers/experiments/figures counts gathered from the
- * other views) and followed by the data section (scheduled-backup status,
- * wiki export/import).
+ * other views), followed by the recent-activity card (the five latest remote
+ * jobs and the five latest experiment runs of the project) and the data
+ * section (scheduled-backup status, wiki export/import).
  * @module dsh-client-ui-mimir/client/OverviewView
  */
 
 import type { ResearchBackupStatusView, ResearchImportWikiMode, ResearchProjectView, ResearchWikiSnapshot } from 'dsh-mimir/types'
 import type { ResearchKey } from './locales.ts'
-import type { ResearchFailureView } from './controller.ts'
-import { STAGE_KEYS, STAGES } from './view-common.ts'
+import type { ResearchFailureView, ResearchJobsView, ResearchProjectSlice } from './controller.ts'
+import type { ExperimentRecord } from 'dsh-mimir/types'
+import { relativeTime, STAGE_KEYS, STAGES } from './view-common.ts'
 import type { ResearchT } from './view-common.ts'
 import { DataSection } from './DataSection.tsx'
 import { EmptyState } from './EmptyState.tsx'
@@ -26,17 +28,25 @@ export interface OverviewStats {
   readonly servers: number | null
 }
 
+/** How many rows each recent-activity column lists. */
+const ACTIVITY_LIMIT = 5
+
 /**
  * @param props - the selected project row (undefined before selection), the
- * stat-chip counts gathered from the other views, the wiki export/import
- * verbs, and copy.
+ * stat-chip counts gathered from the other views, the remote-jobs slice and
+ * the project's experiments slice (the recent-activity card), the wiki
+ * export/import verbs, and copy.
  * @returns the overview card, or the no-selection hint.
  */
-export function OverviewView({ project, stats, backup, exportWiki, importWiki, t }: {
+export function OverviewView({ project, stats, backup, jobs, experiments, exportWiki, importWiki, t }: {
   readonly project: ResearchProjectView | undefined
   readonly stats: OverviewStats
   /** Scheduled-backup status line; null hides it (not loaded yet). */
   readonly backup: ResearchBackupStatusView | null
+  /** Every submitted remote job, most recent first (the activity card's jobs column). */
+  readonly jobs: ResearchJobsView
+  /** The selected project's experiments slice (the activity card's experiments column). */
+  readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
   readonly importWiki: (
     snapshot: unknown,
@@ -55,6 +65,16 @@ export function OverviewView({ project, stats, backup, exportWiki, importWiki, t
     { key: 'overview.statFigures', value: stats.figures },
     { key: 'overview.statServers', value: stats.servers },
   ]
+  // The jobs slice arrives most-recent-first already; the experiments slice
+  // needs a sort by updatedAt. Both columns cap at ACTIVITY_LIMIT rows.
+  const recentJobs = jobs.status === 'ready' ? jobs.list.slice(0, ACTIVITY_LIMIT) : null
+  const recentExperiments = experiments !== null
+    && experiments.projectId === project.id
+    && experiments.status === 'ready'
+    ? [...experiments.list]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, ACTIVITY_LIMIT)
+    : null
   return (
     <div className={css.overviewWrap}>
       <ViewHead title={t('tab.overview')} subtitle={t('view.overview.subtitle')} />
@@ -102,6 +122,51 @@ export function OverviewView({ project, stats, backup, exportWiki, importWiki, t
               {project.artifacts.map(artifact => <li key={artifact}><code>{artifact}</code></li>)}
             </ul>
           )}
+      </div>
+      <div className={css.activitySection}>
+        <h3 className={css.sectionTitle}>{t('overview.activity')}</h3>
+        <div className={css.activityGrid}>
+          <section>
+            <h4 className={css.activityColTitle}>{t('overview.recentJobs')}</h4>
+            {recentJobs === null ? (
+              <p className={css.hint}>{t('projects.loading')}</p>
+            ) : recentJobs.length === 0 ? (
+              <p className={css.hint}>{t('overview.noJobs')}</p>
+            ) : (
+              <ul className={css.activityList}>
+                {recentJobs.map(job => (
+                  <li key={job.id} className={css.activityItem}>
+                    <span className={css.activityName} title={job.command}><code>{job.command}</code></span>
+                    <span className={css.jobStatus} data-status={job.status}>
+                      {t(`jobStatus.${job.status}`)}
+                    </span>
+                    <span className={css.activityTime}>{relativeTime(t, job.createdAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
+            <h4 className={css.activityColTitle}>{t('overview.recentExperiments')}</h4>
+            {recentExperiments === null ? (
+              <p className={css.hint}>{t('projects.loading')}</p>
+            ) : recentExperiments.length === 0 ? (
+              <p className={css.hint}>{t('experiments.empty')}</p>
+            ) : (
+              <ul className={css.activityList}>
+                {recentExperiments.map(record => (
+                  <li key={record.id} className={css.activityItem}>
+                    <span className={css.activityName} title={record.name}>{record.name}</span>
+                    <span className={css.experimentStatus} data-status={record.status}>
+                      {t(`experimentStatus.${record.status}`)}
+                    </span>
+                    <span className={css.activityTime}>{relativeTime(t, record.updatedAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
       <DataSection backup={backup} exportWiki={exportWiki} importWiki={importWiki} t={t} />
     </div>
