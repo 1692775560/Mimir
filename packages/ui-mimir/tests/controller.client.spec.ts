@@ -1311,3 +1311,126 @@ describe('ResearchController arXiv search and paper import', () => {
     expect(sourceReads).toBe(2)
   })
 })
+
+describe('ResearchController figure insert', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  /** A settled source-read reply. */
+  const sourceOk = (content: string, mtimeMs: number): ResearchPaperSourceResult => ({
+    ok: true,
+    value: { content, mtimeMs },
+  })
+
+  /** Stubs for the reads every select() fires, so a test only wires what it asserts. */
+  const selectReads = {
+    getPaperOutline: ({ projectId }: { projectId: string }) => Promise.resolve(
+      carried<ResearchOutlineResult>({ ok: true, value: { projectId, nodes: [] } }),
+    ),
+    getCompileStatus: () => Promise.resolve(carried(IDLE)),
+  }
+
+  const TEX = '\\documentclass{article}\n\\begin{document}\n\\section{Intro}\ntext\n\\end{document}\n'
+  const FIGURE = {
+    name: 'accuracy.png', relPath: 'figures/accuracy.png',
+    sizeBytes: 100, mtimeMs: 1, caption: 'Accuracy over epochs',
+  }
+
+  it('inserts the block before \\end{document}, toasts, and publishes the jump ticket', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', FIGURE)
+    expect(line).toBe(6)
+    const view = controller.getSnapshot()
+    expect(view.source?.saveState).toBe('dirty')
+    expect(view.source?.content).toContain('\\begin{figure}[t]\n  \\centering\n  \\includegraphics[width=\\linewidth]{figures/accuracy.png}\n  \\caption{Accuracy over epochs}\n  \\label{fig:accuracy}\n\\end{figure}\n\n\\end{document}')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureInserted', detail: 'accuracy.png' })
+    // The jump ticket is consumed by the paper view, not stacked.
+    controller.consumePaperJump()
+    expect(controller.getSnapshot().paperJump).toBeNull()
+    // The inserted draft autosaves through the normal debounce path.
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS)
+    expect(controller.getSnapshot().source?.saveState).toBe('saved')
+  })
+
+  it('loads the source on demand when no draft is ready yet', async () => {
+    let reads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperSource: () => {
+        reads += 1
+        return Promise.resolve(carried(sourceOk(TEX, 1000)))
+      },
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+    }))
+    expect(controller.getSnapshot().source).toBeNull()
+    const line = await controller.insertFigureIntoPaper('p1', FIGURE)
+    expect(reads).toBe(1)
+    expect(line).toBe(6)
+    expect(controller.getSnapshot().source).toMatchObject({ projectId: 'p1', status: 'ready', saveState: 'dirty' })
+  })
+
+  it('never inserts twice: an existing reference becomes the jump target with an info toast', async () => {
+    const withFigure = TEX.replace('text', '\\begin{figure}[t]\n  \\includegraphics{figures/accuracy.png}\n\\end{figure}')
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(withFigure, 1000))),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', FIGURE)
+    expect(line).toBe(5)
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toBe(withFigure)
+    expect(view.source?.saveState).toBe('clean')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 5 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'info', copy: 'toast.figureAlreadyInserted' })
+  })
+
+  it('rejects an SVG figure with a clear toast and never reads the source', async () => {
+    let reads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperSource: () => { reads += 1; return Promise.resolve(carried(sourceOk(TEX, 1000))) },
+    }))
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBeNull()
+    expect(reads).toBe(0)
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureSvg', detail: 'plot.svg' })
+  })
+
+  it('toasts the failure when the paper source cannot be loaded', async () => {
+    const controller = new ResearchController(stubRemote({
+      getPaperSource: () => Promise.resolve(carried<ResearchPaperSourceResult>({
+        ok: false, error: { code: 'paper-not-found' },
+      })),
+    }))
+    const line = await controller.insertFigureIntoPaper('p1', FIGURE)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().source).toMatchObject({ status: 'error', failure: { code: 'paper-not-found' } })
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureInsertFailed' })
+  })
+
+  it('refuses to touch a conflicted draft', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({
+        ok: false, error: { code: 'conflict', currentMtimeMs: 2000 },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    controller.edit('my draft')
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS)
+    expect(controller.getSnapshot().source?.saveState).toBe('conflict')
+    const line = await controller.insertFigureIntoPaper('p1', FIGURE)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().source?.content).toBe('my draft')
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureInsertConflict' })
+  })
+})

@@ -120,6 +120,7 @@ export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  insertFigure, consumePaperJump,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
@@ -148,6 +149,7 @@ export function ResearchPanel({
   const bib = useResearch(view => view.bib)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
+  const paperJump = useResearch(view => view.paperJump)
   const rootRef = useRef<HTMLDivElement>(null)
 
   // Every read is deferred to the first open rather than fired on mount: the
@@ -406,6 +408,8 @@ export function ResearchPanel({
             ensurePapers={ensurePapers}
             reorderPaperSections={reorderPaperSections}
             reorderPaperSubsections={reorderPaperSubsections}
+            paperJump={paperJump}
+            consumePaperJump={consumePaperJump}
             fullscreen={paperFullscreen}
             setFullscreen={actions.setPaperFullscreen}
             t={t}
@@ -450,6 +454,7 @@ export function ResearchPanel({
             loadFigures={loadFigures}
             uploadFigures={uploadFigures}
             deleteFigure={deleteFigure}
+            insertFigure={(entry) => selectedProjectId === null ? Promise.resolve() : insertFigure(selectedProjectId, entry)}
             t={t}
           />
         )}

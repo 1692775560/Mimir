@@ -2,8 +2,10 @@
  * The figures view: a thumbnail grid of the selected project's paper figures,
  * served through the `/research/figure` route. Raster and SVG entries show an
  * inline thumbnail and open a lightbox on click; PDF figures show a badge
- * card that opens in a new tab. Hovering a card reveals its two file
- * operations — copy the LaTeX figure block, delete the file — and the view
+ * card that opens in a new tab. Hovering a card reveals its three file
+ * operations — insert the standard figure block into the paper's `main.tex`
+ * (or jump to the existing reference), copy the LaTeX figure block, delete
+ * the file — and the view
  * head carries the upload button (POST `/research/figure-upload`) plus the
  * forced rescan. Cards show the wiki-recorded caption and a linked-experiment
  * badge when the `figure_save` tool registered metadata for the file. Image
@@ -37,7 +39,7 @@ const COPIED_FEEDBACK_MS = 1500
  * the rescan/upload/delete verbs, and copy.
  * @returns the thumbnail grid plus the lightbox overlay.
  */
-export function FiguresView({ figures, experiments, projectId, dir, loadFigures, uploadFigures, deleteFigure, t }: {
+export function FiguresView({ figures, experiments, projectId, dir, loadFigures, uploadFigures, deleteFigure, insertFigure, t }: {
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
   /** Experiment list of the same project, used to name linked-experiment badges. */
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
@@ -51,12 +53,16 @@ export function FiguresView({ figures, experiments, projectId, dir, loadFigures,
     onProgress?: (done: number, total: number) => void,
   ) => Promise<void>
   readonly deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /** Insert one card's figure block into the paper (or jump to its reference). */
+  readonly insertFigure: (entry: FigureEntry) => Promise<void>
   readonly t: ResearchT
 }) {
   const [preview, setPreview] = useState<FigureEntry | null>(null)
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [upload, setUpload] = useState<{ done: number; total: number } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // The card whose insert is in flight (its button reads "插入中…").
+  const [insertingPath, setInsertingPath] = useState<string | null>(null)
   // True while a file drag hovers the view (drives the dashed drop overlay).
   const [dragActive, setDragActive] = useState(false)
   // Enter/leave fire per child element; the depth counter keeps the overlay
@@ -90,6 +96,13 @@ export function FiguresView({ figures, experiments, projectId, dir, loadFigures,
     void deleteFigure(projectId, entry.relPath).then((failure) => {
       setActionError(failure === null ? null : `${t('figures.deleteFailed')}：${failure.message}`)
     })
+  }
+
+  /** Insert one card's block into the paper; failures arrive as toasts. */
+  const runInsert = (entry: FigureEntry): void => {
+    if (insertingPath !== null) return
+    setInsertingPath(entry.relPath)
+    void insertFigure(entry).finally(() => { setInsertingPath(null) })
   }
 
   const pickFiles = (files: readonly File[]): void => {
@@ -221,6 +234,14 @@ export function FiguresView({ figures, experiments, projectId, dir, loadFigures,
                   <span className={css.figureExpBadge}>⚡ {experimentNameOf(entry.experimentId)}</span>
                 )}
                 <div className={css.figureActions}>
+                  <button
+                    type="button"
+                    className={css.figureAction}
+                    disabled={insertingPath !== null}
+                    onClick={() => { runInsert(entry) }}
+                  >
+                    {insertingPath === entry.relPath ? t('figures.inserting') : t('figures.insert')}
+                  </button>
                   <button
                     type="button"
                     className={css.figureAction}

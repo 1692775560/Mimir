@@ -12,6 +12,7 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
+import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure } from './figure-insert.ts'
 import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
@@ -191,6 +192,18 @@ export interface ResearchSourceView {
   readonly failure: ResearchFailureView | null
 }
 
+/**
+ * A pending editor jump the paper view applies once its draft shows the
+ * target line (the figures view's insert-into-paper outcome). The monotonic
+ * `seq` re-fires the paper view's effect when two jumps land on the same line.
+ */
+export interface ResearchPaperJump {
+  readonly projectId: string
+  /** 1-based target line in the current draft. */
+  readonly line: number
+  readonly seq: number
+}
+
 /** The literature view: every remembered paper. */
 export interface ResearchPapersView {
   readonly status: ResearchLoadStatus
@@ -285,6 +298,8 @@ export interface ResearchView {
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
   readonly backup: ResearchBackupStatusView | null
+  /** The pending paper-editor jump of a figure insert; null once consumed. */
+  readonly paperJump: ResearchPaperJump | null
 }
 
 const INITIAL_VIEW: ResearchView = Object.freeze({
@@ -305,6 +320,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   bib: null,
   toasts: Object.freeze([]),
   backup: null,
+  paperJump: null,
 })
 
 /** Translate one settled Remote envelope or business branch into a failure view. */
@@ -349,6 +365,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private saveAgain = false
   private disposed = false
   private toastSeq = 0
+  private paperJumpSeq = 0
 
   /**
    * @param remote - the research Remote namespace.
@@ -604,6 +621,100 @@ export class ResearchController implements HostObservable<ResearchView> {
       return transportFailure(error)
     }
   }
+
+  /**
+   * Insert one figure's standard LaTeX block into the selected project's
+   * `main.tex` (the figures view's "insert into paper" button). The figure
+   * file already lives in the paper directory — the figures view lists exactly
+   * those files — so the insert only edits the source: the block lands right
+   * before `\end{document}` and rides the normal draft/autosave path, so an
+   * unsaved draft survives and the optimistic-concurrency save still guards
+   * the write. A figure the draft already references is never inserted twice:
+   * the existing `\includegraphics` line becomes the jump target instead. SVG
+   * figures reject up front (LaTeX cannot embed them and the paper scaffold
+   * carries no SVG convention). Either way the paper view jumps to the block.
+   * @param projectId - wiki project id.
+   * @param entry - the figure card's entry.
+   * @returns the 1-based target line for the paper view to jump to, or null
+   * when the insert failed (a toast already carries the reason).
+   */
+  async insertFigureIntoPaper(projectId: string, entry: FigureEntry): Promise<number | null> {
+    if (isSvgFigure(entry.name)) {
+      this.notify('error', 'toast.figureSvg', entry.name)
+      return null
+    }
+    const source = await this.ensureSourceReady(projectId)
+    if (source === null || this.disposed) return null
+    if (source.saveState === 'conflict') {
+      this.notify('error', 'toast.figureInsertConflict')
+      return null
+    }
+    const existing = findFigureReferenceLine(source.content, entry.relPath)
+    if (existing !== null) {
+      this.jumpPaper(projectId, existing)
+      this.notify('info', 'toast.figureAlreadyInserted', entry.name)
+      return existing
+    }
+    const block = figureBlockOf(entry.relPath, entry.caption ?? '')
+    const inserted = insertFigureBlock(source.content, block)
+    this.edit(inserted.content)
+    this.jumpPaper(projectId, inserted.line)
+    this.notify('success', 'toast.figureInserted', entry.name)
+    return inserted.line
+  }
+
+  /** Clear the consumed paper-editor jump ticket (the paper view's callback). */
+  consumePaperJump(): void {
+    if (this.view.paperJump !== null) this.publish({ paperJump: null })
+  }
+
+  /** Publish the paper view's next jump target. */
+  private jumpPaper(projectId: string, line: number): void {
+    this.paperJumpSeq += 1
+    this.publish({ paperJump: Object.freeze({ projectId, line, seq: this.paperJumpSeq }) })
+  }
+
+  /**
+   * Guarantee a ready source draft for one project, loading it from the Host
+   * when the current slice is absent, stale, or another project's. A failed
+   * load publishes the error slice, toasts the insert failure, and reads as
+   * null.
+   * @param projectId - wiki project id.
+   * @returns the ready source view, or null.
+   */
+  private async ensureSourceReady(projectId: string): Promise<ResearchSourceView | null> {
+    const current = this.view.source
+    if (current !== null && current.projectId === projectId && current.status === 'ready') return current
+    this.outlineGeneration += 1
+    const generation = this.outlineGeneration
+    this.publish({
+      source: Object.freeze({ projectId, status: 'loading', content: '', mtimeMs: null, saveState: 'clean', failure: null }),
+    })
+    const fail = (failure: ResearchFailureView): null => {
+      if (this.disposed || generation !== this.outlineGeneration) return null
+      this.publish({
+        source: Object.freeze({ projectId, status: 'error', content: '', mtimeMs: null, saveState: 'clean', failure }),
+      })
+      this.notify('error', 'toast.figureInsertFailed', failure.message)
+      return null
+    }
+    try {
+      const carried = await this.remote.getPaperSource({ projectId, dir: this.dirOf(projectId) })
+      if (this.disposed || generation !== this.outlineGeneration) return null
+      if (!carried.ok) return fail(failureOf(carried.error.code, carried.error.message))
+      const result = carried.value
+      if (!result.ok) return fail(businessFailure(result.error))
+      const view: ResearchSourceView = Object.freeze({
+        projectId, status: 'ready', content: result.value.content,
+        mtimeMs: result.value.mtimeMs, saveState: 'clean', failure: null,
+      })
+      this.publish({ source: view })
+      return view
+    } catch (error) {
+      return fail(transportFailure(error))
+    }
+  }
+
 
   /**
    * Reorder the top-level sections of one project's `main.tex`. The failure

@@ -21,7 +21,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as React
 import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
-  ResearchOutlineView, ResearchPapersView, ResearchSourceView,
+  ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
 import { wrapIndex } from './focus.ts'
 import { EDITOR_LINE_HEIGHT_PX, splitTokensByLine, visibleLineRange, widestLine } from './highlight-window.ts'
@@ -287,7 +287,7 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
 export function PaperView({
   outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
-  ensurePapers, reorderPaperSections, reorderPaperSubsections, fullscreen, setFullscreen, t,
+  ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -318,6 +318,10 @@ export function PaperView({
     moves: readonly SubsectionMove[],
     baseOutline: readonly SectionOutlineTitles[],
   ) => Promise<ResearchFailureView | null>
+  /** The pending figure-insert jump ticket, or null. */
+  readonly paperJump: ResearchPaperJump | null
+  /** Clear the jump ticket once the caret has moved. */
+  readonly consumePaperJump: () => void
   /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
   readonly fullscreen: PaperFullscreen | null
   readonly setFullscreen: (pane: PaperFullscreen | null) => void
@@ -502,7 +506,8 @@ export function PaperView({
 
   /**
    * Move the editor caret and viewport to one 1-based source line (the
-   * outline's and the error list's click target), select the line's text, and
+   * outline's and the error list's click target, or the figure insert's
+   * landing line), select the line's text, and
    * briefly flash its gutter row. Character offsets count newlines; the
    * scroll position estimates from the fixed line height.
    */
@@ -521,6 +526,20 @@ export function PaperView({
   }
 
   const currentSource = source !== null && source.projectId === projectId ? source : null
+
+  // A figure insert from the figures view (or its duplicate jump) carries a
+  // ticket addressed to one project: once the editor shows that project's
+  // ready draft — which already contains the new block — move the caret to
+  // the block's first line and consume the ticket. A ticket for another
+  // project (or a draft still loading) waits.
+  useEffect(() => {
+    if (paperJump === null || paperJump.projectId !== projectId) return
+    if (currentSource === null || currentSource.status !== 'ready') return
+    jumpToLine(paperJump.line)
+    consumePaperJump()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fire only on a new ticket or a fresh draft
+  }, [paperJump, projectId, currentSource])
+
   const compiling = compileView.state === 'running'
   const stateCopy = compiling
     ? t('compile.running')

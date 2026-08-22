@@ -157,6 +157,12 @@ export function apply(ctx: ClientContext): void {
         if (done > 0) controller.notify('success', 'toast.figuresUploaded', `× ${done}`)
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
+      // A successful insert (or the duplicate's jump) lands in the paper view.
+      insertFigure: async (projectId, entry) => {
+        const line = await controller.insertFigureIntoPaper(projectId, entry)
+        if (line !== null) actions.setTab('paper')
+      },
+      consumePaperJump: () => { controller.consumePaperJump() },
       deleteExperiment: (id) => controller.deleteExperiment(id),
       updateExperiment: (id, serverId) => controller.updateExperiment(id, serverId),
       saveExperiment: experiment => controller.saveExperiment(experiment),
