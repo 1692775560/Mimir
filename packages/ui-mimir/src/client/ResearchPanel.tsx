@@ -118,7 +118,7 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
  */
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
-  ensure, selectProject, compile, editSource, reloadSource,
+  ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   insertFigure, consumePaperJump,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
@@ -398,6 +398,7 @@ export function ResearchPanel({
             editSource={editSource}
             reloadSource={reloadSource}
             compile={compile}
+            requestCompileFix={requestCompileFix}
             bib={bib}
             papers={papers}
             ensureBibliography={ensureBibliography}

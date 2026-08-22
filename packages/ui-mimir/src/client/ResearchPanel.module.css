@@ -1248,6 +1248,42 @@ li.dropIndicator {
   opacity: 0.75;
 }
 
+.issueRow {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.issueRow .issue {
+  flex: 1;
+  min-width: 0;
+}
+
+.issueFix {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.issueFix:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 15%));
+}
+
+.issueFix:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .issueDot {
   flex-shrink: 0;
   width: 8px;
