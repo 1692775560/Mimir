@@ -59,6 +59,13 @@ export interface ResearchPanelInjected {
    */
   requestCompileFix: (prompt: string) => Promise<void>
   /**
+   * Hand one assembled related-work prompt to the current session's agent
+   * (the papers view's "draft related work" button); the outcome lands in
+   * toasts.
+   * @param prompt - the assembled draft request (papers, citations, verify loop).
+   */
+  requestRelatedWork: (prompt: string) => Promise<void>
+  /**
    * Apply one editor change to the draft; autosaves after a short debounce.
    * @param content - the textarea's full next value.
    */

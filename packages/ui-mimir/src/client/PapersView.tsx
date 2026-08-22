@@ -8,7 +8,9 @@
  * edit/delete actions. The edit action opens an inline editor
  * (tags, project links, notes); a filter bar above the grid narrows the
  * library by one tag and/or the currently selected project; each card can be
- * appended to the selected project's `references.bib` in one click.
+ * appended to the selected project's `references.bib` in one click. A
+ * toolbar button hands the currently filtered selection to the current
+ * session's agent as a "draft the related work section" prompt.
  * @module dsh-client-ui-mimir/client/PapersView
  */
 
@@ -18,6 +20,7 @@ import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
 } from './controller.ts'
 import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
+import { buildRelatedWorkPrompt } from './related-work.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
@@ -169,7 +172,7 @@ function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
  */
 export function PapersView({
   papers, arxivSearch, projects, selectedProjectId, ensurePapers, searchArxiv,
-  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, t,
+  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, requestRelatedWork, t,
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
@@ -185,6 +188,7 @@ export function PapersView({
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly requestRelatedWork: (prompt: string) => Promise<void>
   readonly t: ResearchT
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -202,6 +206,19 @@ export function PapersView({
   const importedIds = new Set(papers.list.map(paper => paper.arxivId))
   const allTags = collectTags(papers.list)
   const visible = filterPapers(papers.list, activeTag, currentOnly ? selectedProjectId : null)
+  const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
+
+  // The related-work button covers exactly the papers on screen (the tag /
+  // current-project filter IS the selection), and lands in toasts.
+  const draftRelatedWork = (): void => {
+    if (selectedProject === null || visible.length === 0) return
+    setActionError(null)
+    void requestRelatedWork(buildRelatedWorkPrompt({
+      papers: visible,
+      projectTitle: selectedProject.title,
+      dir: selectedProject.paperDir,
+    }))
+  }
 
   const submitSearch = (): void => {
     if (query.trim() === '') return
@@ -358,6 +375,17 @@ export function PapersView({
         <EmptyState glyph="📚">{t('papers.empty')}</EmptyState>
       ) : (
         <>
+          <div className={css.papersFilters}>
+            <button
+              type="button"
+              className={css.btnPrimary}
+              disabled={selectedProject === null || visible.length === 0}
+              title={selectedProject === null ? t('bib.noProject') : t('papers.relworkScope')}
+              onClick={draftRelatedWork}
+            >
+              {t('papers.relwork')} × {visible.length}
+            </button>
+          </div>
           {(allTags.length > 0 || selectedProjectId !== null) && (
             <div className={css.papersFilters}>
               {allTags.map(tag => (
