@@ -4,6 +4,7 @@
 export const zh = {
   'toggle': 'Mimir',
   'panel.title': 'Mimir',
+  'panel.subtitle': '智能科研工作台',
   'panel.close': '关闭',
   'panel.theme': '切换深浅色主题',
   'panel.language': '切换语言（中/EN）',
@@ -322,6 +323,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const en = {
   'toggle': 'Mimir',
   'panel.title': 'Mimir',
+  'panel.subtitle': 'Research intelligence',
   'panel.close': 'Close',
   'panel.theme': 'Toggle light/dark theme',
   'panel.language': 'Switch language (中/EN)',

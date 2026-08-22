@@ -24,9 +24,9 @@ function writeInstruction(deps: ResearchCommandDeps, paperDir: string, projectTi
     `1. Read ${join(deps.workspaceDir, 'IDEA_REPORT.md')} and ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}, and list the wiki's claims (wiki_note action=list, table=claims) and papers (table=papers).`,
     `2. Fill ${join(paperDir, 'main.tex')}: replace every <placeholder> with real content grounded in those sources. Keep the article-class skeleton; do not introduce packages beyond what it already loads.`,
     `3. Put real references into ${join(paperDir, 'references.bib')} from the wiki's papers, and cite them from the text.`,
-    `4. Run latex_compile with project_dir=${paperDir} and fix every error it reports until success is true. Fix undefined-citation warnings too; other warnings may be reported to the user instead.`,
-    '5. Any plot or diagram you generate for the paper must be saved with figure_save (it copies the image into the paper\'s figures/ directory and shows it in the workbench); reference figures via the LaTeX block the tool returns.',
-    '6. Finish with a short summary: title, section list, and compile status.',
+    '4. Whenever you create or discover a paper-worthy image, immediately call figure_save with its path, the project id, a useful caption, and the producing experiment id when applicable. The tool archives the file and registers it as a project artifact.',
+    `5. Run latex_compile with project_dir=${paperDir} and fix every error it reports until success is true. Fix undefined-citation warnings too; other warnings may be reported to the user instead.`,
+    '6. Finish with a short summary: title, section list, compile status, and the papers/figures archived during this pass.',
   ].join('\n')
 }
 

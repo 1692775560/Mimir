@@ -21,7 +21,7 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
 import { ResearchService } from '../src/service.ts'
-import { parseArxivFeed } from '../src/tools/arxiv.ts'
+import { ARXIV_PDF_MAX_BYTES, paperPdfFileName, parseArxivFeed } from '../src/tools/arxiv.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
 /** Boot a service over a memory-backed domain and a fresh temp workspace. */
@@ -407,6 +407,21 @@ describe('ResearchService.fetchPaperPdf', () => {
     expect(domain.table('papers').get(ARXIV_ENTRY.id)?.pdfPath).toBeUndefined()
   })
 
+  it('rejects non-PDF and declared over-cap bodies without touching the record', async () => {
+    const { domain, service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    vi.stubGlobal('fetch', async () => new Response('<html>rate limited</html>', { status: 200 }))
+    await expect(service.fetchPaperPdf({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('non-PDF') } })
+    vi.stubGlobal('fetch', async () => new Response(PDF_BYTES, {
+      status: 200,
+      headers: { 'content-length': String(ARXIV_PDF_MAX_BYTES + 1) },
+    }))
+    await expect(service.fetchPaperPdf({ arxivId: ARXIV_ENTRY.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('exceeds') } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.pdfPath).toBeUndefined()
+  })
+
   it('rejects an unconvertible arXiv id before any request', async () => {
     let fetches = 0
     vi.stubGlobal('fetch', async () => {
@@ -428,6 +443,14 @@ describe('ResearchService.fetchPaperPdf', () => {
     await expect(service.fetchPaperPdf({ arxivId: 'bad id' }))
       .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('invalid arXiv id') } })
     expect(fetches).toBe(0)
+  })
+})
+
+describe('paperPdfFileName', () => {
+  it('keeps old-style slash ids distinct from ids containing underscores', () => {
+    expect(paperPdfFileName('hep-th/9901001')).toBe('hep-th%2F9901001.pdf')
+    expect(paperPdfFileName('hep-th_9901001')).toBe('hep-th_9901001.pdf')
+    expect(paperPdfFileName('hep-th/9901001')).not.toBe(paperPdfFileName('hep-th_9901001'))
   })
 })
 

@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'dsh-mimir-v*'
+      - 'dsh-client-ui-mimir-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - name: Select package and verify tag version
+        id: release
+        run: |
+          host_version=$(node -p "require('./packages/mimir/package.json').version")
+          ui_version=$(node -p "require('./packages/ui-mimir/package.json').version")
+          case "$GITHUB_REF_NAME" in
+            "v$host_version")
+              test "$host_version" = "$ui_version"
+              echo "publish_host=true" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=true" >> "$GITHUB_OUTPUT"
+              ;;
+            "dsh-mimir-v$host_version")
+              echo "publish_host=true" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=false" >> "$GITHUB_OUTPUT"
+              ;;
+            "dsh-client-ui-mimir-v$ui_version")
+              echo "publish_host=false" >> "$GITHUB_OUTPUT"
+              echo "publish_ui=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Tag $GITHUB_REF_NAME does not match a package version" >&2
+              exit 1
+              ;;
+          esac
+      - name: Publish dsh-mimir
+        if: steps.release.outputs.publish_host == 'true'
+        run: pnpm --filter dsh-mimir publish --access public --provenance --no-git-checks
+      - name: Publish dsh-client-ui-mimir
+        if: steps.release.outputs.publish_ui == 'true'
+        run: pnpm --filter dsh-client-ui-mimir publish --access public --provenance --no-git-checks

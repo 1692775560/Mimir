@@ -1,15 +1,19 @@
 {
   "name": "mimir-monorepo",
   "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "engines": { "node": ">=22" },
   "type": "module",
   "scripts": {
     "build": "tsc -b packages/mimir && pnpm --filter dsh-mimir run bundle && tsc -b packages/ui-mimir && pnpm --filter dsh-client-ui-mimir run bundle",
     "typecheck": "tsc -b packages/mimir packages/ui-mimir",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "bundle": "pnpm -r run bundle"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-typert-generator": "0.1.0-rc.8",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.20.0",
     "lightningcss": "^1.32.0",
     "tsdown": "^0.22.2",

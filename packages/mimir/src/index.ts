@@ -29,7 +29,7 @@ import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
 import { startWikiBackupLoop } from './backup.ts'
 
-export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, JobRecord, JobStatus, FigureRecord } from './types.ts'
+export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
 export type {
   FigureEntry,
   OutlineNode,
@@ -296,7 +296,13 @@ function createPaperPdfHandler(
       res.writeHead(404).end('expected /research/paper-pdf/<arxiv id>')
       return
     }
-    const arxivId = decodeURIComponent(url.pathname.slice(prefix.length))
+    let arxivId: string
+    try {
+      arxivId = decodeURIComponent(url.pathname.slice(prefix.length))
+    } catch {
+      res.writeHead(400).end('invalid encoded arXiv id')
+      return
+    }
     const record = deps.domain.table('papers').get(arxivId)
     if (record === undefined) {
       res.writeHead(404).end('unknown research paper')
@@ -489,9 +495,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
 
   ctx.tools.register(createArxivSearchTool(resolved.arxiv.maxResults))
-  ctx.tools.register(createPaperFetchTool())
+  ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
-  ctx.tools.register(createFigureSaveTool(domain, deps.workspaceDir))
+  ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
 
   registerIdeaCommand(ctx, deps)

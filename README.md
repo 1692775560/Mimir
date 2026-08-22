@@ -6,6 +6,16 @@ English | [中文](README.zh.md)
 
 **Mimir is a research-lifecycle plugin suite for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh): arXiv literature search, a persistent research wiki, independent subagent review, and a closed LaTeX writing → compile → preview loop — plus a full web workbench.**
 
+![Mimir — open-source AI research workspace](docs/media/mimir-cover.png)
+
+## Video demo
+
+[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+
+▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB)
+
+The GIF preview plays automatically. Click it or the link above to watch the complete product demo, including AI-assisted research, literature management, experiments, figure archiving, and paper writing. The full video includes smooth zooms that highlight each workflow.
+
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
 ## Features
@@ -24,10 +34,11 @@ English | [中文](README.zh.md)
 
 | Tool | Purpose |
 | --- | --- |
-| `arxiv_search` / `paper_fetch` | arXiv Atom API search and single-paper fetch |
+| `arxiv_search` / `paper_fetch` | arXiv search; selected-paper fetch automatically archives and links it |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
+| `figure_save` | Saves a generated image with metadata, registers a project artifact, and returns LaTeX |
 
 **Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay:
 
@@ -46,15 +57,26 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
 
 ## Quickstart
 
-> **Status:** `dsh-mimir` / `dsh-client-ui-mimir` are not on npm yet (publication planned); the only install path today is building this repository from source.
+Mimir is distributed as two npm packages:
+
+- `dsh-mimir` provides the research commands, tools, wiki, reviewer loop, and server APIs. This is the only package required for normal use.
+- `dsh-client-ui-mimir` provides the six-view Web workbench. It must be integrated into the dsh Web client and does not appear in the sidebar merely by installing the npm package.
+
+Check the currently published versions at any time:
+
+```sh
+npm view dsh-mimir version
+npm view dsh-client-ui-mimir version
+```
 
 ### Prerequisites
 
-- **Node.js** — no `engines` constraint is declared; developed and verified on Node v24.
+- **Node.js** — v22 or newer; developed and verified on Node v24.
 - **pnpm** — verified on v11.18.
 - **dsh CLI** — published on npm:
   ```sh
   npm install -g @deepseek-ai/dsh
+  dsh --version
   ```
 - **`DEEPSEEK_API_KEY`** — required for agent sessions (export it, or put it in dsh's `.env`).
 - **A LaTeX engine** — only for paper compilation: `latexmk` or `tectonic` on PATH. Tectonic is a single binary and the easiest to install:
@@ -63,37 +85,37 @@ Dark/light theme and 中/EN language toggles live in the panel header; keyboard 
   ```
 - **arXiv access** — literature search calls `export.arxiv.org`; behind a proxy, export `HTTPS_PROXY` before starting dsh.
 
-### 1. Clone and build
+### 1. Install Mimir
+
+The recommended method is to install the latest host plugin into dsh's `web` profile:
+
+```sh
+dsh plugin --profile web add dsh-mimir@latest
+```
+
+To add the package directly to an existing Node.js project instead, use npm:
+
+```sh
+npm install dsh-mimir@latest
+```
+
+### 2. Start Mimir
+
+The repository includes a ready-to-use dsh patch. Clone it and start with the installed npm plugin; no source build is required:
 
 ```sh
 git clone https://github.com/1692775560/Mimir.git
 cd Mimir
-pnpm install
-pnpm run build
-pnpm test          # optional sanity check: vitest, both packages
-```
-
-### 2. Install the plugin into the web profile
-
-dsh resolves patch plugin names from the profile directory (`~/.dsh/profiles/web`), **not** from the current directory — so link the built package into the profile (the profile directory is created on dsh's first run):
-
-```sh
-dsh plugin --profile web add "$PWD/packages/mimir"
-```
-
-### 3. Start the example
-
-```sh
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
 
-Then open http://127.0.0.1:3080. The wiki persists at `~/.dsh/storages/research_wiki.json`; research artifacts land in the workspace directory (default `./.research` under the directory you started dsh from).
+Then open <http://127.0.0.1:3080>. The wiki is stored at `~/.dsh/storages/research_wiki.json` by default. Research artifacts—including papers, generated figures, and experiments—are saved under `./.research` in the directory where dsh was started.
 
-### 4. First session
+### 3. First session
 
-In a dsh session (web UI or TUI with the same patch):
+Try these commands in a dsh session (the Web UI or a TUI using the same patch):
 
-```
+```text
 /research-idea efficient long-context retrieval for code agents
 /research-plan
 /research-review plan EXPERIMENT_PLAN.md
@@ -101,9 +123,48 @@ In a dsh session (web UI or TUI with the same patch):
 /paper-compile
 ```
 
-### 5. The web workbench
+### 4. Upgrade
 
-The six-view workbench ships as `dsh-client-ui-mimir` (`packages/ui-mimir`). One honest caveat: **the published dsh web composition predates Mimir** — it neither loads the client plugin nor mounts the `research` Remote namespace, so a cordis patch alone does not put the Mimir button in the sidebar. Mounting the panel today requires a dsh source checkout with the client plugin registered and the Remote assembly one-liner from [Known limitations](#known-limitations) applied. Everything agent-side — the slash commands, tools, wiki, reviewer loop, and the `/research/*` routes — works through the patch alone.
+Install `latest` again to upgrade the host plugin, then restart `dsh web`:
+
+```sh
+dsh plugin --profile web add dsh-mimir@latest
+npm view dsh-mimir version
+```
+
+For packages installed directly in a Node.js project, run:
+
+```sh
+npm install dsh-mimir@latest dsh-client-ui-mimir@latest
+```
+
+### 5. Full Web workbench
+
+Install the Web workbench package with npm:
+
+```sh
+npm install dsh-client-ui-mimir@latest
+```
+
+One important limitation: the currently published dsh Web composition does not automatically discover standalone client plugins or mount the `research` Remote namespace. Installing `dsh-client-ui-mimir` alone therefore does not add the Mimir sidebar button. The complete six-view UI currently requires registering the client package in a dsh source checkout and applying the Remote assembly described in [Known limitations](#known-limitations). The host-side research commands, tools, wiki, automatic artifact saving, and `/research/*` APIs work without that UI integration.
+
+### 6. Develop from source (optional)
+
+Build from source only when contributing to Mimir or integrating the complete Web workbench:
+
+```sh
+git clone https://github.com/1692775560/Mimir.git
+cd Mimir
+pnpm install
+pnpm run build
+pnpm test
+```
+
+dsh resolves patch plugin names from the profile directory (`~/.dsh/profiles/web`), not the current directory. Add the local package to the profile when testing a local build:
+
+```sh
+dsh plugin --profile web add "$PWD/packages/mimir"
+```
 
 ## Usage guide
 
@@ -189,8 +250,8 @@ Registers a project in the wiki, scaffolds `IDEA_REPORT.md` in the workspace, su
 
 The agent reaches the same capabilities mid-conversation:
 
-- `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`).
-- `paper_fetch` — fetch one paper's metadata by arXiv id.
+- `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`); search results alone do not pollute the library.
+- `paper_fetch` — fetch a useful paper by arXiv id and automatically archive its metadata, usefulness notes, and tags. It links to an explicit `project_id`, or the latest active project when omitted. Re-fetching refreshes arXiv metadata without losing existing notes, tags, links, or a downloaded PDF.
 - `wiki_note` — the wiki's read/write surface, one flat parameter set keyed by `action`: `add_paper`, `add_idea`, `fail_idea`, `add_claim`, `set_claim`, `set_project` (points a project at its paper directory), `add_experiment`, `set_experiment` (status `running`/`success`/`failed`), plus `list` and `get` over the five tables.
 - `latex_compile` — "compile the paper in `paper/`" (`project_dir` parameter); returns parsed file/line diagnostics.
 

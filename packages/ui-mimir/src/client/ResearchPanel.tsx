@@ -225,6 +225,12 @@ export function ResearchPanel({
       : null,
     servers: servers.status === 'ready' ? servers.list.length : null,
   }
+  const navCounts: Partial<Record<ResearchTab, number | null>> = {
+    papers: overviewStats.papers,
+    experiments: overviewStats.experiments,
+    figures: overviewStats.figures,
+    servers: overviewStats.servers,
+  }
 
   return (
     <div className={css.workbench} role="dialog" aria-label={t('panel.title')}>
@@ -233,7 +239,13 @@ export function ResearchPanel({
       <div className={css.backdrop} aria-hidden />
       <aside className={css.side}>
         <div className={css.sideHead}>
-          <span className={css.title}>{t('panel.title')}</span>
+          <div className={css.brand}>
+            <span className={css.brandMark} aria-hidden>M</span>
+            <span className={css.brandCopy}>
+              <span className={css.title}>{t('panel.title')}</span>
+              <span className={css.brandSubtitle}>{t('panel.subtitle')}</span>
+            </span>
+          </div>
           <div className={css.headActions}>
             <button
               type="button"
@@ -253,8 +265,8 @@ export function ResearchPanel({
             >
               {locale === 'zh' ? '中' : 'EN'}
             </button>
-            <button type="button" className={css.close} onClick={() => { actions.setOpen(false) }}>
-              {t('panel.close')}
+            <button type="button" className={css.close} title={t('panel.close')} aria-label={t('panel.close')} onClick={() => { actions.setOpen(false) }}>
+              ×
             </button>
           </div>
         </div>
@@ -265,10 +277,16 @@ export function ResearchPanel({
               type="button"
               className={css.navItem}
               data-active={tab === activeTab || undefined}
+              aria-current={tab === activeTab ? 'page' : undefined}
               onClick={() => { actions.setTab(tab) }}
             >
               <span className={css.navIcon} aria-hidden>{TAB_ICONS[tab]}</span>
-              {t(TAB_KEYS[tab])}
+              <span className={css.navLabel}>{t(TAB_KEYS[tab])}</span>
+              {navCounts[tab] !== undefined && navCounts[tab] !== null && (
+                <span className={css.navCount} aria-label={String(navCounts[tab])}>
+                  {navCounts[tab]}
+                </span>
+              )}
             </button>
           ))}
         </nav>

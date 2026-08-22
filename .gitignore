@@ -4,3 +4,5 @@ dist/
 *.tsbuildinfo
 .dsh-build/
 .DS_Store
+playwright-report/
+test-results/
