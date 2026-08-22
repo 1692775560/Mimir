@@ -248,6 +248,15 @@ export function FiguresView({ figures, experiments, projectId, dir, loadFigures,
           type="button"
           className={css.figureLightbox}
           aria-label={t('figures.closePreview')}
+          // Focus the lightbox on open so Esc/Enter reach it; Esc closes only
+          // the lightbox (stopPropagation keeps the panel's Esc-to-close).
+          ref={(element) => { element?.focus() }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.stopPropagation()
+            event.preventDefault()
+            setPreview(null)
+          }}
           onClick={() => { setPreview(null) }}
         >
           <img src={url(preview)} alt={preview.name} />

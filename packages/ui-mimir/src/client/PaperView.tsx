@@ -13,16 +13,17 @@
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
+import { wrapIndex } from './focus.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import {
   editorShareFromDrag, loadPaperLayout, PAPER_LAYOUT_DEFAULT, PAPER_LAYOUT_STORAGE_KEY,
-  PAPER_NARROW_BREAKPOINT, paperSoloPane, railWidthFromDrag, serializePaperLayout,
+  PAPER_NARROW_BREAKPOINT, paperSoloPane, RAIL_MAX_WIDTH, railWidthFromDrag, serializePaperLayout,
   type PaperLayout, type PaperSoloPane,
 } from './paper-layout.ts'
 import type { PaperFullscreen } from './store.ts'
@@ -36,6 +37,11 @@ const EDITOR_LINE_HEIGHT = 19
 
 /** How long the jumped-to gutter row stays flashed. */
 const GUTTER_FLASH_MS = 1200
+
+/** Keyboard-resize step of the outline-rail handle (px per arrow press). */
+const RAIL_KEY_STEP = 16
+/** Keyboard-resize step of the editor/preview split handle (px per arrow press). */
+const SPLIT_KEY_STEP = 24
 
 /** 16×16 pane-fullscreen icons: diagonal arrows out (enter) / in (exit). */
 const EXPAND_ICON: ReactNode = (
@@ -417,6 +423,53 @@ export function PaperView({
     }
   }
 
+  /**
+   * Keyboard twin of the rail-handle drag: ArrowLeft/ArrowRight resize the
+   * outline rail in {@link RAIL_KEY_STEP} steps through the same clamping the
+   * pointer drag uses. A rightward press on a collapsed rail re-expands it to
+   * the default width first (the drag's snap-to-0 would eat a small step).
+   */
+  const onRailHandleKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const delta = event.key === 'ArrowRight' ? RAIL_KEY_STEP : -RAIL_KEY_STEP
+    if (delta > 0) setRailCollapsed(false)
+    setLayout(prev => ({
+      ...prev,
+      rail: prev.rail === 0 && delta > 0 ? PAPER_LAYOUT_DEFAULT.rail : railWidthFromDrag(prev.rail, delta),
+    }))
+  }
+
+  /**
+   * Keyboard twin of the split-handle drag: ArrowLeft/ArrowRight shift the
+   * editor/preview share in {@link SPLIT_KEY_STEP} steps, measured against the
+   * live pane widths exactly like the pointer gesture does.
+   */
+  const onSplitHandleKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const editorWidth = editorPaneRef.current?.getBoundingClientRect().width ?? 0
+    const available = editorWidth + (previewPaneRef.current?.getBoundingClientRect().width ?? 0)
+    if (available <= 0) return
+    const delta = event.key === 'ArrowRight' ? SPLIT_KEY_STEP : -SPLIT_KEY_STEP
+    setLayout(prev => ({ ...prev, editor: editorShareFromDrag(editorWidth + delta, available) }))
+  }
+
+  /**
+   * Arrow-key navigation for the outline rail: ArrowUp/ArrowDown move focus
+   * between the visible outline entries (cycling past both ends); Enter still
+   * activates the focused entry's click-to-jump, and drag reordering stays
+   * pointer-only. Keys aimed elsewhere in the rail pass through.
+   */
+  const onOutlineKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const items = [...event.currentTarget.querySelectorAll<HTMLElement>(`.${css.outlineItem}`)]
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    if (current < 0) return
+    event.preventDefault()
+    items[wrapIndex(current, event.key === 'ArrowDown' ? 1 : -1, items.length)]?.focus()
+  }
+
   // Cancel a pending gutter flash on unmount.
   useEffect(() => () => {
     if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
@@ -525,7 +578,7 @@ export function PaperView({
   // The narrow-width editor/preview tab bar (CSS-hidden at full width); both
   // pane heads render it so the switch is reachable from whichever pane shows.
   const paneTabs = (
-    <div className={css.paperTabs} role="tablist">
+    <div className={css.paperTabs} role="tablist" aria-label={t('pane.tabs')}>
       {(['editor', 'preview'] as const).map(pane => (
         <button
           key={pane}
@@ -552,12 +605,15 @@ export function PaperView({
         className={css.outlineRail}
         data-collapsed={railGone || undefined}
         style={{ flexBasis: railGone ? 44 : layout.rail }}
+        aria-label={t('outline.title')}
+        onKeyDown={onOutlineKeyDown}
       >
         {railGone ? (
           <button
             type="button"
             className={css.railToggle}
             aria-label={t('outline.expand')}
+            aria-expanded={false}
             onClick={expandRail}
           >
             »
@@ -570,6 +626,7 @@ export function PaperView({
                 type="button"
                 className={css.railToggle}
                 aria-label={t('outline.collapse')}
+                aria-expanded
                 onClick={() => { setRailCollapsed(true) }}
               >
                 «
@@ -617,8 +674,13 @@ export function PaperView({
         role="separator"
         aria-orientation="vertical"
         aria-label={t('pane.resize')}
+        aria-valuenow={railGone ? 0 : Math.round(layout.rail)}
+        aria-valuemin={0}
+        aria-valuemax={RAIL_MAX_WIDTH}
+        tabIndex={0}
         data-active={dragging === 'rail' || undefined}
         onPointerDown={onRailHandleDown}
+        onKeyDown={onRailHandleKey}
       />
       <section
         ref={editorPaneRef}
@@ -640,6 +702,7 @@ export function PaperView({
                 className={css.iconButton}
                 title={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
                 aria-label={fullscreen === 'editor' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+                aria-pressed={fullscreen === 'editor'}
                 onClick={() => { setFullscreen(fullscreen === 'editor' ? null : 'editor') }}
               >
                 {fullscreen === 'editor' ? COMPRESS_ICON : EXPAND_ICON}
@@ -698,8 +761,13 @@ export function PaperView({
         role="separator"
         aria-orientation="vertical"
         aria-label={t('pane.resize')}
+        aria-valuenow={Math.round(layout.editor * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        tabIndex={0}
         data-active={dragging === 'split' || undefined}
         onPointerDown={onSplitHandleDown}
+        onKeyDown={onSplitHandleKey}
       />
       <section
         ref={previewPaneRef}
@@ -724,6 +792,7 @@ export function PaperView({
             className={css.bibToggle}
             disabled={projectId === null}
             data-active={bibOpen || undefined}
+            aria-pressed={bibOpen}
             onClick={() => { setBibOpen(prev => !prev) }}
           >
             {bibOpen ? t('bib.close') : t('bib.open')}
@@ -734,6 +803,7 @@ export function PaperView({
               className={css.iconButton}
               title={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
               aria-label={fullscreen === 'preview' ? t('pane.exitFullscreen') : t('pane.fullscreen')}
+              aria-pressed={fullscreen === 'preview'}
               onClick={() => { setFullscreen(fullscreen === 'preview' ? null : 'preview') }}
             >
               {fullscreen === 'preview' ? COMPRESS_ICON : EXPAND_ICON}

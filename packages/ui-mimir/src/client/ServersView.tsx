@@ -278,6 +278,7 @@ export function ServersView({
               type="button"
               className={css.tagPill}
               data-active={activeTag === tag || undefined}
+              aria-pressed={activeTag === tag}
               onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
             >
               {tag}
@@ -332,6 +333,7 @@ export function ServersView({
                         type="button"
                         className={css.tagPill}
                         data-active={activeTag === tag || undefined}
+                        aria-pressed={activeTag === tag}
                         onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
                       >
                         {tag}

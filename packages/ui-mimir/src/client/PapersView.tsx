@@ -92,6 +92,7 @@ function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
             type="button"
             className={css.btn}
             data-active={readerOpen || undefined}
+            aria-expanded={readerOpen}
             onClick={() => { setReaderOpen(prev => !prev) }}
           >
             {readerOpen ? t('papers.closePdf') : t('papers.readPdf')}
@@ -365,6 +366,7 @@ export function PapersView({
                   type="button"
                   className={css.tagPill}
                   data-active={activeTag === tag || undefined}
+                  aria-pressed={activeTag === tag}
                   onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
                 >
                   {tag}
@@ -376,6 +378,7 @@ export function PapersView({
                   className={css.tagPill}
                   data-kind="project"
                   data-active={currentOnly || undefined}
+                  aria-pressed={currentOnly}
                   onClick={() => { setCurrentOnly(prev => !prev) }}
                 >
                   {t('papers.currentProjectOnly')}
@@ -415,6 +418,7 @@ export function PapersView({
                             type="button"
                             className={css.tagPill}
                             data-active={activeTag === tag || undefined}
+                            aria-pressed={activeTag === tag}
                             onClick={() => { setActiveTag(prev => (prev === tag ? null : tag)) }}
                           >
                             {tag}
@@ -431,6 +435,7 @@ export function PapersView({
                       type="button"
                       className={css.paperSummary}
                       data-open={open || undefined}
+                      aria-expanded={open}
                       onClick={() => {
                         setExpanded(prev => ({ ...prev, [paper.arxivId]: !prev[paper.arxivId] }))
                       }}
