@@ -105,17 +105,6 @@ export interface ExperimentRecord {
   readonly updatedAt: string
 }
 
-/** Metadata recorded when an agent saves a generated figure into a paper. */
-export interface FigureRecord {
-  readonly id: string
-  readonly projectId: string
-  readonly relPath: string
-  readonly caption: string
-  readonly sourcePath: string
-  readonly experimentId?: string | undefined
-  readonly createdAt: string
-}
-
 /** Lifecycle of one remote job submitted over ssh. */
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
@@ -141,6 +130,24 @@ export interface JobRecord {
   readonly startedAt?: string | undefined
   /** ISO-8601 timestamp of the terminal settle. */
   readonly finishedAt?: string | undefined
+}
+
+/** Metadata of one figure file saved into a project's paper directory. */
+export interface FigureRecord {
+  /** Composite key: `<projectId>:<relPath>` — one metadata row per figure file. */
+  readonly id: string
+  /** Owning wiki project id. */
+  readonly projectId: string
+  /** Path relative to the project's paper directory (`figures/foo.png`). */
+  readonly relPath: string
+  /** Free-form caption the saving agent attached. */
+  readonly caption: string
+  /** Experiment record the figure belongs to, when linked. */
+  readonly experimentId?: string | undefined
+  /** Where the figure was copied from, when the save recorded it. */
+  readonly sourcePath?: string | undefined
+  /** ISO-8601 timestamp of the record's first write. */
+  readonly createdAt: string
 }
 
 /** One issue raised by an independent review round. */
@@ -304,7 +311,9 @@ export interface FigureEntry {
   readonly relPath: string
   readonly sizeBytes: number
   readonly mtimeMs: number
+  /** Caption from the wiki's figures metadata table, when the file has one. */
   readonly caption?: string | undefined
+  /** Linked experiment id from the figures metadata table, when present. */
   readonly experimentId?: string | undefined
 }
 
@@ -402,8 +411,8 @@ export type ResearchImportBibResult = ResearchResult<{
   readonly skipped: readonly string[]
 }>
 
-/** The six research-wiki tables included in backup/export. */
-export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers'
+/** The seven research-wiki tables, in domain order (the runtime-only `jobs` table is excluded). */
+export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers' | 'figures'
 
 /** One wiki export snapshot's table payload. */
 export interface ResearchWikiSnapshotTables {
@@ -413,10 +422,11 @@ export interface ResearchWikiSnapshotTables {
   readonly projects: readonly ProjectRecord[]
   readonly experiments: readonly ExperimentRecord[]
   readonly servers: readonly ServerRecord[]
+  readonly figures: readonly FigureRecord[]
 }
 
 /**
- * One wiki backup snapshot: every record of all six tables under a format
+ * One wiki backup snapshot: every record of all seven tables under a format
  * envelope (`format`/`version` guard against importing foreign JSON).
  */
 export interface ResearchWikiSnapshot {

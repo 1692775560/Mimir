@@ -386,6 +386,7 @@ export function ResearchPanel({
         {activeTab === 'figures' && (
           <FiguresView
             figures={figures}
+            experiments={experiments}
             projectId={selectedProjectId}
             dir={selectedProject?.paperDir}
             loadFigures={loadFigures}

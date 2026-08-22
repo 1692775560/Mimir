@@ -23,7 +23,8 @@ function planInstruction(deps: ResearchCommandDeps, projectTitle: string): strin
     `1. Read ${join(deps.workspaceDir, 'IDEA_REPORT.md')}. If it is still an unfilled skeleton or missing, say so and stop.`,
     `2. Fill every section of the skeleton at ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}. Each experiment must name the claim(s) it supports or invalidates, and success criteria must be decided now, before any experiment runs.`,
     '3. Register every numbered claim from the plan with wiki_note action=add_claim (they start pending).',
-    '4. Finish with a short summary for the user: the claims and the experiment that tests each one.',
+    '4. When experiments later run, record each one with wiki_note action=add_experiment and settle it with set_experiment (status + metrics), so the workbench experiment charts stay current; save generated plots with figure_save.',
+    '5. Finish with a short summary for the user: the claims and the experiment that tests each one.',
   ].join('\n')
 }
 

@@ -5,14 +5,16 @@
  * card that opens in a new tab. Hovering a card reveals its two file
  * operations — copy the LaTeX figure block, delete the file — and the view
  * head carries the upload button (POST `/research/figure-upload`) plus the
- * forced rescan. Image files can also be dragged anywhere onto the view: a
+ * forced rescan. Cards show the wiki-recorded caption and a linked-experiment
+ * badge when the `figure_save` tool registered metadata for the file. Image
+ * files can also be dragged anywhere onto the view: a
  * dashed overlay shows while hovering, the drop reuses the upload channel,
  * and files outside the accept list are reported, not silently ignored.
  * @module dsh-client-ui-mimir/client/FiguresView
  */
 
 import { useRef, useState, type DragEvent as ReactDragEvent } from 'react'
-import type { FigureEntry } from 'dsh-mimir/types'
+import type { ExperimentRecord, FigureEntry } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchProjectSlice } from './controller.ts'
 import {
   failureCopy, FIGURE_ACCEPT_EXTENSIONS, figureUrl, filterDropFiles, formatSize, type ResearchT,
@@ -24,7 +26,7 @@ import css from './ResearchPanel.module.css'
 /** The LaTeX figure block one card's copy button puts on the clipboard. */
 function latexOf(entry: FigureEntry): string {
   const label = entry.name.replace(/\.[^.]+$/, '')
-  return `\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics[width=0.8\\linewidth]{${entry.relPath}}\n  \\caption{}\n  \\label{fig:${label}}\n\\end{figure}`
+  return `\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics[width=0.8\\linewidth]{${entry.relPath}}\n  \\caption{${entry.caption ?? ''}}\n  \\label{fig:${label}}\n\\end{figure}`
 }
 
 /** How long the copied confirmation replaces the copy button's label. */
@@ -35,8 +37,10 @@ const COPIED_FEEDBACK_MS = 1500
  * the rescan/upload/delete verbs, and copy.
  * @returns the thumbnail grid plus the lightbox overlay.
  */
-export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigures, deleteFigure, t }: {
+export function FiguresView({ figures, experiments, projectId, dir, loadFigures, uploadFigures, deleteFigure, t }: {
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
+  /** Experiment list of the same project, used to name linked-experiment badges. */
+  readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly projectId: string | null
   readonly dir: string | undefined
   readonly loadFigures: (projectId: string, force?: boolean) => void
@@ -63,6 +67,14 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
     return <EmptyState glyph="🖼️">{t('figures.noProject')}</EmptyState>
   }
   const url = (entry: FigureEntry): string => figureUrl(projectId, entry.relPath, dir)
+  /** Resolve one linked experiment id to its display name (id as fallback). */
+  const experimentNameOf = (id: string): string => {
+    if (experiments !== null && experiments.status === 'ready') {
+      const found = experiments.list.find(record => record.id === id)
+      if (found !== undefined) return found.name
+    }
+    return id
+  }
 
   const copyLatex = (entry: FigureEntry): void => {
     void navigator.clipboard.writeText(latexOf(entry)).then(() => {
@@ -202,6 +214,12 @@ export function FiguresView({ figures, projectId, dir, loadFigures, uploadFigure
                 {entry.caption !== undefined && entry.caption !== '' && <span className={css.figureSize}>{entry.caption}</span>}
                 {entry.experimentId !== undefined && <span className={css.figureBadge}>#{entry.experimentId}</span>}
                 <span className={css.figureSize}>{formatSize(entry.sizeBytes)}</span>
+                {entry.caption !== undefined && (
+                  <span className={css.figureCaption} title={entry.caption}>{entry.caption}</span>
+                )}
+                {entry.experimentId !== undefined && (
+                  <span className={css.figureExpBadge}>⚡ {experimentNameOf(entry.experimentId)}</span>
+                )}
                 <div className={css.figureActions}>
                   <button
                     type="button"

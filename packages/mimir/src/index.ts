@@ -17,8 +17,8 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
-import { createLatexCompileTool } from './tools/latex.ts'
 import { createFigureSaveTool } from './tools/figure.ts'
+import { createLatexCompileTool } from './tools/latex.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
 import { registerReviewCommand } from './commands/review.ts'
@@ -497,8 +497,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createArxivSearchTool(resolved.arxiv.maxResults))
   ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
-  ctx.tools.register(createLatexCompileTool(resolved.latex))
   ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
+  ctx.tools.register(createLatexCompileTool(resolved.latex))
 
   registerIdeaCommand(ctx, deps)
   registerPlanCommand(ctx, deps)

@@ -1,6 +1,6 @@
 /**
  * Behavior tests for the wiki export/import remotes: exportWiki snapshot
- * completeness (all six tables, envelope fields, records with their keys),
+ * completeness (all seven tables, envelope fields, records with their keys),
  * importWiki merge (absent keys upsert, existing records skipped untouched),
  * replace (wipes first, requires confirmReplace), invalid-record rejection
  * before any write, and the format/version envelope checks — plus the pure
@@ -21,7 +21,7 @@ import {
   snapshotEnvelopeError, tableRowsError, WIKI_SNAPSHOT_FORMAT, WIKI_SNAPSHOT_VERSION,
 } from '../src/wiki-snapshot.ts'
 import type {
-  ExperimentRecord, PaperRecord, ProjectRecord, ResearchWikiSnapshot, ServerRecord,
+  ExperimentRecord, FigureRecord, PaperRecord, ProjectRecord, ResearchWikiSnapshot, ServerRecord,
 } from '../src/types.ts'
 
 /** Boot a service over a memory-backed domain and a fresh temp workspace. */
@@ -85,12 +85,22 @@ const SERVER: ServerRecord = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 }
 
-/** Seed one record into four of the six tables. */
+const FIGURE: FigureRecord = {
+  id: 'p1:figures/curve.png',
+  projectId: 'p1',
+  relPath: 'figures/curve.png',
+  caption: 'Training curve',
+  experimentId: 'e1',
+  createdAt: '2026-08-20T00:00:00.000Z',
+}
+
+/** Seed one record into five of the seven tables. */
 async function seed(domain: Awaited<ReturnType<typeof harness>>['domain']): Promise<void> {
   await domain.table('papers').put(PAPER.arxivId, PAPER)
   await domain.table('projects').put(PROJECT.id, PROJECT)
   await domain.table('experiments').put(EXPERIMENT.id, EXPERIMENT)
   await domain.table('servers').put(SERVER.id, SERVER)
+  await domain.table('figures').put(FIGURE.id, FIGURE)
 }
 
 /** Export through the service and assert the envelope; returns the snapshot. */
@@ -106,7 +116,7 @@ async function exportOk(service: ResearchService): Promise<ResearchWikiSnapshot>
 }
 
 describe('exportWiki', () => {
-  it('snapshots all six tables with every record', async () => {
+  it('snapshots all seven tables with every record', async () => {
     const { domain, service } = await harness()
     await seed(domain)
     const snapshot = await exportOk(service)
@@ -114,6 +124,7 @@ describe('exportWiki', () => {
     expect(snapshot.tables.projects).toEqual([PROJECT])
     expect(snapshot.tables.experiments).toEqual([EXPERIMENT])
     expect(snapshot.tables.servers).toEqual([SERVER])
+    expect(snapshot.tables.figures).toEqual([FIGURE])
     expect(snapshot.tables.ideas).toEqual([])
     expect(snapshot.tables.claims).toEqual([])
   })
@@ -142,8 +153,8 @@ describe('importWiki merge', () => {
     expect(outcome).toEqual({
       ok: true,
       value: {
-        imported: { papers: 1, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0 },
-        skipped: { papers: 1, ideas: 0, claims: 0, projects: 1, experiments: 1, servers: 1 },
+        imported: { papers: 1, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0, figures: 0 },
+        skipped: { papers: 1, ideas: 0, claims: 0, projects: 1, experiments: 1, servers: 1, figures: 1 },
       },
     })
     expect(domain.table('papers').get(PAPER.arxivId)).toEqual(PAPER)
@@ -164,7 +175,7 @@ describe('importWiki replace', () => {
     expect(domain.table('papers').get(PAPER.arxivId)).toEqual(PAPER)
   })
 
-  it('wipes all six tables and writes the snapshot', async () => {
+  it('wipes all seven tables and writes the snapshot', async () => {
     const { domain, service } = await harness()
     await seed(domain)
     const snapshot = await exportOk(service)
@@ -176,13 +187,14 @@ describe('importWiki replace', () => {
     expect(outcome).toEqual({
       ok: true,
       value: {
-        imported: { papers: 0, ideas: 0, claims: 0, projects: 1, experiments: 0, servers: 1 },
-        skipped: { papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0 },
+        imported: { papers: 0, ideas: 0, claims: 0, projects: 1, experiments: 0, servers: 1, figures: 1 },
+        skipped: { papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0, figures: 0 },
       },
     })
     expect(domain.table('papers').get(PAPER.arxivId)).toBeUndefined()
     expect(domain.table('experiments').get(EXPERIMENT.id)).toBeUndefined()
     expect(domain.table('projects').get(PROJECT.id)).toEqual(PROJECT)
+    expect(domain.table('figures').get(FIGURE.id)).toEqual(FIGURE)
   })
 })
 

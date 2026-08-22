@@ -71,17 +71,6 @@ export const experimentRecord = z.object({
   updatedAt: z.string(),
 })
 
-/** Durable metadata for one agent-saved paper figure. */
-export const figureRecord = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  relPath: z.string(),
-  caption: z.string(),
-  sourcePath: z.string(),
-  experimentId: z.string().optional(),
-  createdAt: z.string(),
-})
-
 /** Durable shape of one remembered compute server. */
 export const serverRecord = z.object({
   id: z.string(),
@@ -113,16 +102,30 @@ export const jobRecord = z.object({
   finishedAt: z.string().optional(),
 })
 
+/** Durable shape of one saved figure's metadata (the file itself stays on disk). */
+export const figureRecord = z.object({
+  /** Composite key: `<projectId>:<relPath>` — one metadata row per figure file. */
+  id: z.string(),
+  projectId: z.string(),
+  /** Path relative to the project's paper directory (`figures/foo.png`). */
+  relPath: z.string(),
+  caption: z.string(),
+  experimentId: z.string().optional(),
+  /** Where the figure was copied from, when the save recorded it. */
+  sourcePath: z.string().optional(),
+  createdAt: z.string(),
+})
+
 /**
  * The research wiki domain spec: eight tables, no global singleton. The spec
  * object is the single source of the domain's name, version, and schemas.
- * The `servers` and `jobs` tables were added WITHOUT a version bump: the
- * domain loader fills a table missing from a stored snapshot with an empty
- * map, so existing v2 JSON stores open with them empty, while a bump would
- * make the storage-json backend reject every existing file
+ * The `servers`, `jobs`, and `figures` tables were added WITHOUT a version
+ * bump: the domain loader fills a table missing from a stored snapshot with
+ * an empty map, so existing v2 JSON stores open with them empty, while a bump
+ * would make the storage-json backend reject every existing file
  * (`version-mismatch`) with no migration path. `jobs` holds runtime state
- * rather than research data, so the wiki export/import snapshot (six tables)
- * deliberately excludes it.
+ * rather than research data, so the wiki export/import snapshot (seven
+ * tables) deliberately excludes it.
  */
 export const researchWikiDomainSpec = defineDomain({
   name: 'research_wiki',
@@ -133,9 +136,9 @@ export const researchWikiDomainSpec = defineDomain({
     claims: domainTable<string, ClaimRecord>(claimRecord),
     projects: domainTable<string, ProjectRecord>(projectRecord),
     experiments: domainTable<string, ExperimentRecord>(experimentRecord),
-    figures: domainTable<string, FigureRecord>(figureRecord),
     servers: domainTable<string, ServerRecord>(serverRecord),
     jobs: domainTable<string, JobRecord>(jobRecord),
+    figures: domainTable<string, FigureRecord>(figureRecord),
   },
 })
 

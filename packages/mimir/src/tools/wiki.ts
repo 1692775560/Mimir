@@ -241,7 +241,7 @@ function renderOutcome(value: Record<string, JsonValue | undefined>): string {
 export function createWikiNoteTool(domain: ResearchWikiDomain): ToolDefinition {
   return defineTool({
     name: 'wiki_note',
-    description: 'Read and write the persistent research wiki: remembered papers (add_paper), ideas including never-deleted failed ones (add_idea, fail_idea), tracked claims (add_claim, set_claim), project records (set_project points a project at its paper directory), and experiment runs (add_experiment, set_experiment); list and get read any table. Always check failed ideas before proposing work. Save useful papers with add_paper, and record every completed experiment with add_experiment/set_experiment; use figure_save immediately after generating a paper-worthy image.',
+    description: 'Read and write the persistent research wiki: remembered papers (add_paper), ideas including never-deleted failed ones (add_idea, fail_idea), tracked claims (add_claim, set_claim), project records (set_project points a project at its paper directory), and experiment runs (add_experiment, set_experiment); list and get read any table. Always check the ideas table before proposing work, to avoid re-proving failed directions. Save useful papers you find with add_paper, record every experiment run with add_experiment/set_experiment, and call figure_save right after generating a paper-worthy image — the workbench only shows what the wiki remembers.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'The wiki operation to perform.' },
       table: { type: 'string', enum: TABLES, description: 'Table for list/get (papers|ideas|claims|projects|experiments).' },
