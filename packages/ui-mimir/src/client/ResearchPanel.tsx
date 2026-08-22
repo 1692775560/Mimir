@@ -162,13 +162,15 @@ export function ResearchPanel({
   }, [open, activeTab, ensurePapers])
   // The overview's stat chips count the papers and figures slices, both lazy:
   // warm them when the overview opens so the chips show real numbers instead
-  // of dashes. The experiments slice is already loaded by select().
+  // of dashes; the activity card reads the jobs slice, equally lazy. The
+  // experiments slice is already loaded by select().
   useEffect(() => {
     if (open && activeTab === 'overview') {
       ensurePapers()
+      ensureJobs()
       if (selectedProjectId !== null) loadFigures(selectedProjectId)
     }
-  }, [open, activeTab, selectedProjectId, ensurePapers, loadFigures])
+  }, [open, activeTab, selectedProjectId, ensurePapers, ensureJobs, loadFigures])
   useEffect(() => {
     if (open && activeTab === 'experiments' && selectedProjectId !== null) {
       loadArtifact(selectedProjectId, EXPERIMENT_LOG_ARTIFACT)
@@ -314,6 +316,7 @@ export function ResearchPanel({
                   type="button"
                   className={css.projectRow}
                   data-selected={project.id === selectedProjectId || undefined}
+                  title={project.title}
                   onClick={() => { selectProject(project.id) }}
                 >
                   <span className={css.projectTitle}>{project.title}</span>
@@ -326,7 +329,7 @@ export function ResearchPanel({
       </aside>
       <main className={css.content}>
         {activeTab === 'overview' && (
-          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} exportWiki={exportWiki} importWiki={importWiki} t={t} />
+          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} jobs={jobs} experiments={experiments} exportWiki={exportWiki} importWiki={importWiki} t={t} />
         )}
         {activeTab === 'paper' && (
           <PaperView

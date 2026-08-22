@@ -148,6 +148,49 @@ export function barWidthPercents(values: readonly number[]): number[] {
 }
 
 /**
+ * Visual-width budget of one chart-label line, in half-width units (a CJK or
+ * fullwidth glyph counts double). Tuned so a full line stays inside the SVG
+ * label lane at the 11px label size.
+ */
+const CHART_LABEL_LINE_UNITS = 22
+
+/** Half-width-unit width of one code point: CJK/fullwidth glyphs count double. */
+function charUnits(char: string): number {
+  return /[⺀-鿿豈-﫿＀-￯]/.test(char) ? 2 : 1
+}
+
+/**
+ * One run name wrapped to at most two chart-label lines so the bar charts stay
+ * readable without ellipsizing mid-word. The wrap budget is in half-width
+ * units (see {@link CHART_LABEL_LINE_UNITS}); the first line fills greedily
+ * and breaks at the last colon or space inside the budget, and a name still
+ * too long ellipsizes its second line (the full name rides the SVG `<title>`).
+ */
+export function chartNameLines(name: string): readonly [string] | readonly [string, string] {
+  const chars = [...name]
+  const unitsOf = (list: readonly string[]): number =>
+    list.reduce((sum, char) => sum + charUnits(char), 0)
+  if (unitsOf(chars) <= CHART_LABEL_LINE_UNITS) return [name]
+  let units = 0
+  let cut = 0
+  let boundary = -1
+  for (let index = 0; index < chars.length; index++) {
+    const char = chars[index] ?? ''
+    const next = units + charUnits(char)
+    if (next > CHART_LABEL_LINE_UNITS) break
+    units = next
+    cut = index + 1
+    if (char === '：' || char === ':' || char === ' ') boundary = index + 1
+  }
+  const first = (boundary > 0 ? chars.slice(0, boundary) : chars.slice(0, cut)).join('').trimEnd()
+  const restText = chars.slice(boundary > 0 ? boundary : cut).join('').trimEnd()
+  let tail = [...restText]
+  while (tail.length > 0 && unitsOf(tail) + 1 > CHART_LABEL_LINE_UNITS) tail = tail.slice(0, -1)
+  const trimmed = tail.join('').trimEnd()
+  return [first, trimmed === restText ? restText : `${trimmed}…`]
+}
+
+/**
  * Compact display form of one metric value: strings pass through, integers
  * print as-is, other numbers keep at most four significant digits.
  */

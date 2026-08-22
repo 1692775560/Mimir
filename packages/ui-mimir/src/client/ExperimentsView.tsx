@@ -17,6 +17,7 @@ import type {
 } from './controller.ts'
 import {
   barWidthPercents,
+  chartNameLines,
   failureCopy,
   formatMetricValue,
   metricChartRows,
@@ -30,18 +31,17 @@ import { ExperimentForm } from './ExperimentForm.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
 
-/** Bar-chart geometry: bars span x 110–270 of the 320-wide viewBox. */
-const CHART_WIDTH = 320
-const CHART_BAR_X = 110
-const CHART_BAR_MAX_WIDTH = 160
+/** Bar-chart geometry: bars span x 132–268 of the 340-wide viewBox. */
+const CHART_WIDTH = 340
+const CHART_BAR_X = 132
+const CHART_BAR_MAX_WIDTH = 136
 const CHART_ROW_HEIGHT = 26
-/** Run names are ellipsized past this many characters to fit the label lane. */
-const CHART_NAME_MAX = 14
 
 /**
  * One metric's comparison chart: one horizontal bar per run carrying a finite
  * number for the key, oldest run on top, width normalized to the largest
- * value. Pure inline SVG — no charting dependency.
+ * value. Run names wrap to two lines via `chartNameLines`. Pure inline SVG —
+ * no charting dependency.
  */
 function MetricChart({ metricKey, rows }: {
   readonly metricKey: string
@@ -60,13 +60,18 @@ function MetricChart({ metricKey, rows }: {
       >
         {rows.map((row, index) => {
           const y = 2 + index * CHART_ROW_HEIGHT
-          const name = row.name.length > CHART_NAME_MAX ? `${row.name.slice(0, CHART_NAME_MAX - 1)}…` : row.name
+          // Long run names wrap to a second line instead of ellipsizing early;
+          // the full name rides the <title> tooltip either way.
+          const [nameFirst, nameSecond] = chartNameLines(row.name)
           return (
             <g key={row.id}>
-              <text className={css.metricName} x={0} y={y + 15}>
+              <text className={css.metricName} x={0} y={nameSecond === undefined ? y + 15 : y + 10}>
                 <title>{row.name}</title>
-                {name}
+                {nameFirst}
               </text>
+              {nameSecond !== undefined && (
+                <text className={css.metricName} x={0} y={y + 21}>{nameSecond}</text>
+              )}
               <rect
                 className={css.metricBar}
                 data-status={row.status}

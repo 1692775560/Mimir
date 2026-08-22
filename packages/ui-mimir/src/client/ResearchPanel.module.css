@@ -295,7 +295,9 @@
 
 .viewSubtitle {
   margin: 0;
-  color: var(--dsw-alias-label-tertiary, #5b6474);
+  /* label-tertiary is too faint against the content well's tinted gradient;
+     secondary keeps the hierarchy while staying readable. */
+  color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -484,13 +486,19 @@
   box-shadow: 0 6px 18px rgb(45 66 110 / 8%);
 }
 
+/* Project titles wrap to two lines before clamping, so a long title like a
+   full paper name stays readable instead of collapsing to a stub. */
 .projectTitle {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--dsw-alias-label-primary, #17233d);
   font-size: 13px;
   font-weight: 500;
-  white-space: nowrap;
+  line-height: 1.45;
+  overflow-wrap: break-word;
   text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .projectMeta {
@@ -632,6 +640,73 @@
   background: var(--dsw-specific-menu, #fff);
   color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12px;
+}
+
+/* Overview recent activity: two columns — the latest remote jobs and the
+   latest experiment runs — filling the overview's lower half. */
+.activitySection {
+  padding: 24px 28px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 18px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: var(--mimir-card-shadow);
+}
+
+.activityGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 8px 28px;
+}
+
+.activityColTitle {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.activityList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activityItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  transition: background-color 0.15s ease;
+}
+
+.activityItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+.activityName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityName code {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.activityTime {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Paper view: outline rail + editor + compile/preview as three cards. The
@@ -826,21 +901,22 @@ li.dropIndicator {
   flex: 2;
 }
 
-/* Drag handles between the three panes: an 8px hit area centered on the 12px
+/* Drag handles between the three panes: a 12px hit area centered on the 12px
    gap (negative margins make it layout-neutral), a 2px grip line that lights
-   up on hover/drag. */
+   up on hover/drag. touch-action: none keeps pointer capture smooth. */
 .splitHandle {
   position: relative;
   z-index: 2;
-  flex: 0 0 8px;
-  margin: 0 -10px;
+  flex: 0 0 12px;
+  margin: 0 -12px;
   border-radius: 4px;
   cursor: col-resize;
+  touch-action: none;
 }
 
 .splitHandle::after {
   position: absolute;
-  inset: 0 3px;
+  inset: 0 5px;
   border-radius: 1px;
   background: var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   content: '';
@@ -1363,10 +1439,14 @@ li.dropIndicator {
   margin: 0;
 }
 
+/* Badges size to the card (not a fixed 220px) so long project titles keep as
+   much text as the row offers; the full title rides the title tooltip. */
 .projectBadge {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
-  max-width: 220px;
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 10px;
   border-radius: 999px;
   overflow: hidden;
@@ -1751,7 +1831,7 @@ li.dropIndicator {
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1360px;
   margin: 0 auto;
 }
 
@@ -1775,7 +1855,7 @@ li.dropIndicator {
 
 .figuresGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
 
@@ -1857,7 +1937,7 @@ li.dropIndicator {
 
 .figureThumb {
   width: 100%;
-  height: 130px;
+  height: 150px;
   border-radius: 10px;
   object-fit: contain;
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
@@ -1867,7 +1947,7 @@ li.dropIndicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 130px;
+  height: 150px;
   border-radius: 10px;
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
   color: var(--dsw-alias-label-tertiary, #5b6474);
