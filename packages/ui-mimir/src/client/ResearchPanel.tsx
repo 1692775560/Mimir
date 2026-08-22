@@ -121,7 +121,7 @@ export function ResearchPanel({
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
   requestRelatedWork,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  insertFigure, consumePaperJump,
+  insertFigure, consumePaperJump, generateMetricFigure,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
@@ -444,6 +444,11 @@ export function ResearchPanel({
             deleteExperiment={deleteExperiment}
             updateExperiment={updateExperiment}
             saveExperiment={saveExperiment}
+            generateMetricFigure={(metricKey, rows) =>
+              selectedProjectId === null
+                ? Promise.resolve()
+                : generateMetricFigure(selectedProjectId, metricKey, rows)
+            }
             retry={() => { if (selectedProjectId !== null) selectProject(selectedProjectId) }}
             t={t}
           />

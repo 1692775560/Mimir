@@ -34,6 +34,7 @@ import type {
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
+  ResearchSaveFigureResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -85,6 +86,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     listFigures: missing('listFigures'),
     deleteFigure: missing('deleteFigure'),
     convertFigure: missing('convertFigure'),
+    saveFigure: missing('saveFigure'),
     listServers: missing('listServers'),
     saveServer: missing('saveServer'),
     deleteServer: missing('deleteServer'),
@@ -1572,4 +1574,88 @@ describe('ResearchController figure insert', () => {
     expect(controller.getSnapshot().source?.content).toBe('my draft')
     expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureInsertConflict' })
   })
+
+  describe('generateMetricFigure (the experiments chart button)', () => {
+  const ROWS = [
+    { id: 'e1', name: 'baseline', status: 'success' as const, value: 92.4 },
+    { id: 'e2', name: 'full model', status: 'success' as const, value: 88.1 },
+  ]
+
+  it('saves the rendered SVG through the host, then inserts the converted product', async () => {
+    let savedRequest: unknown = null
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+      saveFigure: (request) => {
+        savedRequest = request
+        return Promise.resolve(carried<ResearchSaveFigureResult>({
+          ok: true, value: {
+            relPath: 'figures/metric-mpjpe.svg',
+            caption: 'Comparison of mpjpe across experiments: baseline (92.4), full model (88.1).',
+            converted: { relPath: 'figures/metric-mpjpe.pdf', converter: 'rsvg-convert' },
+          },
+        }))
+      },
+      // The insert path re-asks for the conversion; the host reuses the fresh product.
+      convertFigure: () => Promise.resolve(carried<ResearchConvertFigureResult>({
+        ok: true, value: { relPath: 'figures/metric-mpjpe.pdf', converter: 'cached' },
+      })),
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBe(6)
+    expect(savedRequest).toMatchObject({ projectId: 'p1', name: 'metric-mpjpe.svg' })
+    const request = savedRequest as { content: string; caption: string }
+    expect(request.content).toContain('<svg xmlns="http://www.w3.org/2000/svg"')
+    expect(request.content).toContain('>baseline</text>')
+    expect(request.caption).toContain('Comparison of mpjpe')
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toContain('\\includegraphics[width=\\linewidth]{figures/metric-mpjpe.pdf}')
+    expect(view.source?.content).toContain('\\caption{Comparison of mpjpe across experiments: baseline (92.4), full model (88.1).}')
+    expect(view.source?.content).toContain('\\label{fig:metric-mpjpe}')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureConvertedSvg' })
+  })
+
+  it('toasts the reason and inserts nothing when the save is rejected', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      saveFigure: () => Promise.resolve(carried<ResearchSaveFigureResult>({
+        ok: false, error: { code: 'invalid-name', name: 'metric-mpjpe.svg' },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().source?.content).toBe(TEX)
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.metricFigureFailed' })
+  })
+
+  it('toasts the transport failure when the save call itself fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      saveFigure: () => Promise.reject(new Error('socket closed')),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({
+      kind: 'error', copy: 'toast.metricFigureFailed', detail: 'socket closed',
+    })
+  })
+
+  it('does nothing for an empty row list', async () => {
+    const controller = new ResearchController(stubRemote({}))
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', [])
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts).toEqual([])
+  })
+})
 })
