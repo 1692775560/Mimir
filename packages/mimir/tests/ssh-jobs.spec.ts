@@ -8,7 +8,7 @@
  * the session-failure path) — no module mocks.
  */
 
-import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi, afterEach } from 'vitest'
@@ -112,7 +112,7 @@ describe('ResearchService.submitJob validation', () => {
 
 describe('ResearchService job lifecycle', () => {
   it('runs a submitted job to succeeded, keeps the output tails, and writes back the linked experiment', async () => {
-    const { domain, service } = await harness()
+    const { domain, service, workspaceDir } = await harness()
     await stubFakeSsh()
     const created = await service.saveServer({ server: SERVER_INPUT })
     if (!created.ok) throw new Error('create failed')
@@ -141,12 +141,26 @@ describe('ResearchService job lifecycle', () => {
     expect(settled.stderrTail).toContain('fake-ssh stderr line')
     expect(Date.parse(settled.startedAt ?? '')).not.toBeNaN()
     expect(Date.parse(settled.finishedAt ?? '')).not.toBeNaN()
-    // The settle flip: the linked experiment lands on success.
-    expect(domain.table('experiments').get(EXPERIMENT.id)?.status).toBe('success')
+    // The settle flip: the linked experiment lands on success, carrying the
+    // job's outcome (exit code, duration, log excerpt) as `lastJob`.
+    const experiment = domain.table('experiments').get(EXPERIMENT.id)
+    expect(experiment?.status).toBe('success')
+    expect(experiment?.lastJob).toMatchObject({
+      jobId: settled.id,
+      status: 'succeeded',
+      exitCode: 0,
+      finishedAt: settled.finishedAt,
+    })
+    expect(experiment?.lastJob?.durationMs).not.toBeNull()
+    expect(experiment?.lastJob?.summary).toContain('fake-ssh stdout: python train.py --epochs 1')
+    // The workspace's EXPERIMENT_LOG.md records the settle as one line.
+    const log = await readFile(join(workspaceDir, 'EXPERIMENT_LOG.md'), 'utf8')
+    expect(log).toContain(`job ${settled.id} succeeded (exit 0`)
+    expect(log).toContain('fake-ssh stdout: python train.py --epochs 1')
   })
 
   it('settles a non-zero remote exit as failed with the exit code and flips the experiment to failed', async () => {
-    const { domain, service } = await harness()
+    const { domain, service, workspaceDir } = await harness()
     await stubFakeSsh()
     const created = await service.saveServer({ server: SERVER_INPUT })
     if (!created.ok) throw new Error('create failed')
@@ -162,7 +176,13 @@ describe('ResearchService job lifecycle', () => {
     expect(settled.status).toBe('failed')
     expect(settled.exitCode).toBe(3)
     expect(settled.stderrTail).toContain('fake-ssh stderr line')
-    expect(domain.table('experiments').get(EXPERIMENT.id)?.status).toBe('failed')
+    const experiment = domain.table('experiments').get(EXPERIMENT.id)
+    expect(experiment?.status).toBe('failed')
+    // The failure summary prefers the stderr tail.
+    expect(experiment?.lastJob).toMatchObject({ jobId: settled.id, status: 'failed', exitCode: 3 })
+    expect(experiment?.lastJob?.summary).toContain('fake-ssh stderr line')
+    const log = await readFile(join(workspaceDir, 'EXPERIMENT_LOG.md'), 'utf8')
+    expect(log).toContain(`job ${settled.id} failed (exit 3`)
   })
 
   it('settles an ssh session failure as failed with the client message and a null exit code', async () => {

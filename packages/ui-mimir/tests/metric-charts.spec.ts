@@ -9,6 +9,7 @@ import type { ExperimentRecord } from 'dsh-mimir/types'
 import {
   barWidthPercents,
   chartNameLines,
+  formatDurationMs,
   formatMetricValue,
   metricChartRows,
   numericMetricKeys,
@@ -107,5 +108,18 @@ describe('chartNameLines', () => {
     // The ellipsized tail keeps the full name out of the bar lane.
     expect(chartNameLines('完整模型：EgoSync-full 在 EgoBody3D 全量数据集上的长序列压力测试指标')[1])
       .not.toContain('指标')
+  })
+})
+
+describe('formatDurationMs', () => {
+  it('prints sub-second runs as ms, sub-minute runs as seconds, longer runs as minutes', () => {
+    expect(formatDurationMs(950)).toBe('950ms')
+    expect(formatDurationMs(12_340)).toBe('12.3s')
+    expect(formatDurationMs(192_000)).toBe('3.2min')
+  })
+
+  it('prints an empty string for non-finite or negative input', () => {
+    expect(formatDurationMs(Number.NaN)).toBe('')
+    expect(formatDurationMs(-5)).toBe('')
   })
 })
