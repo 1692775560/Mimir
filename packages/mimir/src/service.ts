@@ -17,7 +17,7 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile, mkdir, appendFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
-import { join, relative, resolve, sep } from 'node:path'
+import { basename, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
@@ -78,6 +78,7 @@ import type {
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
@@ -1227,6 +1228,88 @@ export class ResearchService extends TypertRemoteService {
     }
     const relPath = relative(dir, outcome.productPath).split(sep).join('/')
     return success({ relPath, converter: outcome.converter })
+  }
+
+  /**
+   * Save one client-generated SVG figure (the experiments view's "generate
+   * paper figure" button renders the metric comparison as a standalone SVG
+   * document) into the addressed project's paper `figures/` directory, record
+   * its caption in the wiki's figures table, register the file in the
+   * project's artifact list, and convert it through the same pipeline
+   * `convertFigure` runs so the LaTeX block can reference an embeddable
+   * product. Only `.svg` names are accepted (the payload is text); the name
+   * must be a plain file name and the content non-empty — violations are
+   * `invalid-name` / `invalid-content`. A machine with no usable converter
+   * still saves and registers, reporting the reason in `warning`.
+   * @param request - the selected project, the destination file name, the SVG
+   * document text, the caption to register, and an optional explicit paper
+   * directory (relative to the workspace) overriding the record's `paperDir`.
+   * @returns the saved path and caption plus the converted product when one
+   * was produced, or a business failure.
+   */
+  @Remote('saveFigure')
+  async saveFigure(request: {
+    projectId: string
+    name: string
+    content: string
+    caption?: string | undefined
+    dir?: string | undefined
+  }): Promise<ResearchSaveFigureResult> {
+    const record = this.domain.table('projects').get(request.projectId)
+    if (record === undefined) {
+      return rejected({ code: 'project-not-found', projectId: request.projectId })
+    }
+    const dir = resolvePaperDir(this.workspaceDir, request.dir, record.paperDir)
+    if (dir === undefined) return rejected({ code: 'invalid-dir', dir: request.dir ?? record.paperDir ?? '' })
+    const name = request.name
+    if (name === '' || name !== basename(name) || !name.toLowerCase().endsWith('.svg')) {
+      return rejected({ code: 'invalid-name', name })
+    }
+    if (request.content.trim() === '') return rejected({ code: 'invalid-content' })
+    const figuresDir = join(dir, 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    const destination = join(figuresDir, name)
+    await writeFileAtomic(destination, request.content, { mode: 0o666 })
+    const relPath = `figures/${name}`
+    // An SVG cannot be embedded by LaTeX directly; convert it next to the
+    // save (the figure_save tool's rule) so the caller's insert can reference
+    // the product. Without a converter the save still succeeds and the
+    // warning says why.
+    let converted: { relPath: string; converter: string } | undefined
+    let warning: string | undefined
+    const outcome = await convertSvgFigure(destination, this.svg ?? {})
+    if (outcome.ok) {
+      converted = { relPath: `figures/${basename(outcome.productPath)}`, converter: outcome.converter }
+    } else {
+      warning = outcome.code === 'no-converter'
+        ? `No SVG converter found (looked for ${svgConverterNames().join(', ')}); convert the figure before referencing it in LaTeX.`
+        : `SVG conversion failed (${outcome.converter}: ${outcome.message})`
+    }
+    const id = `${request.projectId}:${relPath}`
+    const existing = this.domain.table('figures').get(id)
+    const caption = request.caption?.trim() ?? existing?.caption ?? ''
+    await this.domain.table('figures').put(id, {
+      id,
+      projectId: request.projectId,
+      relPath,
+      caption,
+      ...(existing?.experimentId === undefined ? {} : { experimentId: existing.experimentId }),
+      sourcePath: destination,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+    })
+    // The artifact list is what the overview shows as the project's output.
+    const artifactPath = `${record.paperDir ?? 'paper'}/${relPath}`
+    await this.domain.table('projects').update(record.id, current => ({
+      ...current,
+      artifacts: [...new Set([...current.artifacts, artifactPath])],
+      updatedAt: new Date().toISOString(),
+    }))
+    return success({
+      relPath,
+      caption,
+      ...(converted === undefined ? {} : { converted }),
+      ...(warning === undefined ? {} : { warning }),
+    })
   }
 
   /**

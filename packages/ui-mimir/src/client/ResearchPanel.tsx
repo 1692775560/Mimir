@@ -119,8 +119,9 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
+  requestRelatedWork,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  insertFigure, consumePaperJump,
+  insertFigure, consumePaperJump, generateMetricFigure,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
@@ -394,6 +395,7 @@ export function ResearchPanel({
             compileView={compileView}
             source={source}
             projectId={selectedProjectId}
+            projectTitle={selectedProject?.title}
             dir={selectedProject?.paperDir}
             editSource={editSource}
             reloadSource={reloadSource}
@@ -429,6 +431,7 @@ export function ResearchPanel({
             removePaper={removePaper}
             importPapersToBib={importPapersToBib}
             fetchPaperPdf={fetchPaperPdf}
+            requestRelatedWork={requestRelatedWork}
             t={t}
           />
         )}
@@ -442,6 +445,11 @@ export function ResearchPanel({
             deleteExperiment={deleteExperiment}
             updateExperiment={updateExperiment}
             saveExperiment={saveExperiment}
+            generateMetricFigure={(metricKey, rows) =>
+              selectedProjectId === null
+                ? Promise.resolve()
+                : generateMetricFigure(selectedProjectId, metricKey, rows)
+            }
             retry={() => { if (selectedProjectId !== null) selectProject(selectedProjectId) }}
             t={t}
           />

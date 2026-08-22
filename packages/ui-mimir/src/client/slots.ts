@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from './locales.ts'
 import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
+import type { MetricChartRow } from './view-common.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
 
@@ -58,6 +59,13 @@ export interface ResearchPanelInjected {
    * @param prompt - the assembled fix request (issue, location, source window).
    */
   requestCompileFix: (prompt: string) => Promise<void>
+  /**
+   * Hand one assembled related-work prompt to the current session's agent
+   * (the papers view's "draft related work" button); the outcome lands in
+   * toasts.
+   * @param prompt - the assembled draft request (papers, citations, verify loop).
+   */
+  requestRelatedWork: (prompt: string) => Promise<void>
   /**
    * Apply one editor change to the draft; autosaves after a short debounce.
    * @param content - the textarea's full next value.
@@ -127,6 +135,16 @@ export interface ResearchPanelInjected {
    * @param entry - the figure card's entry.
    */
   insertFigure: (projectId: string, entry: FigureEntry) => Promise<void>
+  /**
+   * Generate one metric's comparison chart as a paper figure (the experiments
+   * view's per-chart button): save the rendered SVG into the paper's
+   * `figures/` directory with a registered caption, insert the LaTeX block,
+   * and switch the workbench to the paper view. Failures surface as toasts.
+   * @param projectId - wiki project id.
+   * @param metricKey - the metric the chart compares.
+   * @param rows - the chart's rows (runs carrying a finite value, oldest first).
+   */
+  generateMetricFigure: (projectId: string, metricKey: string, rows: readonly MetricChartRow[]) => Promise<void>
   /** Clear the paper view's consumed jump ticket. */
   consumePaperJump: () => void
   /**

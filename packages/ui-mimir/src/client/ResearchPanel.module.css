@@ -756,6 +756,19 @@
   gap: 12px;
 }
 
+/* Slim label naming the project whose paper is being edited. */
+.paperProject {
+  margin: 0;
+  align-self: center;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .outlineRail {
   flex: 0 0 200px;
   min-height: 0;
@@ -1839,6 +1852,23 @@ li.dropIndicator {
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   border-radius: 10px;
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
+}
+
+.metricChartHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.metricChartHead h4 {
+  margin: 0;
+  padding-top: 5px;
+}
+
+.metricChartHead .retry {
+  flex-shrink: 0;
 }
 
 .metricChart h4 {

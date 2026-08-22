@@ -124,6 +124,30 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
   }, ResearchToggle))
 
+  // Queue one assembled prompt as one user message in the current session.
+  // Shared by the "fix with AI" and "draft related work" buttons; the agent's
+  // edits land on disk and the panel's reload/re-compile flow takes it from
+  // there.
+  const sendPromptToCurrentSession = async (
+    prompt: string,
+    sentCopy: 'toast.fixSent' | 'toast.relworkSent',
+    failedCopy: 'toast.fixSendFailed' | 'toast.relworkSendFailed',
+  ): Promise<void> => {
+    const current = sessions.list.getSnapshot().current
+    const binding = current === undefined ? undefined : sessions.binding(current)
+    if (binding === undefined) {
+      controller.notify('error', 'toast.fixNoSession')
+      return
+    }
+    try {
+      const result = await binding.session.prompt([{ type: 'text', text: prompt }], 'queue')
+      if (result.ok) controller.notify('success', sentCopy)
+      else controller.notify('error', failedCopy, result.error.message)
+    } catch (error) {
+      controller.notify('error', failedCopy, error instanceof Error ? error.message : String(error))
+    }
+  }
+
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'research',
@@ -142,24 +166,10 @@ export function apply(ctx: ClientContext): void {
         controller.select(projectId)
       },
       compile: (projectId) => { void controller.compile(projectId) },
-      // The per-issue "fix with AI" button: queue the assembled prompt as one
-      // user message in the current session. The agent's edits land on disk;
-      // the panel's conflict/reload and re-compile flow takes it from there.
-      requestCompileFix: async (prompt) => {
-        const current = sessions.list.getSnapshot().current
-        const binding = current === undefined ? undefined : sessions.binding(current)
-        if (binding === undefined) {
-          controller.notify('error', 'toast.fixNoSession')
-          return
-        }
-        try {
-          const result = await binding.session.prompt([{ type: 'text', text: prompt }], 'queue')
-          if (result.ok) controller.notify('success', 'toast.fixSent')
-          else controller.notify('error', 'toast.fixSendFailed', result.error.message)
-        } catch (error) {
-          controller.notify('error', 'toast.fixSendFailed', error instanceof Error ? error.message : String(error))
-        }
-      },
+      // The per-issue "fix with AI" button.
+      requestCompileFix: prompt => sendPromptToCurrentSession(prompt, 'toast.fixSent', 'toast.fixSendFailed'),
+      // The papers view's "draft related work" button: same session channel.
+      requestRelatedWork: prompt => sendPromptToCurrentSession(prompt, 'toast.relworkSent', 'toast.relworkSendFailed'),
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
@@ -184,6 +194,11 @@ export function apply(ctx: ClientContext): void {
       // A successful insert (or the duplicate's jump) lands in the paper view.
       insertFigure: async (projectId, entry) => {
         const line = await controller.insertFigureIntoPaper(projectId, entry)
+        if (line !== null) actions.setTab('paper')
+      },
+      // The metric chart's paper-figure button rides the same insert path.
+      generateMetricFigure: async (projectId, metricKey, rows) => {
+        const line = await controller.generateMetricFigure(projectId, metricKey, rows)
         if (line !== null) actions.setTab('paper')
       },
       consumePaperJump: () => { controller.consumePaperJump() },
