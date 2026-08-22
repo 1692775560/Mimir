@@ -12,7 +12,7 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
-import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure } from './figure-insert.ts'
+import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths } from './figure-insert.ts'
 import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
@@ -30,6 +30,7 @@ import type {
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchConvertFigureResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -106,6 +107,7 @@ export interface ResearchRemote {
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
+  convertFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchConvertFigureResult>>
   listServers: () => Promise<RemoteResult<ResearchListServersResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
@@ -630,36 +632,66 @@ export class ResearchController implements HostObservable<ResearchView> {
    * before `\end{document}` and rides the normal draft/autosave path, so an
    * unsaved draft survives and the optimistic-concurrency save still guards
    * the write. A figure the draft already references is never inserted twice:
-   * the existing `\includegraphics` line becomes the jump target instead. SVG
-   * figures reject up front (LaTeX cannot embed them and the paper scaffold
-   * carries no SVG convention). Either way the paper view jumps to the block.
+   * the existing `\includegraphics` line becomes the jump target instead. An
+   * SVG figure is converted on the host first (`convertFigure` — vector PDF
+   * preferred, raster PNG as the fallback) and the block references the
+   * product; a machine with no usable converter keeps the failure toast with
+   * the reason attached. Either way the paper view jumps to the block.
    * @param projectId - wiki project id.
    * @param entry - the figure card's entry.
    * @returns the 1-based target line for the paper view to jump to, or null
    * when the insert failed (a toast already carries the reason).
    */
   async insertFigureIntoPaper(projectId: string, entry: FigureEntry): Promise<number | null> {
-    if (isSvgFigure(entry.name)) {
-      this.notify('error', 'toast.figureSvg', entry.name)
-      return null
-    }
     const source = await this.ensureSourceReady(projectId)
     if (source === null || this.disposed) return null
     if (source.saveState === 'conflict') {
       this.notify('error', 'toast.figureInsertConflict')
       return null
     }
-    const existing = findFigureReferenceLine(source.content, entry.relPath)
-    if (existing !== null) {
-      this.jumpPaper(projectId, existing)
-      this.notify('info', 'toast.figureAlreadyInserted', entry.name)
-      return existing
+    // The duplicate guard covers the SVG's converted products too: an
+    // already-inserted `foo.pdf` reads as "foo.svg is already inserted".
+    for (const candidate of [entry.relPath, ...svgConvertedRelPaths(entry.relPath)]) {
+      const existing = findFigureReferenceLine(source.content, candidate)
+      if (existing !== null) {
+        this.jumpPaper(projectId, existing)
+        this.notify('info', 'toast.figureAlreadyInserted', entry.name)
+        return existing
+      }
     }
-    const block = figureBlockOf(entry.relPath, entry.caption ?? '')
+    let relPath = entry.relPath
+    let convertedName: string | null = null
+    if (isSvgFigure(entry.name)) {
+      try {
+        const carried = await this.remote.convertFigure({ projectId, relPath: entry.relPath, dir: this.dirOf(projectId) })
+        if (!carried.ok) {
+          this.notify('error', 'toast.figureSvgConvertFailed', carried.error.message)
+          return null
+        }
+        const result = carried.value
+        if (!result.ok) {
+          this.notify('error', 'toast.figureSvgConvertFailed', businessFailure(result.error).message)
+          return null
+        }
+        relPath = result.value.relPath
+        convertedName = `${entry.name} → ${relPath.split('/').pop() ?? relPath}`
+      } catch (error) {
+        this.notify('error', 'toast.figureSvgConvertFailed', transportFailure(error).message)
+        return null
+      }
+      if (this.disposed) return null
+    }
+    const block = figureBlockOf(relPath, entry.caption ?? '')
     const inserted = insertFigureBlock(source.content, block)
     this.edit(inserted.content)
     this.jumpPaper(projectId, inserted.line)
-    this.notify('success', 'toast.figureInserted', entry.name)
+    this.notify('success', convertedName === null ? 'toast.figureInserted' : 'toast.figureConvertedSvg', convertedName ?? entry.name)
+    if (convertedName !== null) {
+      // A conversion wrote a new product file into the paper directory; the
+      // figures view's cached scan does not know about it yet.
+      this.figuresInFlight = false
+      this.loadFigures(projectId, true)
+    }
     return inserted.line
   }
 

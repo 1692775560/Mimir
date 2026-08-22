@@ -15,6 +15,8 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { isFigureFile } from '../artifacts.ts'
 import { isNotFound, resolvePaperDir } from '../paper-source.ts'
+import { convertSvgFigure, svgConverterNames } from '../svg-convert.ts'
+import type { SvgConversionDeps } from '../svg-convert.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 
 interface FigureSaveArgs {
@@ -56,10 +58,10 @@ function latexBlock(relPath: string, caption: string): { latex: string; label: s
  * @param domain - The plugin-owned open domain handle.
  * @returns the registry-ready tool definition.
  */
-export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiDomain): ToolDefinition {
+export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiDomain, deps: SvgConversionDeps = {}): ToolDefinition {
   return defineTool({
     name: 'figure_save',
-    description: 'Save a figure you generated (plot/chart/diagram image) into a research project\'s paper figures/ directory so it appears in the workbench figures view and can be included in the paper. Use this immediately after creating or discovering a paper-worthy image instead of leaving the file in a scratch path. Returns the paper-relative path and a ready-to-paste LaTeX figure block.',
+    description: 'Save a figure you generated (plot/chart/diagram image) into a research project\'s paper figures/ directory so it appears in the workbench figures view and can be included in the paper. Use this immediately after creating or discovering a paper-worthy image instead of leaving the file in a scratch path. SVG sources are auto-converted to PDF (or PNG as a fallback) when a converter is available on the machine, and the returned LaTeX block references the converted file. Returns the paper-relative path and a ready-to-paste LaTeX figure block.',
     parameters: {
       path: { type: 'string', required: true, description: 'Path of the generated image; absolute, or relative to the current process directory or the research workspace.' },
       project_id: { type: 'string', required: true, description: 'Owning wiki project id (see wiki_note action=list, table=projects).' },
@@ -106,6 +108,22 @@ export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiD
       const destination = join(figuresDir, name)
       if (source !== destination) await copyFile(source, destination)
       const relPath = `figures/${name}`
+      // An SVG cannot be embedded by LaTeX directly; convert it next to the
+      // copy and point the returned block at the product when a converter is
+      // available. Without one the save still succeeds — the SVG shows in the
+      // figures view and the warning says why the block keeps the .svg path.
+      let converted: { relPath: string; converter: string } | null = null
+      let warning: string | null = null
+      if (name.toLowerCase().endsWith('.svg')) {
+        const outcome = await convertSvgFigure(destination, deps)
+        if (outcome.ok) {
+          converted = { relPath: `figures/${basename(outcome.productPath)}`, converter: outcome.converter }
+        } else {
+          warning = outcome.code === 'no-converter'
+            ? `No SVG converter found (looked for ${svgConverterNames().join(', ')}); the LaTeX block keeps the .svg path and will not compile until the figure is converted.`
+            : `SVG conversion failed (${outcome.converter}: ${outcome.message}); the LaTeX block keeps the .svg path.`
+        }
+      }
       const id = `${projectId}:${relPath}`
       const existing = domain.table('figures').get(id)
       const caption = args.caption?.trim() ?? existing?.caption ?? ''
@@ -128,8 +146,12 @@ export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiD
         artifacts: [...new Set([...current.artifacts, artifactPath])],
         updatedAt: new Date().toISOString(),
       }))
-      const { latex, label } = latexBlock(relPath, caption)
-      return { ok: true, id, relPath, caption, latex, label } as unknown as JsonValue
+      const { latex, label } = latexBlock(converted?.relPath ?? relPath, caption)
+      return {
+        ok: true, id, relPath, caption, latex, label,
+        ...(converted === null ? {} : { converted }),
+        ...(warning === null ? {} : { warning }),
+      } as unknown as JsonValue
     },
   })
 }
@@ -137,5 +159,12 @@ export function createFigureSaveTool(workspaceDir: string, domain: ResearchWikiD
 /** Render one save outcome as model-facing text. */
 function renderOutcome(value: Record<string, JsonValue | undefined>): string {
   if (value['ok'] !== true) return JSON.stringify(value)
-  return `Figure saved to ${String(value['relPath'])} (workbench figures view updated).\nLaTeX:\n${String(value['latex'])}`
+  const lines = [`Figure saved to ${String(value['relPath'])} (workbench figures view updated).`]
+  const converted = value['converted'] as { relPath?: string; converter?: string } | undefined
+  if (converted !== undefined) {
+    lines.push(`SVG auto-converted to ${String(converted.relPath ?? '')} via ${String(converted.converter ?? '')}.`)
+  }
+  if (typeof value['warning'] === 'string') lines.push(`Warning: ${value['warning']}`)
+  lines.push(`LaTeX:\n${String(value['latex'])}`)
+  return lines.join('\n')
 }
