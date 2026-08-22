@@ -2,8 +2,12 @@
  * The paper view: the Overleaf-style editing surface — a clickable outline
  * rail, the `main.tex` editor with a synced line-number gutter, a dependency-
  * free LaTeX syntax-highlight overlay (transparent-text textarea over a
- * token-rendered pre, degrading to plain past HIGHLIGHT_MAX_LENGTH), the
- * autosave status pill, the compile row with the severity-colored issue list
+ * token-rendered pre, degrading to plain past HIGHLIGHT_MAX_LENGTH). The
+ * overlay and the line-number gutter are windowed: only the viewport's lines
+ * (plus an overscan) mount as DOM, the rest is fixed-height spacers, so a
+ * multi-thousand-line `main.tex` no longer rebuilds thousands of nodes per
+ * keystroke. Then the autosave status pill, the compile row with the
+ * severity-colored issue list
  * (click jumps the editor to the line), the iframe PDF preview, and the
  * bibliography panel that replaces the preview while open. The three panes
  * are resizable through drag handles (the widths persist to localStorage) and
@@ -13,13 +17,14 @@
  * @module dsh-client-ui-mimir/client/PaperView
  */
 
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPapersView, ResearchSourceView,
 } from './controller.ts'
 import { wrapIndex } from './focus.ts'
+import { EDITOR_LINE_HEIGHT_PX, splitTokensByLine, visibleLineRange, widestLine } from './highlight-window.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import {
   editorShareFromDrag, loadPaperLayout, PAPER_LAYOUT_DEFAULT, PAPER_LAYOUT_STORAGE_KEY,
@@ -32,8 +37,8 @@ import type { ResearchT, SubsectionDrag } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
 import css from './ResearchPanel.module.css'
 
-/** Editor line height in px; keep in sync with `.editor` in the module CSS. */
-const EDITOR_LINE_HEIGHT = 19
+/** Editor line height in px (re-exported name kept local to the jump math). */
+const EDITOR_LINE_HEIGHT = EDITOR_LINE_HEIGHT_PX
 
 /** How long the jumped-to gutter row stays flashed. */
 const GUTTER_FLASH_MS = 1200
@@ -332,6 +337,10 @@ export function PaperView({
   const [bibOpen, setBibOpen] = useState(false)
   // The last rejected section reorder, surfaced in the rail.
   const [reorderError, setReorderError] = useState<ResearchFailureView | null>(null)
+  // The textarea's viewport in lines/px: drives the windowed gutter and
+  // highlight overlay. Coarsened to whole lines so mid-line scrolls don't
+  // re-render.
+  const [viewport, setViewport] = useState({ firstLine: 0, height: 0 })
   // Pane widths; restored from localStorage, written back on every settle.
   const [layout, setLayout] = useState<PaperLayout>(() => loadPaperLayout(key => localStorage.getItem(key)))
   // Which drag handle is mid-gesture (drives the container's data-dragging).
@@ -421,7 +430,23 @@ export function PaperView({
       highlightRef.current.scrollTop = editor.scrollTop
       highlightRef.current.scrollLeft = editor.scrollLeft
     }
+    // Feed the windowed gutter/overlay; state only moves when the first
+    // visible line or the viewport height changes.
+    const firstLine = Math.floor(editor.scrollTop / EDITOR_LINE_HEIGHT)
+    const height = editor.clientHeight
+    setViewport(prev => (prev.firstLine === firstLine && prev.height === height ? prev : { firstLine, height }))
   }
+
+  // Pane drags and fullscreen flips resize the textarea without firing a
+  // scroll event; the window must still follow the new viewport height.
+  useEffect(() => {
+    const editor = editorRef.current
+    if (editor === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => { syncEditorScroll() })
+    observer.observe(editor)
+    return () => { observer.disconnect() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * Keyboard twin of the rail-handle drag: ArrowLeft/ArrowRight resize the
@@ -515,12 +540,28 @@ export function PaperView({
     ? `/research/pdf/${encodeURIComponent(projectId)}?v=${compileView.pdfUpdatedAt}`
       + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
     : null
-  const lineCount = currentSource === null ? 1 : currentSource.content.split('\n').length
+  // Logical lines of the draft; everything line-based derives from this one
+  // split so the gutter, the overlay, and the window never disagree.
+  const sourceLines = useMemo(() => (currentSource?.content ?? '').split('\n'), [currentSource?.content])
+  const lineCount = sourceLines.length
   // The highlight overlay's tokens; oversized sources degrade to plain text.
   const highlightTokens = useMemo(() => {
     const content = currentSource?.content ?? ''
     return content.length > 0 && content.length <= HIGHLIGHT_MAX_LENGTH ? tokenizeLatex(content) : null
   }, [currentSource?.content])
+  // Per-line tokens for the windowed overlay (the split consumes newlines).
+  const lineTokens = useMemo(
+    () => (highlightTokens === null ? null : splitTokensByLine(highlightTokens)),
+    [highlightTokens],
+  )
+  // Only the viewport ± overscan mounts as DOM; spacers keep the scrollable
+  // geometry identical to the full render.
+  const lineWindow = visibleLineRange(
+    viewport.firstLine * EDITOR_LINE_HEIGHT, viewport.height, lineCount,
+  )
+  // Hidden sizer keeping the overlay's horizontal scroll extent in step with
+  // the textarea even when the widest line is outside the window.
+  const sizerLine = useMemo(() => widestLine(sourceLines), [sourceLines])
 
   // The overlay remounts when highlighting toggles; re-sync its scroll after
   // every token recompute so it never lags the textarea.
@@ -727,25 +768,38 @@ export function PaperView({
         )}
         <div className={css.editorWrap}>
           <div ref={gutterRef} className={css.gutter} aria-hidden>
-            {Array.from({ length: lineCount }, (_, index) => (
-              <div key={index} data-flash={index + 1 === flashLine || undefined}>{index + 1}</div>
-            ))}
+            {/* Windowed like the overlay: spacers above/below the mounted
+                rows keep the gutter's scrollable height at lineCount lines. */}
+            <div className={css.gutterSpacer} style={{ height: lineWindow.start * EDITOR_LINE_HEIGHT }} />
+            {Array.from({ length: lineWindow.end - lineWindow.start }, (_, offset) => {
+              const line = lineWindow.start + offset + 1
+              return <div key={line} data-flash={line === flashLine || undefined}>{line}</div>
+            })}
+            <div className={css.gutterSpacer} style={{ height: (lineCount - lineWindow.end) * EDITOR_LINE_HEIGHT }} />
           </div>
           <div className={css.editorStack}>
-            {highlightTokens !== null && (
+            {lineTokens !== null && (
               <pre ref={highlightRef} className={css.editorHighlight} aria-hidden>
-                {highlightTokens.map((token, index) => token.type === 'plain'
-                  ? token.text
-                  : <span key={index} data-tok={token.type}>{token.text}</span>)}
-                {/* A trailing newline keeps the pre as tall as the textarea
-                    when the source ends with one. */}
-                {'\n'}
+                <div style={{ height: lineWindow.start * EDITOR_LINE_HEIGHT }} />
+                {lineTokens.slice(lineWindow.start, lineWindow.end).map((tokens, offset) => (
+                  <div key={lineWindow.start + offset} className={css.editorHighlightLine}>
+                    {tokens.map((token, index) => token.type === 'plain'
+                      ? <Fragment key={index}>{token.text}</Fragment>
+                      : <span key={index} data-tok={token.type}>{token.text}</span>)}
+                  </div>
+                ))}
+                <div style={{ height: (lineCount - lineWindow.end) * EDITOR_LINE_HEIGHT }} />
+                {/* Zero-height sizer: the doc's widest line keeps the pre's
+                    scrollable width in step with the textarea's while only a
+                    window of lines is mounted. Per-line divs already give the
+                    pre the textarea's exact height, trailing newline included. */}
+                <div className={css.editorHighlightSizer}>{sizerLine}</div>
               </pre>
             )}
             <textarea
               ref={editorRef}
               className={css.editor}
-              data-highlighted={highlightTokens !== null || undefined}
+              data-highlighted={lineTokens !== null || undefined}
               spellCheck={false}
               value={currentSource?.content ?? ''}
               disabled={projectId === null || currentSource === null

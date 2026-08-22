@@ -1128,6 +1128,21 @@ li.dropIndicator {
   user-select: none;
 }
 
+/* One mounted line of the windowed overlay; the fixed height keeps empty
+   lines pixel-aligned with the textarea (a contentless div would collapse). */
+.editorHighlightLine {
+  height: 19px;
+}
+
+/* Zero-height widest-line sizer: holds the pre's scrollable width in step
+   with the textarea's while only a window of lines is mounted. */
+.editorHighlightSizer {
+  height: 0;
+  width: max-content;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 .editorHighlight [data-tok='command'] {
   color: var(--mimir-tok-command, #1d4ed8);
 }
@@ -1291,6 +1306,11 @@ li.dropIndicator {
 .gutter div {
   border-radius: 4px;
   transition: background-color 0.3s ease;
+}
+
+/* Window spacer: carries the height of the unmounted rows, nothing else. */
+.gutterSpacer {
+  pointer-events: none;
 }
 
 .gutter div[data-flash] {
