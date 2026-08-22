@@ -25,7 +25,8 @@ function writeInstruction(deps: ResearchCommandDeps, paperDir: string, projectTi
     `2. Fill ${join(paperDir, 'main.tex')}: replace every <placeholder> with real content grounded in those sources. Keep the article-class skeleton; do not introduce packages beyond what it already loads.`,
     `3. Put real references into ${join(paperDir, 'references.bib')} from the wiki's papers, and cite them from the text.`,
     `4. Run latex_compile with project_dir=${paperDir} and fix every error it reports until success is true. Fix undefined-citation warnings too; other warnings may be reported to the user instead.`,
-    '5. Finish with a short summary: title, section list, and compile status.',
+    '5. Any plot or diagram you generate for the paper must be saved with figure_save (it copies the image into the paper\'s figures/ directory and shows it in the workbench); reference figures via the LaTeX block the tool returns.',
+    '6. Finish with a short summary: title, section list, and compile status.',
   ].join('\n')
 }
 

@@ -686,7 +686,8 @@ export class ResearchService extends TypertRemoteService {
 
   /**
    * List the image files of the addressed project's paper directory (top
-   * level plus the `figures/` subdirectory).
+   * level plus the `figures/` subdirectory), merged with the wiki's figures
+   * metadata table (caption / linked experiment, keyed `<projectId>:<relPath>`).
    * @param request - the selected project, plus an optional explicit paper
    * directory (relative to the workspace) overriding the record's `paperDir`.
    * @returns the figure entries, `project-not-found`, `invalid-dir`, or
@@ -707,7 +708,18 @@ export class ResearchService extends TypertRemoteService {
       if (isNotFound(error)) return rejected({ code: 'paper-not-found' })
       throw error
     }
-    return success({ figures: Object.freeze(await listPaperFigures(dir)) })
+    const meta = this.domain.table('figures')
+    const figures = (await listPaperFigures(dir)).map((entry) => {
+      const saved = meta.get(`${request.projectId}:${entry.relPath}`)
+      return saved === undefined
+        ? entry
+        : {
+          ...entry,
+          ...(saved.caption === '' ? {} : { caption: saved.caption }),
+          ...(saved.experimentId === undefined ? {} : { experimentId: saved.experimentId }),
+        }
+    })
+    return success({ figures: Object.freeze(figures) })
   }
 
   /**
@@ -1107,6 +1119,8 @@ export class ResearchService extends TypertRemoteService {
       if (isNotFound(error)) return rejected({ code: 'figure-not-found', relPath: request.relPath })
       throw error
     }
+    // Drop the metadata row with the file so a stale caption never outlives it.
+    await this.domain.table('figures').delete(`${request.projectId}:${request.relPath}`)
     return success({ relPath: request.relPath })
   }
 
@@ -1415,7 +1429,7 @@ export class ResearchService extends TypertRemoteService {
   }
 
   /**
-   * Export the whole wiki as one snapshot: every record of all six tables
+   * Export the whole wiki as one snapshot: every record of all seven tables
    * under the format envelope (backup/migration).
    * @returns the snapshot; the table arrays carry each record with its
    * primary-key field (`arxivId`/`id`).
@@ -1430,7 +1444,7 @@ export class ResearchService extends TypertRemoteService {
    * schema BEFORE any write, so a bad snapshot changes nothing. `merge`
    * upserts only absent primary keys — existing records are never
    * overwritten, just counted as skipped (conservative first). `replace`
-   * wipes all six tables first, so it additionally requires
+   * wipes all seven tables first, so it additionally requires
    * `confirmReplace: true` (`invalid-input` otherwise).
    * @param request - the parsed snapshot JSON, the mode, and the replace
    * confirmation flag.
@@ -1459,7 +1473,7 @@ export class ResearchService extends TypertRemoteService {
       if (rowError !== null) return rejected({ code: 'invalid-input', message: rowError })
     }
     const zeroCounts = (): Record<ResearchWikiTableName, number> => ({
-      papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0,
+      papers: 0, ideas: 0, claims: 0, projects: 0, experiments: 0, servers: 0, figures: 0,
     })
     const imported = zeroCounts()
     const skipped = zeroCounts()

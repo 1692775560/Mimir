@@ -12,7 +12,7 @@
 
 import type { ZodType } from 'zod'
 import {
-  claimRecord, experimentRecord, ideaRecord, paperRecord, projectRecord, serverRecord,
+  claimRecord, experimentRecord, figureRecord, ideaRecord, paperRecord, projectRecord, serverRecord,
 } from './store.ts'
 import type { ResearchWikiSnapshot, ResearchWikiTableName } from './types.ts'
 
@@ -21,9 +21,9 @@ export const WIKI_SNAPSHOT_FORMAT = 'mimir-wiki'
 /** Snapshot envelope version (`version` field); matches the domain version. */
 export const WIKI_SNAPSHOT_VERSION = 2
 
-/** The six wiki tables, in domain order. */
+/** The seven wiki tables, in domain order. */
 export const WIKI_TABLE_NAMES = [
-  'papers', 'ideas', 'claims', 'projects', 'experiments', 'servers',
+  'papers', 'ideas', 'claims', 'projects', 'experiments', 'servers', 'figures',
 ] as const satisfies readonly ResearchWikiTableName[]
 
 /** Primary-key field of each table's record (papers key by the arXiv id). */
@@ -34,6 +34,7 @@ export const WIKI_TABLE_KEY: Record<ResearchWikiTableName, string> = {
   projects: 'id',
   experiments: 'id',
   servers: 'id',
+  figures: 'id',
 }
 
 const TABLE_SCHEMAS: Record<ResearchWikiTableName, ZodType> = {
@@ -43,6 +44,7 @@ const TABLE_SCHEMAS: Record<ResearchWikiTableName, ZodType> = {
   projects: projectRecord,
   experiments: experimentRecord,
   servers: serverRecord,
+  figures: figureRecord,
 }
 
 /** Minimal read surface the snapshot builder needs from an open wiki domain. */
@@ -51,7 +53,7 @@ export interface WikiSnapshotSource {
 }
 
 /**
- * Snapshot the whole wiki: every record of all six tables under the format
+ * Snapshot the whole wiki: every record of all seven tables under the format
  * envelope. Shared by the `exportWiki` Remote and the scheduled backup, so
  * both always emit the same shape.
  * @param domain - the open wiki domain (anything with per-table `entries`).
@@ -72,6 +74,7 @@ export function buildWikiSnapshot(domain: WikiSnapshotSource, now = new Date()):
       projects: rows('projects') as ResearchWikiSnapshot['tables']['projects'],
       experiments: rows('experiments') as ResearchWikiSnapshot['tables']['experiments'],
       servers: rows('servers') as ResearchWikiSnapshot['tables']['servers'],
+      figures: rows('figures') as ResearchWikiSnapshot['tables']['figures'],
     },
   }
 }

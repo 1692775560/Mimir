@@ -147,7 +147,7 @@ function renderEntries(entries: readonly ArxivEntry[]): string {
 export function createArxivSearchTool(defaultMaxResults: number): ToolDefinition {
   return defineTool({
     name: 'arxiv_search',
-    description: 'Search arXiv for papers matching a free-text query. Returns ids, titles, authors, summaries, and URLs.',
+    description: 'Search arXiv for papers matching a free-text query. Returns ids, titles, authors, summaries, and URLs. When a result matters to the project, remember it with wiki_note action=add_paper so the workbench library stays current.',
     parameters: {
       query: { type: 'string', required: true, description: 'Free-text search query matched against all fields.' },
       max_results: { type: 'integer', description: `Maximum results to return (default ${defaultMaxResults}).` },
