@@ -105,7 +105,9 @@ export async function fetchWebSearch(
   if (options.categories !== undefined && options.categories.trim().length > 0) args.push('-c', options.categories.trim())
   if (options.lang !== undefined && options.lang.trim().length > 0) args.push('--lang', options.lang.trim())
   if (options.timeRange !== undefined && options.timeRange.trim().length > 0) args.push('--time', options.timeRange.trim())
-  args.push(query)
+  // `--` ends option parsing so a query starting with `-` stays the query
+  // (commander would otherwise swallow it as an unknown flag).
+  args.push('--', query)
   const run = options.run ?? runOnPath
   const stdout = await run(options.command, args, options.timeoutMs)
   let parsed: unknown

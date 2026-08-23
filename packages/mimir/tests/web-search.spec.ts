@@ -59,8 +59,16 @@ describe('fetchWebSearch', () => {
       run: fake.run,
     })
     expect(fake.argv()).toEqual([
-      '-f', 'json', '-l', '5', '-c', 'science', '--lang', 'en', '--time', 'year', 'attention mechanism',
+      '-f', 'json', '-l', '5', '-c', 'science', '--lang', 'en', '--time', 'year', '--', 'attention mechanism',
     ])
+  })
+
+  it('keeps a dash-leading query intact behind the -- separator', async () => {
+    const fake = runCapturing(SXNG_OK)
+    await fetchWebSearch('-l 5 free textbooks', {
+      command: 'sxng', timeoutMs: 30_000, maxResults: 5, run: fake.run,
+    })
+    expect(fake.argv().slice(-3)).toEqual(['5', '--', '-l 5 free textbooks'])
   })
 
   it('parses the ok envelope into entries', async () => {
