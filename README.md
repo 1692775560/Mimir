@@ -181,9 +181,9 @@ The landing view: the selected project's five-stage pipeline progress, stat chip
 
 An Overleaf-style editor for the project's paper directory: a collapsible outline whose top-level sections drag-reorder via row grips (rewriting `main.tex`'s `\section` order), an autosaving `main.tex` editor (~800 ms debounce, optimistic concurrency — a displaced draft freezes and offers reload) with LaTeX syntax highlighting and synced line numbers (both windowed to the visible range, so multi-thousand-line papers stay responsive), one-click compile with the engine labeled, an error list whose entries jump the editor to the source line and offer a **Let AI fix** button (assembles the issue, a numbered ±3-line source window, and repair instructions into a prompt for the current session's agent), an inline PDF preview, and a bibliography panel over `references.bib` (delete entries, conflict-safe saves, append checked library papers). The editor head always shows the current project's name — with several projects side by side you can tell at a glance which paper you are editing. Saving an untouched draft auto-compiles after ~1.5 s. Drag handles resize the three panes (widths persist); editor and preview go fullscreen on one click. `⌘/Ctrl+Enter` compiles.
 
-| Paper: syntax highlighting | Paper: compile issues | Paper: click-to-jump |
-| --- | --- | --- |
-| ![Paper: syntax highlighting](docs/screenshots/tab-paper-highlight.png) | ![Paper: compile issues](docs/screenshots/tab-paper-issues.png) | ![Paper: click-to-jump](docs/screenshots/tab-paper-issue-jump.png) |
+| Paper: syntax highlighting | Paper: compile issues | Paper: fix with AI | Paper: click-to-jump |
+| --- | --- | --- | --- |
+| ![Paper: syntax highlighting](docs/screenshots/tab-paper-highlight.png) | ![Paper: compile issues](docs/screenshots/tab-paper-issues.png) | ![Paper: fix with AI](docs/screenshots/tab-paper-aifix.png) | ![Paper: click-to-jump](docs/screenshots/tab-paper-issue-jump.png) |
 
 | Paper: bibliography panel | Paper: editor fullscreen |
 | --- | --- |
