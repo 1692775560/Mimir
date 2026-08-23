@@ -202,6 +202,32 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  /** Probe the Zotero connection once, on the papers view's first open. */
+  ensureZotero: () => void
+  /** Re-probe the Zotero connection (the section's retry entry). */
+  recheckZotero: () => void
+  /**
+   * Search the configured Zotero library; the outcome lands in the view's
+   * `zoteroSearch` slice.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchZotero: (query: string) => void
+  /**
+   * Import one Zotero item into the wiki, then refresh the literature list.
+   * @param key - the Zotero item key of one search result row.
+   * @returns null on success, the settled failure otherwise.
+   */
+  importZoteroItem: (key: string) => Promise<ResearchFailureView | null>
+  /**
+   * Export one Zotero collection into one project's `references.bib`.
+   * @param projectId - wiki project id.
+   * @param collectionKey - the Zotero collection to export.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  exportZoteroCollectionToBib: (
+    projectId: string,
+    collectionKey: string,
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**

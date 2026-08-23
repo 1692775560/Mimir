@@ -33,7 +33,7 @@ export type {
   ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
   ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchSubscriptionsView,
-  ResearchView,
+  ResearchView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 export type {
   ResearchPanelInjected, ResearchPanelProps, ResearchPanelStore, ResearchToggleProps,
@@ -183,6 +183,12 @@ export function apply(ctx: ClientContext): void {
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),
       fetchPaperPdf: (arxivId) => controller.fetchPaperPdf(arxivId),
+      ensureZotero: () => { controller.ensureZotero() },
+      recheckZotero: () => { controller.recheckZotero() },
+      searchZotero: (query) => { controller.searchZotero(query) },
+      importZoteroItem: key => controller.importZoteroItem(key),
+      exportZoteroCollectionToBib: (projectId, collectionKey) =>
+        controller.exportZoteroCollectionToBib(projectId, collectionKey),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
       loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
       uploadFigures: async (projectId, dir, files, onProgress) => {

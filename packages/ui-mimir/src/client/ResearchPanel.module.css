@@ -3450,3 +3450,46 @@ li.dropIndicator {
   margin: 0;
 }
 /* --- end arXiv subscriptions --- */
+
+/* --- Zotero section (feat/zotero): appended block, merged independently of the visual-polish refactor --- */
+.zoteroSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.zoteroSection .sectionTitle {
+  margin: 0;
+}
+
+.zoteroSection .hint,
+.zoteroSection .failure {
+  margin: 0;
+}
+
+.zoteroControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.zoteroSelect {
+  max-width: 260px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 8px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 12px;
+}
+
+.zoteroSelect:focus-visible {
+  outline: 2px solid var(--dsw-alias-focus-border, #4f7cff);
+  outline-offset: 1px;
+}
+/* --- end Zotero section --- */

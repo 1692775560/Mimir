@@ -73,10 +73,18 @@ export type {
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
   ResearchSuccess,
+  ResearchCheckZoteroResult,
+  ResearchZoteroCollectionsResult,
+  ResearchZoteroExportResult,
+  ResearchZoteroImportResult,
+  ResearchZoteroSearchResult,
   ServerGpuView,
   ServerInput,
   ServerRecord,
   ServerStatusView,
+  ZoteroCollectionView,
+  ZoteroItemView,
+  ZoteroStatusView,
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
@@ -119,6 +127,8 @@ export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEn
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
+export { createZoteroClient } from './tools/zotero.ts'
+export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 export { createFigureSaveTool } from './tools/figure.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
@@ -168,6 +178,17 @@ export interface Config {
     /** Default result cap for `arxiv_search` (default 10). */
     maxResults?: number
   }
+  /**
+   * Zotero Web API credentials (read-only integration; both absent disables
+   * it). The key is a secret: it is read from this config only, sent to the
+   * API as a header, and never written to the wiki, a log, or the panel.
+   */
+  zotero?: {
+    /** Web API key from zotero.org/settings/keys; '' counts as unconfigured. */
+    apiKey?: string
+    /** Numeric user id shown on the settings page; '' counts as unconfigured. */
+    userId?: string
+  }
   /** arXiv subscription new-paper check knobs. */
   subscriptions?: {
     /** Master switch of the scheduled check (default true); false disables the timer entirely. */
@@ -205,6 +226,10 @@ export const Config: z<Config> = z.object({
   arxiv: z.object({
     maxResults: z.number().step(1).min(1).max(100).default(10),
   }).default({ maxResults: 10 }),
+  zotero: z.object({
+    apiKey: z.string().default(''),
+    userId: z.string().default(''),
+  }).default({ apiKey: '', userId: '' }),
   subscriptions: z.object({
     enabled: z.boolean().default(true),
     intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(1440),
@@ -223,6 +248,7 @@ interface ResolvedConfig {
   readonly reviewer: { readonly provider: string; readonly maxRounds: number }
   readonly latex: { readonly engine: string; readonly timeoutMs: number }
   readonly arxiv: { readonly maxResults: number }
+  readonly zotero: { readonly apiKey: string; readonly userId: string }
   readonly subscriptions: {
     readonly enabled: boolean
     readonly intervalMinutes: number
@@ -241,6 +267,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const reviewer = { provider: config.reviewer?.provider ?? 'spawn', maxRounds: config.reviewer?.maxRounds ?? 3 }
   const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
   const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
+  const zotero = { apiKey: config.zotero?.apiKey ?? '', userId: config.zotero?.userId ?? '' }
   const subscriptions = {
     enabled: config.subscriptions?.enabled ?? true,
     intervalMinutes: config.subscriptions?.intervalMinutes ?? 1440,
@@ -261,7 +288,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, subscriptions, backup }
+  return { workspaceDir, reviewer, latex, arxiv, zotero, subscriptions, backup }
 }
 
 /**
@@ -567,6 +594,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     domain,
     latex: resolved.latex,
     backup: { ...resolved.backup, dir: backupDir },
+    zotero: resolved.zotero,
   })
   if (resolved.backup.enabled) {
     ctx.effect(

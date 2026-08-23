@@ -390,6 +390,20 @@ export const zh = {
   'toast.subscriptionSaved': '订阅已保存',
   'toast.subscriptionNewPapers': '发现新文献',
   // --- end arXiv subscriptions ---
+  // --- Zotero integration (feat/zotero): keep this block contiguous to avoid merge conflicts ---
+  'zotero.title': 'Zotero 文献库',
+  'zotero.checking': '正在检查 Zotero 连接…',
+  'zotero.unconfigured': '尚未配置 Zotero：在 cordis.yml 的 mimir 插件配置中设置 zotero.apiKey 和 zotero.userId（key 在 zotero.org/settings/keys 免费生成，user ID 在同一设置页查看）',
+  'zotero.failed': 'Zotero 连接失败',
+  'zotero.collection': '选择 Collection',
+  'zotero.noCollections': '该文献库还没有 Collection',
+  'zotero.export': '导出 Collection 到参考文献',
+  'zotero.exporting': '导出中…',
+  'zotero.exported': '已导出 {added} 条（{skipped} 条已存在，跳过）',
+  'zotero.exportFailed': 'Zotero 导出失败',
+  'zotero.searchPlaceholder': '搜索 Zotero 文献库…',
+  'zotero.searchEmpty': '没有匹配的 Zotero 条目',
+  // --- end Zotero integration ---
 } satisfies Record<string, string>
 
 /** The research namespace key union. */
@@ -792,4 +806,18 @@ export const en = {
   'toast.subscriptionSaved': 'Subscription saved',
   'toast.subscriptionNewPapers': 'New papers found',
   // --- end arXiv subscriptions ---
+  // --- Zotero integration (feat/zotero): keep this block contiguous to avoid merge conflicts ---
+  'zotero.title': 'Zotero library',
+  'zotero.checking': 'Checking the Zotero connection…',
+  'zotero.unconfigured': 'Zotero is not configured: set zotero.apiKey and zotero.userId in the mimir plugin config in cordis.yml (create a key for free at zotero.org/settings/keys; your user ID is shown on the same settings page)',
+  'zotero.failed': 'Zotero connection failed',
+  'zotero.collection': 'Select a collection',
+  'zotero.noCollections': 'This library has no collections yet',
+  'zotero.export': 'Export collection to bibliography',
+  'zotero.exporting': 'Exporting…',
+  'zotero.exported': 'Exported {added} entries ({skipped} already present, skipped)',
+  'zotero.exportFailed': 'Zotero export failed',
+  'zotero.searchPlaceholder': 'Search your Zotero library…',
+  'zotero.searchEmpty': 'No matching Zotero items',
+  // --- end Zotero integration ---
 } satisfies Record<ResearchKey, string>
