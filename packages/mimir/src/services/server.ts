@@ -294,7 +294,8 @@ export async function checkServer(
  * TCP-only record cannot run jobs). A given `experimentId` must name an
  * experiment record (`experiment-not-found`): a linked experiment flips
  * to `running` with the server link on submit, then to
- * `success`/`failed` when the job settles.
+ * `success`/`failed` when the job settles — unless a newer job linked to
+ * the same experiment supersedes the settle.
  * @param deps - open wiki domain.
  * @param state - the service's mutable job counter (incremented here).
  * @param request - the target server, the command line, and the optional
@@ -462,6 +463,12 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
  * trailing log excerpt) as the record's `lastJob`, and append one line to
  * the workspace's `EXPERIMENT_LOG.md`. An unlinked or deleted experiment
  * is skipped; the log append is best-effort and never fails the settle.
+ *
+ * Stale-settle guard: when a NEWER job is linked to the same experiment
+ * (submitted after this one, in any status), that job owns the
+ * experiment's state, so this late settle leaves the record untouched and
+ * only lands in the log — otherwise an old job finishing last would flip
+ * the status back over the newer job's write-back.
  * @param deps - open wiki domain plus workspace root.
  * @param job - the settled job record.
  */
@@ -483,6 +490,10 @@ async function writeBackExperiment(deps: ServerDeps, job: JobRecord): Promise<vo
     finishedAt,
     summary: jobSummaryOf(job),
   }
+  if (hasNewerLinkedJob(deps, job)) {
+    await appendExperimentLog(deps, existing.name, outcome).catch(() => {})
+    return
+  }
   await table.put(existing.id, {
     ...existing,
     status: outcome.status === 'succeeded' ? 'success' : 'failed',
@@ -491,6 +502,34 @@ async function writeBackExperiment(deps: ServerDeps, job: JobRecord): Promise<vo
   })
   // Best-effort: a read-only workspace must not break the settle.
   await appendExperimentLog(deps, existing.name, outcome).catch(() => {})
+}
+
+/**
+ * Whether another job linked to the same experiment was submitted after
+ * `job` (compared on `createdAt`, then on the id's sequence suffix —
+ * submits within the same millisecond share a `createdAt`). A deleted
+ * newer record is invisible here; its documented contract is already
+ * "the outcome is written nowhere".
+ * @param deps - open wiki domain.
+ * @param job - the settled job record.
+ * @returns true when a newer linked job supersedes this settle.
+ */
+function hasNewerLinkedJob(deps: ServerDeps, job: JobRecord): boolean {
+  for (const [, other] of deps.domain.table('jobs').entries()) {
+    if (other.id === job.id || other.experimentId !== job.experimentId) continue
+    if (other.createdAt !== job.createdAt) {
+      if (other.createdAt > job.createdAt) return true
+    } else if (jobSeqOf(other.id) > jobSeqOf(job.id)) {
+      return true
+    }
+  }
+  return false
+}
+
+/** Numeric sequence suffix of one job id (`job-<ms>-<seq>`); 0 when absent. */
+function jobSeqOf(id: string): number {
+  const match = /-(\d+)$/.exec(id)
+  return match === null ? 0 : Number(match[1])
 }
 
 /** Non-empty lines kept of one settled job's log summary written back to the experiment. */

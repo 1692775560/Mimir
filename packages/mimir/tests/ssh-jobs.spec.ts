@@ -52,8 +52,9 @@ const EXPERIMENT: ExperimentRecord = {
 
 /**
  * Shim a fake `ssh` onto PATH: it echoes the remote command (its last
- * argument) to stdout, writes one stderr line, and exits 3 when the command
- * contains `mimir-fail`.
+ * argument) to stdout, writes one stderr line, sleeps a moment when the
+ * command contains `mimir-slow`, and exits 3 when the command contains
+ * `mimir-fail`.
  * @returns the harness cleanup; PATH restores via `vi.unstubAllEnvs`.
  */
 async function stubFakeSsh(): Promise<void> {
@@ -64,6 +65,7 @@ async function stubFakeSsh(): Promise<void> {
     'echo "fake-ssh stdout: $1"',
     'echo "fake-ssh stderr line" >&2',
     'case "$1" in *mimir-fail*) exit 3 ;; esac',
+    'case "$1" in *mimir-slow*) sleep 0.5 ;; esac',
     'exit 0',
     '',
   ].join('\n')
@@ -198,6 +200,75 @@ describe('ResearchService job lifecycle', () => {
     expect(settled.status).toBe('failed')
     expect(settled.stderrTail).toBeTruthy()
   }, 20_000)
+})
+
+describe('ResearchService linked-experiment stale-settle guard', () => {
+  /** Boot the harness with one server and one linked experiment. */
+  async function linkedHarness() {
+    const { ctx, domain, workspaceDir, service } = await harness()
+    await stubFakeSsh()
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    await domain.table('experiments').put(EXPERIMENT.id, EXPERIMENT)
+    const serverId = created.value.server.id
+    const submit = async (command: string): Promise<JobRecord> => {
+      const submitted = await service.submitJob({ serverId, command, experimentId: EXPERIMENT.id })
+      if (!submitted.ok) throw new Error('submit rejected')
+      return submitted.value.job
+    }
+    return { ctx, domain, workspaceDir, service, submit }
+  }
+
+  it('does not let an old job settling last overwrite the newer job’s write-back', async () => {
+    const { domain, service, workspaceDir, submit } = await linkedHarness()
+    const older = await submit('mimir-slow python train.py --epochs 20')
+    const newer = await submit('python train.py --epochs 1')
+
+    // The newer job settles first and owns the experiment's state.
+    const settledNewer = await settleJob(service, newer.id)
+    expect(settledNewer.status).toBe('succeeded')
+    expect(domain.table('experiments').get(EXPERIMENT.id)).toMatchObject({
+      status: 'success',
+      lastJob: { jobId: newer.id, status: 'succeeded' },
+    })
+
+    // The older job settles late: its outcome lands only in the log, the
+    // record keeps the newer job's status and `lastJob`.
+    const settledOlder = await settleJob(service, older.id)
+    expect(settledOlder.status).toBe('succeeded')
+    // Give the (skipped) write-back a beat to prove it stays skipped.
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(domain.table('experiments').get(EXPERIMENT.id)).toMatchObject({
+      status: 'success',
+      lastJob: { jobId: newer.id, status: 'succeeded' },
+    })
+    const log = await readFile(join(workspaceDir, 'EXPERIMENT_LOG.md'), 'utf8')
+    expect(log).toContain(`job ${newer.id} succeeded`)
+    expect(log).toContain(`job ${older.id} succeeded`)
+  })
+
+  it('does not let an old job settling first flip the status while the newer job still runs', async () => {
+    const { domain, service, submit } = await linkedHarness()
+    const older = await submit('echo mimir-fail')
+    const newer = await submit('mimir-slow python train.py --epochs 20')
+
+    // The older job fails fast; the newer job still runs and owns the
+    // experiment, so the failed settle leaves the record `running`.
+    const settledOlder = await settleJob(service, older.id)
+    expect(settledOlder.status).toBe('failed')
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const midway = domain.table('experiments').get(EXPERIMENT.id)
+    expect(midway?.status).toBe('running')
+    expect(midway?.lastJob).toBeUndefined()
+
+    // The newer job's settle then writes back normally.
+    const settledNewer = await settleJob(service, newer.id)
+    expect(settledNewer.status).toBe('succeeded')
+    expect(domain.table('experiments').get(EXPERIMENT.id)).toMatchObject({
+      status: 'success',
+      lastJob: { jobId: newer.id, status: 'succeeded' },
+    })
+  })
 })
 
 describe('ResearchService.listJobs / deleteJob', () => {
