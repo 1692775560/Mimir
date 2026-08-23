@@ -25,6 +25,7 @@ import type {
   JobRecord,
   OutlineNode,
   PaperRecord,
+  PaperSnapshotView,
   ResearchArtifactResult,
   ResearchBackupStatusView,
   ResearchBibliographyResult,
@@ -51,10 +52,13 @@ import type {
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
+  ResearchPaperSnapshotResult,
+  ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRemovePaperResult,
+  ResearchRevertPaperSnapshotResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
@@ -74,7 +78,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-three Remote calls this controller needs, exactly as the
+ * The thirty-six Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -153,6 +157,14 @@ export interface ResearchRemote {
     baseOutline: SectionOutlineTitles[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
+  listPaperSnapshots: (request: { projectId: string }) => Promise<RemoteResult<ResearchPaperSnapshotsResult>>
+  getPaperSnapshot: (request: { projectId: string; id: string }) => Promise<RemoteResult<ResearchPaperSnapshotResult>>
+  revertPaperSnapshot: (request: {
+    projectId: string
+    id: string
+    baseMtimeMs: number
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchRevertPaperSnapshotResult>>
   exportWiki: () => Promise<RemoteResult<ResearchExportWikiResult>>
   importWiki: (request: {
     snapshot: ResearchWikiSnapshot
@@ -285,6 +297,15 @@ export interface ResearchBibView {
 /** One server's probe lifecycle: in flight, or the last settled view. */
 export type ServerCheckState = ServerStatusView | 'checking'
 
+/** One snapshot's fetched content (the diff source of the snapshots panel). */
+export interface ResearchSnapshotDetailView {
+  readonly projectId: string
+  readonly id: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly files: readonly { readonly path: string; readonly content: string }[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** Immutable view published to the panel. */
 export interface ResearchView {
   readonly projects: readonly ResearchProjectView[]
@@ -306,6 +327,10 @@ export interface ResearchView {
   readonly jobs: ResearchJobsView
   /** The selected project's bibliography; null until the bib panel first opens. */
   readonly bib: ResearchBibView | null
+  /** The selected project's paper snapshots; null until the snapshots panel first opens. */
+  readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
+  /** The snapshot the snapshots panel expanded for diffing; null when closed. */
+  readonly snapshotDetail: ResearchSnapshotDetailView | null
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
@@ -330,6 +355,8 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   serverChecks: Object.freeze({}),
   jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   bib: null,
+  snapshots: null,
+  snapshotDetail: null,
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -368,7 +395,10 @@ export class ResearchController implements HostObservable<ResearchView> {
   private figuresGeneration = 0
   private arxivGeneration = 0
   private bibGeneration = 0
+  private snapshotsGeneration = 0
+  private snapshotDetailGeneration = 0
   private figuresInFlight = false
+  private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
   private compileQueued: string | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -508,6 +538,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (projectId === null) return
     this.select(projectId)
     if (this.view.figures !== null) this.loadFigures(projectId, true)
+    if (this.view.snapshots !== null) this.loadSnapshots(projectId, true)
     const artifact = this.view.artifact
     if (artifact !== null) this.loadArtifact(artifact.projectId, artifact.name, true)
     if (this.view.bib !== null) this.reloadBibliography()
@@ -628,6 +659,126 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
       this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * List one project's paper snapshots (the snapshots panel's open and its
+   * refresh). Skips a refetch of an already-ready same project unless forced;
+   * a list load already in flight is left alone.
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip.
+   */
+  loadSnapshots(projectId: string, force = false): void {
+    if (this.snapshotsInFlight) return
+    const current = this.view.snapshots
+    if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
+    this.snapshotsGeneration += 1
+    const generation = this.snapshotsGeneration
+    this.snapshotsInFlight = true
+    this.publish({
+      snapshots: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSnapshots = (view: ResearchProjectSlice<readonly PaperSnapshotView[]>): void => {
+        if (this.disposed || generation !== this.snapshotsGeneration) return
+        this.publish({ snapshots: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.listPaperSnapshots({ projectId })
+        if (!carried.ok) {
+          publishSnapshots({ projectId, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSnapshots({ projectId, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSnapshots({ projectId, status: 'ready', list: result.value.snapshots, failure: null })
+      } catch (error) {
+        publishSnapshots({ projectId, status: 'error', list: [], failure: transportFailure(error) })
+      } finally {
+        this.snapshotsInFlight = false
+      }
+    })()
+  }
+
+  /**
+   * Fetch one snapshot's files for the panel's diff view. A newer open
+   * supersedes an in-flight older read, whose late reply is discarded by
+   * generation.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   */
+  loadSnapshotDetail(projectId: string, id: string): void {
+    this.snapshotDetailGeneration += 1
+    const generation = this.snapshotDetailGeneration
+    this.publish({
+      snapshotDetail: Object.freeze({ projectId, id, status: 'loading', files: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishDetail = (view: ResearchSnapshotDetailView): void => {
+        if (this.disposed || generation !== this.snapshotDetailGeneration) return
+        this.publish({ snapshotDetail: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.getPaperSnapshot({ projectId, id })
+        if (!carried.ok) {
+          publishDetail({ projectId, id, status: 'error', files: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishDetail({ projectId, id, status: 'error', files: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishDetail({ projectId, id, status: 'ready', files: result.value.files, failure: null })
+      } catch (error) {
+        publishDetail({ projectId, id, status: 'error', files: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /** Close the snapshots panel's diff view (superseding any in-flight read). */
+  closeSnapshotDetail(): void {
+    this.snapshotDetailGeneration += 1
+    if (this.view.snapshotDetail !== null) this.publish({ snapshotDetail: null })
+  }
+
+  /**
+   * Revert the paper to one snapshot: the snapshot's files land on disk under
+   * the same optimistic concurrency as `savePaperSource` (the base is the
+   * current draft's mtime). Both a success and a conflict re-read the outline
+   * and the source from the Host, because the file on disk is newer than
+   * either view; a success also re-reads the snapshot list.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async revertSnapshot(projectId: string, id: string): Promise<ResearchFailureView | null> {
+    const source = this.view.source
+    if (source === null || source.projectId !== projectId
+      || source.status !== 'ready' || source.mtimeMs === null) {
+      return failureOf('source-not-ready', 'paper source is not loaded')
+    }
+    try {
+      const carried = await this.remote.revertPaperSnapshot({
+        projectId, id, baseMtimeMs: source.mtimeMs, dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) {
+        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        return businessFailure(result.error)
+      }
+      this.refreshPaper(projectId)
+      this.snapshotsInFlight = false
+      this.loadSnapshots(projectId, true)
+      this.notify('success', 'toast.snapshotReverted')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -1567,6 +1718,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   select(projectId: string): void {
     this.outlineGeneration += 1
     const generation = this.outlineGeneration
+    this.snapshotsGeneration += 1
+    this.snapshotDetailGeneration += 1
     this.clearTimers()
     this.saveInFlight = false
     this.saveAgain = false
@@ -1576,6 +1729,8 @@ export class ResearchController implements HostObservable<ResearchView> {
         projectId, status: 'loading', content: '', mtimeMs: null, saveState: 'clean', failure: null,
       }),
       experiments: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+      snapshots: null,
+      snapshotDetail: null,
     })
     void this.loadOutline(projectId, generation)
     void this.loadCompileStatus(projectId)

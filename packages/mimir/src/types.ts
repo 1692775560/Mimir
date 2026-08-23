@@ -235,6 +235,7 @@ export type ResearchFailure =
   | { readonly code: 'section-not-found'; readonly title: string }
   | { readonly code: 'subsection-not-found'; readonly sectionTitle: string; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
+  | { readonly code: 'snapshot-not-found'; readonly id: string }
   | { readonly code: 'invalid-name'; readonly name: string }
   | { readonly code: 'invalid-content' }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
@@ -278,6 +279,37 @@ export type ResearchPaperSourceResult = ResearchResult<{
 
 /** `savePaperSource` result: the committed mtime (a conflict rejects with its mtime). */
 export type ResearchSavePaperSourceResult = ResearchResult<{ readonly mtimeMs: number }>
+
+/** One file of one paper snapshot, as the panel lists it. */
+export interface PaperSnapshotFileView {
+  /** Path relative to the project's paper directory (`main.tex`, `sections/intro.tex`). */
+  readonly path: string
+  readonly sizeBytes: number
+}
+
+/** One paper snapshot (captured after a successful compile). */
+export interface PaperSnapshotView {
+  /** Compact UTC timestamp id (`20260823T063755939Z`, `-N` on collisions). */
+  readonly id: string
+  /** ISO-8601 timestamp of the capture. */
+  readonly createdAt: string
+  /** The captured `.tex`/`.bib` files, in sorted path order. */
+  readonly files: readonly PaperSnapshotFileView[]
+  /** Total bytes across the snapshot's files. */
+  readonly sizeBytes: number
+}
+
+/** `listPaperSnapshots` result: the project's snapshots, newest first. */
+export type ResearchPaperSnapshotsResult = ResearchResult<{ readonly snapshots: readonly PaperSnapshotView[] }>
+
+/** `getPaperSnapshot` result: one snapshot's files with their full content. */
+export type ResearchPaperSnapshotResult = ResearchResult<{
+  readonly id: string
+  readonly files: readonly { readonly path: string; readonly content: string }[]
+}>
+
+/** `revertPaperSnapshot` result: the committed `main.tex` mtime (a conflict rejects with its mtime). */
+export type ResearchRevertPaperSnapshotResult = ResearchResult<{ readonly mtimeMs: number }>
 
 /** `listPapers` result: every remembered paper, most recently added first. */
 export type ResearchPapersResult = ResearchResult<{ readonly papers: readonly PaperRecord[] }>

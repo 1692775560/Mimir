@@ -2647,6 +2647,122 @@ li.dropIndicator {
   opacity: 0.45;
 }
 
+/* Snapshots panel: the snapshot list reuses the bib card language
+   (.bibPanel/.bibItem/.bibRow); only the snapshot-specific bits and the
+   snapshot toggle (a bibToggle twin without the auto margin) live here. */
+.snapToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 9px;
+  background: var(--dsw-specific-menu, #fff);
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.snapToggle:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-primary, #17233d);
+}
+
+.snapToggle[data-active] {
+  border-color: transparent;
+  background: var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 15%));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.snapToggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.snapTime {
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.snapMeta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapConfirm {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary, #d93026);
+  font-size: 12.5px;
+}
+
+/* The snapshot diff: one row per line, unchanged runs folded into gap
+   markers. Additions paint green, deletions red, on the shared state tokens. */
+.diffView {
+  overflow-x: auto;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.diffLine {
+  display: flex;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  white-space: pre;
+}
+
+.diffLine[data-type='add'] {
+  background: var(--dsw-alias-state-success-tertiary, rgb(52 199 89 / 12%));
+  color: var(--dsw-alias-state-success-primary, #2da44e);
+}
+
+.diffLine[data-type='del'] {
+  background: var(--dsw-alias-state-error-secondary, rgb(236 19 19 / 8%));
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.diffLineNo {
+  flex-shrink: 0;
+  min-width: 3ch;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  text-align: right;
+  user-select: none;
+}
+
+.diffSign {
+  flex-shrink: 0;
+  width: 1ch;
+  user-select: none;
+}
+
+.diffText {
+  min-width: 0;
+}
+
+.diffGap {
+  padding: 2px 10px;
+  border-top: 1px dashed var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-bottom: 1px dashed var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11.5px;
+  text-align: center;
+  user-select: none;
+}
+
 /* A shared elevated surface language across the data-heavy views. Kept after
    their individual rules so every view finishes with the same visual depth. */
 .papersSearchPanel,
