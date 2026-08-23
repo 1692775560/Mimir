@@ -181,9 +181,9 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号（高亮层和行号都按可视区窗口化渲染，几千行的论文也保持流畅）、一键编译（标注引擎）、点击跳源码行的错误列表（每条还带**「让 AI 修」**按钮——把该 issue、带行号的 ±3 行源码窗口和修复要求组装成 prompt 发给当前会话的 agent）、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。编辑器头部常显当前项目名——多项目并行时一眼确认在改哪篇。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
 
-| 论文：语法高亮 | 论文：编译问题 | 论文：点击跳源码行 |
-| --- | --- | --- |
-| ![论文：语法高亮](docs/screenshots/tab-paper-highlight.png) | ![论文：编译问题](docs/screenshots/tab-paper-issues.png) | ![论文：点击跳源码行](docs/screenshots/tab-paper-issue-jump.png) |
+| 论文：语法高亮 | 论文：编译问题 | 论文：让 AI 修 | 论文：点击跳源码行 |
+| --- | --- | --- | --- |
+| ![论文：语法高亮](docs/screenshots/tab-paper-highlight.png) | ![论文：编译问题](docs/screenshots/tab-paper-issues.png) | ![论文：让 AI 修](docs/screenshots/tab-paper-aifix.png) | ![论文：点击跳源码行](docs/screenshots/tab-paper-issue-jump.png) |
 
 | 论文：参考文献面板 | 论文：编辑器全屏 |
 | --- | --- |
