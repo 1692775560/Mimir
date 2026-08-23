@@ -4,7 +4,9 @@
  * to the arXiv page), authors, added date, a three-line-clamped summary the
  * reader can expand, tag pills and linked-project badges, the agent's working
  * notes, a PDF section (fetch the arXiv PDF into the workspace, then read it
- * in the embedded iframe on the `/research/paper-pdf/<id>` route), and
+ * in the embedded iframe on the `/research/paper-pdf/<id>` route, with a
+ * reading-notes side panel appending timestamped entries into the record's
+ * notes), and
  * edit/delete actions. The edit action opens an inline editor
  * (tags, project links, notes); a filter bar above the grid narrows the
  * library by one tag and/or the currently selected project; each card can be
@@ -20,6 +22,7 @@ import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
 } from './controller.ts'
 import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
+import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
 import { buildRelatedWorkPrompt } from './related-work.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
@@ -42,12 +45,14 @@ const ADD_TO_BIB_RESET_MS = 2000
  * One card's PDF section: a fetch button (downloads the arXiv PDF into the
  * workspace through `fetchPaperPdf`, labeled refetch once linked) and, once
  * the record carries a `pdfPath`, a read toggle opening the embedded iframe
- * reader on the `/research/paper-pdf/<id>` route. A successful fetch bumps
- * the cache-bust version and opens the reader.
+ * reader on the `/research/paper-pdf/<id>` route next to the reading-notes
+ * side panel. A successful fetch bumps the cache-bust version and opens the
+ * reader.
  */
-function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
+function PaperPdfSection({ paper, fetchPaperPdf, updatePaper, onError, t }: {
   readonly paper: PaperRecord
   readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly onError: (message: string) => void
   readonly t: ResearchT
 }) {
@@ -73,11 +78,14 @@ function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
   return (
     <div className={css.paperPdf}>
       {paper.pdfPath !== undefined && readerOpen && (
-        <iframe
-          className={css.paperPdfFrame}
-          title={`${t('papers.readPdf')}：${paper.title}`}
-          src={paperPdfUrl(paper.arxivId, version)}
-        />
+        <div className={css.paperPdfReader}>
+          <iframe
+            className={css.paperPdfFrame}
+            title={`${t('papers.readPdf')}：${paper.title}`}
+            src={paperPdfUrl(paper.arxivId, version)}
+          />
+          <PaperNotesPanel paper={paper} updatePaper={updatePaper} onError={onError} t={t} />
+        </div>
       )}
       <div className={css.paperPdfActions}>
         <button
@@ -103,6 +111,71 @@ function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The reading-notes side panel next to the open PDF reader: the record's
+ * timestamped entries (parsed out of `notes`) as a list, then a quick-add
+ * box appending a new `[YYYY-MM-DD HH:mm]` entry through the existing
+ * `updatePaper` verb. The entry list re-derives from the refreshed record
+ * after every save.
+ */
+function PaperNotesPanel({ paper, updatePaper, onError, t }: {
+  readonly paper: PaperRecord
+  readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
+  readonly onError: (message: string) => void
+  readonly t: ResearchT
+}) {
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const entries = parseReadingNotes(paper.notes)
+
+  const addNote = (): void => {
+    if (saving || draft.trim() === '') return
+    setSaving(true)
+    void updatePaper(paper.arxivId, { notes: appendReadingNote(paper.notes, draft, new Date()) })
+      .then((failure) => {
+        if (failure === null) {
+          setDraft('')
+        } else {
+          onError(`${t('papers.addNoteFailed')}：${failure.message}`)
+        }
+      })
+      .finally(() => { setSaving(false) })
+  }
+
+  return (
+    <aside className={css.paperNotesPanel}>
+      <h4 className={css.paperNotesTitle}>{t('papers.readingNotes')}</h4>
+      {entries.length === 0 ? (
+        <p className={css.hint}>{t('papers.readingNotesEmpty')}</p>
+      ) : (
+        <div className={css.paperNoteList}>
+          {entries.map((entry, index) => (
+            <div key={`${entry.at}-${index}`} className={css.paperNoteItem}>
+              <span className={css.paperNoteAt}>{entry.at}</span>
+              <p className={css.paperNoteText}>{entry.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        className={css.input}
+        rows={3}
+        value={draft}
+        placeholder={t('papers.noteInputPlaceholder')}
+        onChange={event => { setDraft(event.target.value) }}
+      />
+      <button
+        type="button"
+        className={css.btnPrimary}
+        disabled={saving || draft.trim() === ''}
+        onClick={addNote}
+      >
+        {saving ? t('papers.addingNote') : t('papers.addNote')}
+      </button>
+    </aside>
   )
 }
 
@@ -546,6 +619,7 @@ export function PapersView({
                     <PaperPdfSection
                       paper={paper}
                       fetchPaperPdf={fetchPaperPdf}
+                      updatePaper={updatePaper}
                       onError={setActionError}
                       t={t}
                     />
