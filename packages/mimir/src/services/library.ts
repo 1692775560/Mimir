@@ -68,14 +68,14 @@ export function listPapers(deps: LibraryDeps): Promise<ResearchPapersResult> {
  * (`invalid-input` otherwise); the request carries a hard 15s timeout and
  * transport/HTTP failures settle as `operation-failed` with the underlying
  * message.
- * @param deps - retained for signature uniformity (future arXiv knobs); the
+ * @param _deps - retained for signature uniformity (future arXiv knobs); the
  * call itself is pure network.
  * @param request - the free-text query and an optional result cap
  * (default 10, hard cap 50).
  * @returns the parsed entries, newest API order preserved.
  */
 export async function searchArxiv(
-  deps: LibraryDeps,
+  _deps: LibraryDeps,
   request: { query: string; maxResults?: number },
 ): Promise<ResearchSearchArxivResult> {
   const query = request.query.trim()

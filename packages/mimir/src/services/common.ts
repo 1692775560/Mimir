@@ -14,11 +14,11 @@ import type {
   ResearchSuccess,
 } from '../types.ts'
 
-/** 唯一的可变实例状态：compileStatus（编译状态表）与 jobSeq（任务号计数器）。 */
+/** The only mutable instance state: compileStatus and the job counter. */
 export interface ServiceState {
-  /** 每个被寻址项目的编译状态（'' 键 = 无项目槽位）；Map 引用不变，内容可变。 */
+  /** Per-addressed-project compile status ('' key = the no-project slot); the Map identity is fixed, its contents mutate. */
   readonly compileStatus: Map<string, ResearchCompileStatusView>
-  /** 同毫秒提交的任务号单调后缀；仅 submitJob 自增。 */
+  /** Monotonic suffix for jobs submitted within the same millisecond; only submitJob increments it. */
   jobSeq: number
 }
 
