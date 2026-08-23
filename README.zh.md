@@ -1,20 +1,30 @@
-# Mimir
+<div align="center">
 
-[![CI](https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/1692775560/Mimir/actions/workflows/ci.yml)
+<img src="docs/media/mimir-cover.png" alt="Mimir——开源 AI 科研工作台" width="720">
 
-[English](README.md) | 中文
+<h1>Mimir</h1>
 
-**Mimir 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的科研生命周期插件套件：arXiv 文献检索、持久化研究 wiki、独立子代理评审，以及 LaTeX 写作 → 编译 → 预览闭环——外加一个完整的 web 工作台。**
+<p><strong><a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> 里的科研生命周期副驾：</strong><br>
+arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX 写作 → 编译 → 预览——一个工作台，由你的 agent 驱动。</p>
 
-![Mimir——开源 AI 科研工作台](docs/media/mimir-cover.png)
+<p>
+<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
+<a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+<p><a href="README.md">English</a> · <strong>中文</strong></p>
+
+<p><a href="#视频演示">演示视频</a> · <a href="#快速上手">快速上手</a> · <a href="#功能">功能</a> · <a href="#使用指南">使用指南</a> · <a href="#更新日志">更新日志</a></p>
+
+</div>
 
 ## 视频演示
 
 [![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
 
-▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)**（22 MB）
-
-GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整产品演示，内容涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作；完整视频还通过平滑放大与缩小突出各个工作流程。
+▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)**（22 MB）——涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，平滑缩放突出各个工作流程。
 
 ![论文工作台：大纲、源码编辑器、编译产物 PDF 预览](docs/screenshots/tab-paper-compiled.png)
 
@@ -39,16 +49,20 @@ GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整�
 | `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块（机器上有可用转换器时 SVG 会自动转换为 PDF，兜底为 PNG） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
 
-**Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：
+### Web 工作台——六视图，一个浮层
 
-- **总览**——流水线阶段进度、统计芯片、工件清单、最近动态卡片（最近远程任务与实验运行，带状态徽标和相对时间），以及数据卡片：把整个 wiki 导出/导入为一份带日期的 JSON 快照（合并跳过已存在主键；替换会先清空，有红字二次确认）。
-- **论文**——大纲栏顶层章节可拖拽重排、`main.tex` 自动保存编辑器带 LaTeX 语法高亮（窗口化渲染，几千行文件也流畅）、一键编译、点击跳源码行的错误列表（每条带「让 AI 修」按钮，把错误和源码上下文发给当前会话的 agent）、内嵌 PDF 预览、`references.bib` 面板；编辑器头部常显当前项目名；分栏可调宽、可全屏、布局持久化。
-- **文献**——已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`，以及一键「生成 related work 草稿」——把筛选出的文献（标题、摘要、笔记、引用键）连同写作要求发给 agent。
-- **实验**——运行记录：指标对比条形图（内联 SVG）、可展开指标、新增/编辑内联表单（指标键值对编辑器、服务器关联）、服务器关联 badge 内联换绑、远程任务结束后自动回写的「最近任务」徽标、任意对比图一键「生成论文图」，以及渲染后的 `EXPERIMENT_LOG.md`。
-- **图表**——论文目录图片网格：预览、上传（按钮或拖拽）、删除、复制 LaTeX 引用、插入论文（SVG 卡片会先在宿主侧自动转换为 PDF/PNG）；经 `figure_save` 入库的图会显示 caption 和关联实验徽标。
-- **服务器**——登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；任务区块可经 SSH 提交远程命令（queued → running → succeeded/failed 实时轮询、stdout/stderr 尾部可展开、可关联实验记录并联动其状态，settle 时把结果/耗时/日志尾部写回实验记录）。
+侧栏开关打开 96vw×95vh 工作台：
 
-面板头部带深色/浅色主题切换和中/EN 语言切换；快捷键：`1–6` 或方向键切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译。对话框有焦点陷阱，所有控件带可见焦点环；窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
+| 视图 | 亮点 |
+| --- | --- |
+| 📊 **总览** | 五阶段流水线进度、统计芯片、工件清单、最近动态（最近远程任务 + 实验运行）、整库 wiki 导出/导入（替换有红字二次确认） |
+| 📝 **论文** | Overleaf 式三栏工作室：大纲拖拽重排、自动保存编辑器（窗口化语法高亮，几千行也流畅）、一键编译、点击跳源码行的错误列表（每条带**「让 AI 修」**按钮）、内嵌 PDF 预览、`references.bib` 面板、头部常显项目名 |
+| 📚 **文献** | 收录论文的标签/笔记/项目关联、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`、一键**「生成 related work 草稿」**把筛选结果连同写作要求发给 agent |
+| 🧪 **实验** | 运行记录与指标对比图、内联新增/编辑表单、服务器内联换绑、远程任务 settle 自动**回写最近任务徽标**、任意对比图一键**生成论文图**、`EXPERIMENT_LOG.md` 渲染 |
+| 🖼️ **图表** | 论文目录图片网格：预览、拖拽上传、复制 LaTeX 引用、插入论文（SVG 宿主侧自动转 PDF/PNG）；`figure_save` 入库的图带 caption + 关联实验徽标 |
+| 🖥️ **服务器** | GPU 机器卡片：TCP 探测 + SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；提交远程命令为实时轮询任务，输出尾部可展开，可关联实验联动状态 |
+
+面板头部带深色/浅色主题和中/EN 语言切换。键盘优先：`1–6` 或方向键切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译；对话框有焦点陷阱，所有控件带可见焦点环。窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
 
 | 深色模式：总览 | 深色模式：论文 | 论文：窄屏 tab 布局 |
 | --- | --- | --- |
@@ -169,7 +183,8 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 耗时操作——编译、导入、全部探测、删除、上传——结束时会在工作台右下角弹一张 toast 小卡片（按结果分绿/蓝/红描边，几秒后自动消失，也可点 × 提前关闭）。
 
-### 总览
+<details>
+<summary><strong>📊 总览</strong>——流水线进度 · 最近动态 · wiki 导出/导入</summary>
 
 落地视图：所选项目的五阶段流水线进度、统计芯片（文献/实验/图表/服务器）、工件清单与时间戳。**最近动态**卡片并列展示最近 5 条远程任务（命令、状态徽标、相对时间）和最近 5 条实验运行。**数据卡片**显示自动备份状态（周期、保留份数、已备份份数），并可以把整个 wiki 导出为一份带日期的 JSON 快照（`mimir-wiki-<日期>.json`）用于备份或迁移，也可以导入回放：选择文件（`<workspaceDir>/backups/` 下的自动备份可直接选）、确认逐表行数摘要，然后选合并（已存在主键跳过、绝不覆盖）或替换（先清空七张表——有红字二次确认）。导入成功后会刷新所有已加载的视图，并用 toast 汇报导入/跳过总数。
 
@@ -177,7 +192,10 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 | --- | --- |
 | ![总览](docs/screenshots/tab-overview.png) | ![总览：wiki 导出/导入](docs/screenshots/tab-overview-data.png) |
 
-### 论文
+</details>
+
+<details>
+<summary><strong>📝 论文</strong>——Overleaf 式工作室 · 让 AI 修 · PDF 实时预览</summary>
 
 项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号（高亮层和行号都按可视区窗口化渲染，几千行的论文也保持流畅）、一键编译（标注引擎）、点击跳源码行的错误列表（每条还带**「让 AI 修」**按钮——把该 issue、带行号的 ±3 行源码窗口和修复要求组装成 prompt 发给当前会话的 agent）、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。编辑器头部常显当前项目名——多项目并行时一眼确认在改哪篇。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
 
@@ -189,7 +207,10 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 | --- | --- |
 | ![论文：参考文献面板](docs/screenshots/tab-paper-bib.png) | ![论文：编辑器全屏](docs/screenshots/tab-paper-fullscreen.png) |
 
-### 文献
+</details>
+
+<details>
+<summary><strong>📚 文献</strong>——arXiv 搜索 · 笔记与标签 · related work 草稿</summary>
 
 每一篇收录论文都是一张卡片（摘要默认三行折叠）：可编辑标签、按项目关联、标签/当前项目筛选栏，以及面板内 arXiv 搜索——一键把结果导入 wiki，再一键追加到项目的 `references.bib`。工具栏的**「生成 related work 草稿」**按钮把当前筛选出的文献（标题、摘要、你的笔记、引用键）发给当前会话的 agent，要求按主题组织成 `\section{Related Work}`、`\cite` 恰好覆盖这些键、缺失条目补进 `references.bib`，并重新编译直到干净。
 
@@ -197,7 +218,10 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 | --- | --- | --- |
 | ![文献](docs/screenshots/tab-papers.png) | ![文献：标签](docs/screenshots/tab-papers-tags.png) | ![文献：arXiv 搜索](docs/screenshots/tab-papers-search.png) |
 
-### 实验
+</details>
+
+<details>
+<summary><strong>🧪 实验</strong>——指标对比图 · 任务回写 · 一键论文图</summary>
 
 wiki 中的运行记录：每行状态徽标、≥2 个 run 共享的数值指标对比条形图、逐 run 可展开指标、服务器关联 badge 内联下拉换绑、行编辑/删除。每张对比图带**「生成论文图」**按钮：渲染成独立矢量 SVG 条形图、存进论文 `figures/`（wiki 登记自动 caption）、自动转换后把现成的 `\begin{figure}` 块插进 `main.tex`。关联的远程任务 settle 时，行内**「最近任务」**徽标显示结果、耗时和完成时间（悬浮看日志尾部），同一结果也会追加到 `EXPERIMENT_LOG.md`。工具栏的**新增实验**打开内联表单（名称、状态、指标键值对行编辑器——能解析成数字的值存为数字——、可选服务器关联），走 `saveExperiment` Remote upsert；行内**编辑**按钮回填同一表单。表格下方是用内置受限 Markdown 渲染器渲染的 `EXPERIMENT_LOG.md`（标题、强调、代码、代码块、列表、引用、分隔线、表格、链接——非 http(s) 的链接一律中性化为纯文本）。
 
@@ -205,7 +229,10 @@ wiki 中的运行记录：每行状态徽标、≥2 个 run 共享的数值指�
 | --- |
 | ![实验](docs/screenshots/tab-experiments.png) |
 
-### 图表
+</details>
+
+<details>
+<summary><strong>🖼️ 图表</strong>——图片网格 · 拖拽上传 · 插入论文</summary>
 
 论文目录的图片网格：点击放大、复制现成的 LaTeX `\includegraphics` 片段、工具栏按钮上传——或直接把图片文件拖进视图（悬停时显示虚线高亮框；不支持的类型会点名提示而非静默忽略）——以及删除不再需要的文件。刷新按钮强制重扫。
 
@@ -213,13 +240,18 @@ wiki 中的运行记录：每行状态徽标、≥2 个 run 共享的数值指�
 | --- | --- |
 | ![图表](docs/screenshots/tab-figures.png) | ![图表：拖拽上传](docs/screenshots/tab-figures-drop.png) |
 
-### 服务器
+</details>
+
+<details>
+<summary><strong>🖥️ 服务器</strong>——GPU 探测 · 远程任务 · 实验联动</summary>
 
 登记的 GPU 机器：增删改、一键 TCP 连通性探测，以及尽力而为的 SSH `nvidia-smi` 读取（每块 GPU 的利用率与显存条）。卡片上的标签 chips 与网格上方的筛选条让大量机器也好找。网格下方的**远程任务**区块可向任意已登记服务器经 SSH 提交命令（`submitJob` Remote；命令后台执行，会话上限 30 分钟）：有任务在排队/运行中时每 2 秒轮询一次任务表，状态徽标按 queued → running → succeeded/failed 翻转并弹 toast，stdout/stderr 尾部可展开；关联当前项目实验记录的任务会在提交时把该实验置为 running 并挂上服务器，结束时置为 success/failed。
 
 | 服务器 |
 | --- |
 | ![服务器](docs/screenshots/tab-servers.png) |
+
+</details>
 
 ### 斜杠命令实战
 

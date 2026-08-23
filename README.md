@@ -1,20 +1,30 @@
-# Mimir
+<div align="center">
 
-[![CI](https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/1692775560/Mimir/actions/workflows/ci.yml)
+<img src="docs/media/mimir-cover.png" alt="Mimir — open-source AI research workspace" width="720">
 
-English | [中文](README.zh.md)
+<h1>Mimir</h1>
 
-**Mimir is a research-lifecycle plugin suite for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh): arXiv literature search, a persistent research wiki, independent subagent review, and a closed LaTeX writing → compile → preview loop — plus a full web workbench.**
+<p><strong>The research-lifecycle copilot inside <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>:</strong><br>
+arXiv literature · persistent research wiki · experiments &amp; remote GPUs · figures · LaTeX writing → compile → preview — one workbench, driven by your agent.</p>
 
-![Mimir — open-source AI research workspace](docs/media/mimir-cover.png)
+<p>
+<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
+<a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+<p><strong>English</strong> · <a href="README.zh.md">中文</a></p>
+
+<p><a href="#video-demo">Demo</a> · <a href="#quickstart">Quickstart</a> · <a href="#features">Features</a> · <a href="#usage-guide">Usage guide</a> · <a href="#changelog">Changelog</a></p>
+
+</div>
 
 ## Video demo
 
 [![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
 
-▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB)
-
-The GIF preview plays automatically. Click it or the link above to watch the complete product demo, including AI-assisted research, literature management, experiments, figure archiving, and paper writing. The full video includes smooth zooms that highlight each workflow.
+▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB) — AI-assisted research, literature management, experiments, figure archiving, and paper writing, with smooth zooms that highlight each workflow.
 
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
@@ -39,16 +49,20 @@ The GIF preview plays automatically. Click it or the link above to watch the com
 | `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block (SVG sources are auto-converted to PDF — PNG as the raster fallback — when a converter is available) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
 
-**Web workbench (six views)** — a sidebar toggle opens a 96vw×95vh overlay:
+### Web workbench — six views, one overlay
 
-- **Overview** — pipeline stage progress, stat chips, artifact list, a recent-activity card (latest remote jobs and experiment runs with status pills and relative times), and a data card that exports/imports the whole wiki as one dated JSON snapshot (merge skips existing keys; replace arms a red second confirm).
-- **Paper** — outline rail with drag-to-reorder sections, autosaving `main.tex` editor with LaTeX syntax highlighting (windowed rendering keeps thousand-line files responsive), one-click compile, click-to-jump error list with a per-issue **Let AI fix** button that hands the error and its source context to the current session's agent, inline PDF preview, and a `references.bib` panel; the current project's name is always visible in the editor head; resizable panes, fullscreen, persisted layout.
-- **Library** — remembered papers with editable tags and per-project links, a tag/current-project filter bar, in-panel arXiv search with one-click import, add-to-`references.bib` per card, and a one-click **related-work draft** that sends the filtered selection (titles, abstracts, notes, citation keys) to the agent with writing instructions.
-- **Experiments** — run records with metric-comparison bar charts (inline SVG), expandable metrics, an inline create/edit form (metrics key/value editor, server link), linked-server badges with inline relink, a last-job outcome badge written back automatically when a linked remote job settles, one-click **paper-figure generation** from any comparison chart, and a rendered `EXPERIMENT_LOG.md`.
-- **Figures** — paper-directory image grid with preview, upload (button or drag-and-drop), delete, copy-LaTeX-reference, and insert-into-paper actions (SVG cards auto-convert to PDF/PNG on the host first); figures saved via `figure_save` show their caption and a linked-experiment badge.
-- **Servers** — remembered GPU boxes: TCP reachability probe plus a best-effort SSH `nvidia-smi` readout with utilization/memory bars and tag filters; the jobs section submits a remote command over SSH (queued → running → succeeded/failed polled live, stdout/stderr tails expandable, optional link to an experiment record whose status follows the job and whose record gains the outcome, duration, and log tail on settle).
+A sidebar toggle opens a 96vw×95vh workbench:
 
-Dark/light theme and 中/EN language toggles live in the panel header; keyboard shortcuts: `1–6` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles. The dialog traps focus, every control shows a visible focus ring, and narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
+| View | Highlights |
+| --- | --- |
+| 📊 **Overview** | Five-stage pipeline progress, stat chips, artifact list, recent activity (latest remote jobs + experiment runs), and one-file wiki export/import with guarded replace |
+| 📝 **Paper** | Overleaf-style three-pane studio: drag-to-reorder outline, autosaving editor with windowed syntax highlighting (smooth on thousand-line files), one-click compile, click-to-jump issues with a per-issue **Let AI fix** button, inline PDF preview, `references.bib` panel, project name always in view |
+| 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv search with one-click import, add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
+| 🧪 **Experiments** | Run records with metric-comparison charts, inline create/edit form, server relink dropdowns, automatic **last-job writeback** when a remote run settles, one-click **paper figure** from any comparison chart, and a rendered `EXPERIMENT_LOG.md` |
+| 🖼️ **Figures** | Paper-directory image grid: preview, drag-and-drop upload, copy-LaTeX-reference, insert-into-paper (SVG auto-converts to PDF/PNG on the host); `figure_save` figures show caption + linked-experiment badges |
+| 🖥️ **Servers** | GPU fleet cards with TCP probe and SSH `nvidia-smi` readouts (utilization/memory bars, tag filters); submit remote commands as live-polled jobs with expandable output tails and optional experiment linkage |
+
+Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1–6` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; the dialog traps focus and every control shows a focus ring. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
 
 | Dark mode: overview | Dark mode: paper | Paper: narrow-width tab layout |
 | --- | --- | --- |
@@ -169,7 +183,8 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 Longer actions — compiles, imports, probe-alls, deletions, uploads — end with a small toast card in the workbench's bottom-right corner (green/blue/red accent by outcome, auto-dismissing after a few seconds, × for early dismissal).
 
-### Overview
+<details>
+<summary><strong>📊 Overview</strong> — pipeline progress · recent activity · wiki export/import</summary>
 
 The landing view: the selected project's five-stage pipeline progress, stat chips (papers / experiments / figures / servers), the artifact list, and timestamps. The **recent activity** card lists the five latest remote jobs (command, status pill, relative time) next to the five latest experiment runs. The **data card** shows the scheduled-backup status (cadence, keep cap, on-disk count) and exports the entire wiki as one dated JSON snapshot (`mimir-wiki-<date>.json`) for backup or migration, and imports one back: pick a file (an auto-backup from `<workspaceDir>/backups/` works as-is), review the per-table row counts, then choose merge (existing keys are skipped, never overwritten) or replace (wipes all seven tables — a red second confirm guards it). A successful import refreshes every loaded view and reports the imported/skipped totals in a toast.
 
@@ -177,7 +192,10 @@ The landing view: the selected project's five-stage pipeline progress, stat chip
 | --- | --- |
 | ![Overview](docs/screenshots/tab-overview.png) | ![Overview: wiki export/import](docs/screenshots/tab-overview-data.png) |
 
-### Paper
+</details>
+
+<details>
+<summary><strong>📝 Paper</strong> — Overleaf-style studio · Let AI fix · live PDF preview</summary>
 
 An Overleaf-style editor for the project's paper directory: a collapsible outline whose top-level sections drag-reorder via row grips (rewriting `main.tex`'s `\section` order), an autosaving `main.tex` editor (~800 ms debounce, optimistic concurrency — a displaced draft freezes and offers reload) with LaTeX syntax highlighting and synced line numbers (both windowed to the visible range, so multi-thousand-line papers stay responsive), one-click compile with the engine labeled, an error list whose entries jump the editor to the source line and offer a **Let AI fix** button (assembles the issue, a numbered ±3-line source window, and repair instructions into a prompt for the current session's agent), an inline PDF preview, and a bibliography panel over `references.bib` (delete entries, conflict-safe saves, append checked library papers). The editor head always shows the current project's name — with several projects side by side you can tell at a glance which paper you are editing. Saving an untouched draft auto-compiles after ~1.5 s. Drag handles resize the three panes (widths persist); editor and preview go fullscreen on one click. `⌘/Ctrl+Enter` compiles.
 
@@ -189,7 +207,10 @@ An Overleaf-style editor for the project's paper directory: a collapsible outlin
 | --- | --- |
 | ![Paper: bibliography panel](docs/screenshots/tab-paper-bib.png) | ![Paper: editor fullscreen](docs/screenshots/tab-paper-fullscreen.png) |
 
-### Library
+</details>
+
+<details>
+<summary><strong>📚 Library</strong> — arXiv search · notes & tags · related-work drafts</summary>
 
 Every remembered paper as a card grid (summaries collapse to three lines): editable tags, per-project links, a tag/current-project filter bar, and in-panel arXiv search — one click imports a result into the wiki, another appends it to the project's `references.bib`. The toolbar's **related-work draft** button sends the currently filtered selection — titles, abstracts, your notes, and citation keys — to the current session's agent with instructions to organize them thematically into a `\section{Related Work}`, cite exactly those keys, backfill missing entries into `references.bib`, and recompile until clean.
 
@@ -197,7 +218,10 @@ Every remembered paper as a card grid (summaries collapse to three lines): edita
 | --- | --- | --- |
 | ![Library](docs/screenshots/tab-papers.png) | ![Library: tags](docs/screenshots/tab-papers-tags.png) | ![Library: arXiv search](docs/screenshots/tab-papers-search.png) |
 
-### Experiments
+</details>
+
+<details>
+<summary><strong>🧪 Experiments</strong> — metric charts · job writeback · one-click paper figures</summary>
 
 Run records from the wiki: a status pill per row, metric-comparison bar charts for numeric metrics shared by ≥2 runs, per-run expandable metrics, a linked-server badge with an inline relink dropdown, and row edit/delete. Each comparison chart carries a **generate paper figure** button that renders a standalone vector SVG bar chart, saves it into the paper's `figures/` (registered in the wiki with an auto caption), converts it, and inserts a ready `\begin{figure}` block into `main.tex`. When a linked remote job settles, the row's **last job** badge shows the outcome, duration, and finish time (hover for the log tail), and the same outcome is appended to `EXPERIMENT_LOG.md`. The toolbar's **New experiment** opens an inline form (name, status, a metrics key/value row editor — values that parse as numbers are stored as numbers —, an optional server link) backed by the `saveExperiment` Remote upsert; a row's **Edit** backfills the same form. Below the table, `EXPERIMENT_LOG.md` renders with the built-in restricted Markdown renderer (headings, emphasis, code, fences, lists, quotes, rules, tables, links — non-http(s) URLs are neutralized to plain text).
 
@@ -205,7 +229,10 @@ Run records from the wiki: a status pill per row, metric-comparison bar charts f
 | --- |
 | ![Experiments](docs/screenshots/tab-experiments.png) |
 
-### Figures
+</details>
+
+<details>
+<summary><strong>🖼️ Figures</strong> — image grid · drag-and-drop upload · insert into paper</summary>
 
 The paper directory's images as a grid: click to zoom, copy a ready-made LaTeX `\includegraphics` snippet, upload via the toolbar button — or just drop image files anywhere on the view (a dashed overlay shows while hovering; unsupported types are named, not silently ignored) — and delete what you no longer need. Refresh forces a rescan.
 
@@ -213,13 +240,18 @@ The paper directory's images as a grid: click to zoom, copy a ready-made LaTeX `
 | --- | --- |
 | ![Figures](docs/screenshots/tab-figures.png) | ![Figures: drag-and-drop upload](docs/screenshots/tab-figures-drop.png) |
 
-### Servers
+</details>
+
+<details>
+<summary><strong>🖥️ Servers</strong> — GPU fleet probes · remote jobs · experiment linkage</summary>
 
 Remembered GPU boxes: add/edit/delete, one-click TCP reachability probe, and a best-effort SSH `nvidia-smi` readout with per-GPU utilization and memory bars. Tag chips on the cards and a filter bar above the grid keep large fleets navigable. The **Remote jobs** section below the grid submits a command to any remembered server over SSH (`submitJob` Remote; the run executes in the background with a 30-minute session cap) and polls the job table while anything is queued/running — status pills flip queued → running → succeeded/failed with a toast, output tails expand inline, and a job linked to an experiment of the selected project flips that experiment to running on submit and success/failed on settle.
 
 | Servers |
 | --- |
 | ![Servers](docs/screenshots/tab-servers.png) |
+
+</details>
 
 ### Slash commands in practice
 
