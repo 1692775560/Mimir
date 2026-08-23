@@ -119,7 +119,7 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource,
-  ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensurePapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   insertFigure, consumePaperJump,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
@@ -140,6 +140,7 @@ export function ResearchPanel({
   const source = useResearch(view => view.source)
   const papers = useResearch(view => view.papers)
   const arxivSearch = useResearch(view => view.arxivSearch)
+  const webSearch = useResearch(view => view.webSearch)
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
@@ -419,10 +420,12 @@ export function ResearchPanel({
           <PapersView
             papers={papers}
             arxivSearch={arxivSearch}
+            webSearch={webSearch}
             projects={projects}
             selectedProjectId={selectedProjectId}
             ensurePapers={ensurePapers}
             searchArxiv={searchArxiv}
+            searchWeb={searchWeb}
             importPaper={importPaper}
             updatePaper={updatePaper}
             removePaper={removePaper}

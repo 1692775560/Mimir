@@ -384,6 +384,17 @@ export function filterPapers(
     && (projectId === null || paper.projectIds.includes(projectId)))
 }
 
+/**
+ * Extract a bare arXiv id from one web result URL: an `arxiv.org/abs/<id>`
+ * (or `arxiv.org/pdf/<id>`) path, version suffix allowed. Returns null for
+ * every other URL — the bridge that lets a web result import into the wiki.
+ * @param url - the result URL, verbatim from the engine.
+ */
+export function arxivIdFromUrl(url: string): string | null {
+  const match = /^https?:\/\/arxiv\.org\/(?:abs|pdf)\/([a-zA-Z0-9._/-]+?)(?:\.pdf)?$/i.exec(url)
+  return match?.[1] ?? null
+}
+
 /** Extensions the figure upload accepts, shared by the file input and the drop filter. */
 export const FIGURE_ACCEPT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.svg', '.pdf'] as const
 

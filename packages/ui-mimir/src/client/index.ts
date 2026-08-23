@@ -140,6 +140,7 @@ export function apply(ctx: ClientContext): void {
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
       searchArxiv: (query) => { controller.searchArxiv(query) },
+      searchWeb: (query) => { controller.searchWeb(query) },
       importPaper: (entry) => controller.importPaper(entry),
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),

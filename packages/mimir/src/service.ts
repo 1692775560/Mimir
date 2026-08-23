@@ -33,6 +33,7 @@ import { isBackupFileName } from './backup.ts'
 import { compileLatex } from './tools/latex.ts'
 import type { LatexToolOptions } from './tools/latex.ts'
 import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from './tools/arxiv.ts'
+import { fetchWebSearch } from './tools/web-search.ts'
 import type { ResearchWikiDomain } from './store.ts'
 import type {
   ArxivEntry,
@@ -76,6 +77,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
   ResearchSubmitJobResult,
   ResearchSuccess,
   ResearchUpdateExperimentResult,
@@ -115,6 +117,16 @@ export interface ResearchServiceConfig {
     readonly intervalMinutes: number
     readonly keep: number
     readonly dir: string
+  }
+  /**
+   * Resolved web-search knobs (the sxng CLI command and timeout); absent
+   * when no command is configured — `searchWeb` then reports unavailable.
+   */
+  readonly search?: {
+    readonly command: string
+    readonly timeoutMs: number
+    /** Test hook replacing the real child process. */
+    readonly run?: (command: string, args: readonly string[], timeoutMs: number) => Promise<string>
   }
 }
 
@@ -333,6 +345,7 @@ export class ResearchService extends TypertRemoteService {
   private readonly domain: ResearchWikiDomain
   private readonly latex: LatexToolOptions
   private readonly backup: ResearchServiceConfig['backup']
+  private readonly search: ResearchServiceConfig['search']
   private readonly compileStatus = new Map<string, ResearchCompileStatusView>()
   /** Monotonic suffix of generated job ids (same-millisecond submits stay distinct). */
   private jobSeq = 0
@@ -350,6 +363,7 @@ export class ResearchService extends TypertRemoteService {
     this.domain = config.domain
     this.latex = config.latex
     this.backup = config.backup
+    this.search = config.search
   }
 
   /**
@@ -426,6 +440,54 @@ export class ResearchService extends TypertRemoteService {
       return rejected({
         code: 'operation-failed',
         message: error instanceof Error ? error.message : 'arXiv search failed',
+      })
+    }
+  }
+
+  /**
+   * Search the web through the configured sxng CLI on the panel's behalf.
+   * The query must be non-empty (`invalid-input` otherwise); the request
+   * carries a hard 30s timeout and CLI/transport failures settle as
+   * `operation-failed` with the underlying message. When no search command
+   * is configured the call reports unavailable through `operation-failed`
+   * with setup guidance.
+   * @param request - the free-text query and an optional result cap
+   * (default 10, hard cap {@link ARXIV_SEARCH_MAX_RESULTS}).
+   * @returns the parsed rows, engine order preserved.
+   */
+  @Remote('searchWeb')
+  async searchWeb(request: {
+    query: string
+    maxResults?: number
+    categories?: string | undefined
+    lang?: string | undefined
+  }): Promise<ResearchSearchWebResult> {
+    if (this.search === undefined) {
+      return rejected({
+        code: 'operation-failed',
+        message: 'Web search is not configured: set the plugin\'s search.command to the sxng CLI (npm install -g sxng-cli; sxng init against a self-hosted SearXNG).',
+      })
+    }
+    const query = request.query.trim()
+    if (query === '') return rejected({ code: 'invalid-input', message: 'query must be non-empty' })
+    const maxResults = request.maxResults ?? ARXIV_SEARCH_DEFAULT_MAX_RESULTS
+    if (!Number.isSafeInteger(maxResults) || maxResults < 1 || maxResults > ARXIV_SEARCH_MAX_RESULTS) {
+      return rejected({ code: 'invalid-input', message: `maxResults must be an integer between 1 and ${ARXIV_SEARCH_MAX_RESULTS}` })
+    }
+    try {
+      const results = await fetchWebSearch(query, {
+        command: this.search.command,
+        timeoutMs: this.search.timeoutMs,
+        maxResults,
+        ...(request.categories === undefined ? {} : { categories: request.categories }),
+        ...(request.lang === undefined ? {} : { lang: request.lang }),
+        ...(this.search.run === undefined ? {} : { run: this.search.run }),
+      })
+      return success({ results: Object.freeze(results) })
+    } catch (error) {
+      return rejected({
+        code: 'operation-failed',
+        message: error instanceof Error ? error.message : 'web search failed',
       })
     }
   }

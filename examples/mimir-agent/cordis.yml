@@ -17,6 +17,9 @@
           timeoutMs: 120000           # compile kill timeout; raise it for tectonic's first network fetch
         arxiv:
           maxResults: 10              # default arxiv_search result cap
+        search:
+          command: auto               # auto (register web_search only if the sxng CLI is on PATH), a binary name, or a path
+          timeoutMs: 30000            # web search kill timeout
         backup:
           enabled: true               # scheduled wiki backup timer
           intervalMinutes: 60         # backup cadence (first pass 1 min after start)

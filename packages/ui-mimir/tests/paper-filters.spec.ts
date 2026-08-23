@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { PaperRecord } from 'dsh-mimir/types'
-import { collectTags, filterPapers, paperPdfUrl } from '../src/client/view-common.ts'
+import { collectTags, arxivIdFromUrl, filterPapers, paperPdfUrl } from '../src/client/view-common.ts'
 
 /** One paper fixture; only the fields the helpers read. */
 function paper(arxivId: string, tags: string[], projectIds: string[]): PaperRecord {
@@ -50,5 +50,21 @@ describe('paperPdfUrl', () => {
     expect(paperPdfUrl('2103.00020v2', 1724)).toBe('/research/paper-pdf/2103.00020v2?v=1724')
     // Old-style ids carry a slash; it must be encoded.
     expect(paperPdfUrl('hep-th/9901001', 1)).toBe('/research/paper-pdf/hep-th%2F9901001?v=1')
+  })
+})
+
+describe('arxivIdFromUrl', () => {
+  it('extracts bare ids from arXiv abstract and pdf URLs, version suffix included', () => {
+    expect(arxivIdFromUrl('https://arxiv.org/abs/1706.03762')).toBe('1706.03762')
+    expect(arxivIdFromUrl('http://arxiv.org/abs/2206.03003v2')).toBe('2206.03003v2')
+    expect(arxivIdFromUrl('https://arxiv.org/pdf/1706.03762.pdf')).toBe('1706.03762')
+    expect(arxivIdFromUrl('https://arxiv.org/pdf/hep-th/9901001')).toBe('hep-th/9901001')
+  })
+
+  it('returns null for every other URL shape', () => {
+    expect(arxivIdFromUrl('https://example.com/abs/1706.03762')).toBeNull()
+    expect(arxivIdFromUrl('https://arxiv.org/list/cs.LG/recent')).toBeNull()
+    expect(arxivIdFromUrl('')).toBeNull()
+    expect(arxivIdFromUrl('not a url')).toBeNull()
   })
 })
