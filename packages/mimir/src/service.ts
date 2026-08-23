@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 41 `@Remote` signatures intact, and forwards every method body to a
+ * all 45 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -20,12 +20,15 @@ import type {
   BibEntry,
   ExperimentInput,
   ResearchArtifactResult,
+  ResearchArxivSubscriptionsResult,
   ResearchBibliographyResult,
+  ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchConvertFigureResult,
   ResearchDeleteExperimentResult,
+  ResearchDeleteArxivSubscriptionResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
@@ -52,6 +55,7 @@ import type {
   ResearchSaveExperimentResult,
   ResearchSaveFigureResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveArxivSubscriptionResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
@@ -66,6 +70,7 @@ import type {
 import * as paper from './services/paper.ts'
 import * as paperSnapshots from './services/paper-snapshots.ts'
 import * as library from './services/library.ts'
+import * as subscriptions from './services/subscriptions.ts'
 import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
@@ -106,7 +111,7 @@ export interface ResearchServiceConfig {
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 41 `@Remote` signatures; every method
+ * `research` Remote namespace and all 45 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -180,6 +185,27 @@ export class ResearchService extends TypertRemoteService {
   @Remote('fetchPaperPdf')
   fetchPaperPdf(request: { arxivId: string }): Promise<ResearchFetchPaperPdfResult> {
     return library.fetchPaperPdf(this.deps, request)
+  }
+
+  // subscription domain: arXiv new-paper checks (pure filesystem storage)
+  @Remote('listArxivSubscriptions')
+  listArxivSubscriptions(): Promise<ResearchArxivSubscriptionsResult> {
+    return subscriptions.listArxivSubscriptions(this.deps)
+  }
+
+  @Remote('saveArxivSubscription')
+  saveArxivSubscription(request: { query: string }): Promise<ResearchSaveArxivSubscriptionResult> {
+    return subscriptions.saveArxivSubscription(this.deps, request)
+  }
+
+  @Remote('deleteArxivSubscription')
+  deleteArxivSubscription(request: { id: string }): Promise<ResearchDeleteArxivSubscriptionResult> {
+    return subscriptions.deleteArxivSubscription(this.deps, request)
+  }
+
+  @Remote('checkArxivSubscriptions')
+  checkArxivSubscriptions(request: { id?: string }): Promise<ResearchCheckArxivSubscriptionsResult> {
+    return subscriptions.checkArxivSubscriptions(this.deps, request)
   }
 
   // experiment domain

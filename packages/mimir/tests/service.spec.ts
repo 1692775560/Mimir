@@ -1195,3 +1195,53 @@ describe('ResearchService.saveExperiment', () => {
     expect(updated.value.experiment.serverId).toBe(serverId)
   })
 })
+
+describe('ResearchService arXiv subscriptions (facade)', () => {
+  it('saves, checks (baseline seeding over a stubbed feed), lists, and deletes', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', async (url: string) => {
+      requestedUrl = url
+      return new Response(ARXIV_FEED, { status: 200 })
+    })
+    const { service } = await harness()
+    await expect(service.saveArxivSubscription({ query: '  ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    const saved = await service.saveArxivSubscription({ query: 'egocentric whole body' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // The first check only seeds the baseline: seen, but nothing new.
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks).toHaveLength(1)
+    expect(checked.value.checks[0]).toMatchObject({ added: [], error: null })
+    expect(checked.value.checks[0]?.subscription.lastCheckedAt).not.toBeNull()
+    expect(requestedUrl).toContain('sortBy=submittedDate&sortOrder=descending')
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions).toMatchObject([{ id, query: 'egocentric whole body', newEntries: [] }])
+    await expect(service.checkArxivSubscriptions({ id: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'subscription-not-found' } })
+    await expect(service.deleteArxivSubscription({ id })).resolves.toEqual({ ok: true, value: { id } })
+    const empty = await service.listArxivSubscriptions()
+    expect(empty.ok && empty.value.subscriptions.length).toBe(0)
+  })
+
+  it('surfaces a newly published entry with its details on the second check', async () => {
+    const { service } = await harness()
+    const saved = await service.saveArxivSubscription({ query: 'mesh' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // First check seeds the baseline (empty feed), the second surfaces one.
+    vi.stubGlobal('fetch', async () => new Response(
+      '<feed xmlns="http://www.w3.org/2005/Atom"></feed>', { status: 200 },
+    ))
+    await service.checkArxivSubscriptions({ id })
+    vi.stubGlobal('fetch', async () => new Response(ARXIV_FEED, { status: 200 }))
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks[0]?.added).toEqual([ARXIV_ENTRY])
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions[0]?.newEntries).toEqual([ARXIV_ENTRY])
+  })
+})

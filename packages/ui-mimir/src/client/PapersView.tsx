@@ -20,11 +20,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { ArxivEntry, PaperRecord, ResearchProjectView } from 'dsh-mimir/types'
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
+  ResearchSubscriptionsView,
 } from './controller.ts'
 import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
 import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
 import { buildRelatedWorkPrompt } from './related-work.ts'
 import { EmptyState } from './EmptyState.tsx'
+import { SubscriptionsBar } from './SubscriptionsBar.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import css from './ResearchPanel.module.css'
 
@@ -244,14 +246,19 @@ function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
  * @returns the search bar and results over the filterable library grid.
  */
 export function PapersView({
-  papers, arxivSearch, projects, selectedProjectId, ensurePapers, searchArxiv,
+  papers, arxivSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv,
+  saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, requestRelatedWork, t,
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
+  readonly arxivSubscriptions: ResearchSubscriptionsView
   readonly projects: readonly ResearchProjectView[]
   readonly selectedProjectId: string | null
   readonly ensurePapers: () => void
+  readonly saveArxivSubscription: (query: string) => Promise<ResearchFailureView | null>
+  readonly deleteArxivSubscription: (id: string) => Promise<ResearchFailureView | null>
+  readonly checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   readonly searchArxiv: (query: string) => void
   readonly importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
   readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
@@ -359,6 +366,15 @@ export function PapersView({
   return (
     <div className={css.papers}>
       <ViewHead title={t('tab.papers')} subtitle={t('view.papers.subtitle')} />
+      <SubscriptionsBar
+        subscriptions={arxivSubscriptions}
+        importedIds={importedIds}
+        importPaper={importPaper}
+        saveArxivSubscription={saveArxivSubscription}
+        deleteArxivSubscription={deleteArxivSubscription}
+        checkArxivSubscriptions={checkArxivSubscriptions}
+        t={t}
+      />
       <form
         className={css.papersSearchBar}
         onSubmit={(event) => {

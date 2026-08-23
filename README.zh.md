@@ -341,7 +341,7 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 
 目录结构：
 
-- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、论文快照、`research` Remote 命名空间（41 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
+- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、论文快照、arXiv 关键词订阅（定时检查新论文）、`research` Remote 命名空间（45 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
 - `packages/ui-mimir`——浏览器工作台（`dsh-client-ui-mimir`）：侧栏开关 + 浮层面板。
 - `packages/typert-protocol`——Typert 协议的 vendored 源码副本，从不发布（见下）。
 - `examples/mimir-agent`——快速上手使用的 cordis patch。

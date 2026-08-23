@@ -32,7 +32,8 @@ export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
   ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
-  ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchView,
+  ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchSubscriptionsView,
+  ResearchView,
 } from './controller.ts'
 export type {
   ResearchPanelInjected, ResearchPanelProps, ResearchPanelStore, ResearchToggleProps,
@@ -173,6 +174,10 @@ export function apply(ctx: ClientContext): void {
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
+      ensureSubscriptions: () => { controller.ensureSubscriptions() },
+      saveArxivSubscription: query => controller.saveArxivSubscription(query),
+      deleteArxivSubscription: id => controller.deleteArxivSubscription(id),
+      checkArxivSubscriptions: () => controller.checkArxivSubscriptions(),
       searchArxiv: (query) => { controller.searchArxiv(query) },
       importPaper: (entry) => controller.importPaper(entry),
       removePaper: (arxivId) => controller.removePaper(arxivId),
