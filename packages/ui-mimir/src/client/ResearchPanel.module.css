@@ -457,7 +457,7 @@
 
 .sectionTitle {
   margin: 0 0 10px;
-  color: var(--dsw-alias-label-tertiary, #5b6474);
+  color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
