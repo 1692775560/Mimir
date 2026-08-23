@@ -383,6 +383,27 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 
 ## 更新日志
 
+### 0.8.0
+
+- 九个**内置科研 skills**（`research-pipeline`、`research-lit-review`、`research-novelty-check`、`research-experiment-plan`、`research-result-to-claim`、`research-paper-drafting`、`research-citation-audit`、`research-rebuttal`、`research-figure-plan`）在宿主挂载 skill registry 时注册进 agent 的 skill 目录；`skills.enabled: false` 可关闭，项目级同名 skill 可覆盖。
+- 文档截图按 Linear 风格新工作台全部重拍。
+
+### 0.7.0
+
+- **Zotero Web API 集成（只读）**：浏览收藏集、检索文献库、把条目导入 wiki（arXiv 关联或 `zotero-<key>` 条目）、导出收藏集为 `.bib`；凭据只走 `zotero.apiKey` / `zotero.userId` 配置，不进 wiki、日志或面板。
+- 全工作台 **Linear 风格视觉重构**：发丝边框、内联编译错误行、更清晰的排版层级，深浅色独立调校。
+
+### 0.6.0
+
+- **arXiv 订阅**：按查询词每日检新（文件系统存储），文献视图带未读徽标。
+- **PDF 阅读笔记**：内嵌阅读器的时间戳笔记侧栏。
+- 服务器探测**分阶段进度**（TCP → SSH → GPU 读数），失败归因到具体层级。
+
+### 0.5.0
+
+- **论文版本快照**：每次编译成功自动快照源码（保留 50 份）；任意两份 diff，带乐观并发保护回滚。
+- 实验记录防旧任务覆盖；浅色主题对比度修正；内部 service 拆分重构。
+
 ### 0.4.0
 
 - 文献：一键**生成 related work 草稿**——把筛选出的文献（标题、摘要、笔记、引用键）连同主题写作与引用要求发给会话 agent。

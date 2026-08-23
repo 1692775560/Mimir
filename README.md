@@ -383,6 +383,27 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 
 ## Changelog
 
+### 0.8.0
+
+- Nine **bundled research skills** (`research-pipeline`, `research-lit-review`, `research-novelty-check`, `research-experiment-plan`, `research-result-to-claim`, `research-paper-drafting`, `research-citation-audit`, `research-rebuttal`, `research-figure-plan`) register into the host's skill catalog when a skill registry is mounted; `skills.enabled: false` opts out, and project-level same-name skills override them.
+- Documentation screenshots retaken on the Linear-style workbench.
+
+### 0.7.0
+
+- **Zotero Web API integration (read-only)**: browse collections, search the library, import items into the wiki (arXiv-linked or as `zotero-<key>` entries), and export a collection to `.bib`; credentials live in `zotero.apiKey` / `zotero.userId` and never reach the wiki, logs, or the panel.
+- **Linear-style visual overhaul** of the whole workbench: hairline borders, inline compile-error rows, a clearer type hierarchy, and independently tuned dark/light themes.
+
+### 0.6.0
+
+- **arXiv subscriptions**: per-query daily new-paper checks on a filesystem-backed store, with an unread badge in the Library view.
+- **PDF reader notes**: a timestamped side panel for the embedded paper reader.
+- Server probes report **staged progress** (TCP → SSH → GPU readout) so failures attribute to the right layer.
+
+### 0.5.0
+
+- **Paper version snapshots**: every successful compile snapshots the paper sources (50 kept); diff any pair, revert with optimistic-concurrency guards.
+- Experiment records resist stale-task overwrites; light-theme contrast pass; internal service split for maintainability.
+
 ### 0.4.0
 
 - Library: one-click **related-work draft** — the filtered literature selection (titles, abstracts, notes, citation keys) is sent to the session's agent with thematic-writing and citation instructions.
