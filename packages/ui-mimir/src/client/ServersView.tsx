@@ -107,6 +107,8 @@ export function ServersView({
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [tagInput, setTagInput] = useState('')
+  /** The card whose probe-failure line is expanded; null collapses them all. */
+  const [openMessageId, setOpenMessageId] = useState<string | null>(null)
 
   // The view mounts only while its tab is active: load the list once, then
   // probe every listed server exactly once (a settled or in-flight probe
@@ -374,12 +376,24 @@ export function ServersView({
                     )}
                 </p>
                 {settled !== null && settled.message !== null && (
-                  <p className={css.serverMessage} role="status">
-                    {settled.stage !== undefined && (
-                      <span className={css.serverProbeFailStage}>{t(PROBE_FAILURE_KEYS[settled.stage])}：</span>
-                    )}
-                    {settled.message}
-                  </p>
+                  /* The probe failure renders as a quiet one-line error row:
+                     truncated by default, the title tooltip shows it on hover
+                     and the click toggles the full text (aria-expanded). */
+                  <button
+                    type="button"
+                    className={css.serverMessage}
+                    data-open={openMessageId === record.id || undefined}
+                    aria-expanded={openMessageId === record.id}
+                    title={settled.message}
+                    onClick={() => { setOpenMessageId(prev => (prev === record.id ? null : record.id)) }}
+                  >
+                    <span className={css.serverMessageText}>
+                      {settled.stage !== undefined && (
+                        <span className={css.serverProbeFailStage}>{t(PROBE_FAILURE_KEYS[settled.stage])}：</span>
+                      )}
+                      {settled.message}
+                    </span>
+                  </button>
                 )}
                 {settled !== null && settled.state === 'online' && (
                   settled.gpus.length === 0 ? (
