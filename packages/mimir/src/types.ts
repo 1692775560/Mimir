@@ -239,6 +239,7 @@ export type ResearchFailure =
   | { readonly code: 'invalid-name'; readonly name: string }
   | { readonly code: 'invalid-content' }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
+  | { readonly code: 'subscription-not-found'; readonly id: string }
   | { readonly code: 'operation-failed'; readonly message: string }
 
 /** Success branch of one `research` Remote call. */
@@ -328,6 +329,49 @@ export type ResearchUpdatePaperResult = ResearchResult<{ readonly paper: PaperRe
 
 /** `fetchPaperPdf` result: the stored record with its `pdfPath` set. */
 export type ResearchFetchPaperPdfResult = ResearchResult<{ readonly paper: PaperRecord }>
+
+/**
+ * One arXiv subscription as the panel lists it: the persisted record minus
+ * its `seenIds` bookkeeping, with the cached details of the entries the
+ * latest checks surfaced as new (`newEntries`, newest first).
+ */
+export interface ArxivSubscriptionView {
+  readonly id: string
+  /** The free-text query matched against all arXiv fields. */
+  readonly query: string
+  /** ISO-8601 timestamp of the subscription's creation. */
+  readonly createdAt: string
+  /** ISO-8601 timestamp of the last check; null until the first one settles. */
+  readonly lastCheckedAt: string | null
+  /** Details of the entries reported as new and not yet superseded. */
+  readonly newEntries: readonly ArxivEntry[]
+}
+
+/** `listArxivSubscriptions` result: every subscription, oldest first. */
+export type ResearchArxivSubscriptionsResult = ResearchResult<{ readonly subscriptions: readonly ArxivSubscriptionView[] }>
+
+/** `saveArxivSubscription` result: the created subscription (a duplicate query is `invalid-input`). */
+export type ResearchSaveArxivSubscriptionResult = ResearchResult<{ readonly subscription: ArxivSubscriptionView }>
+
+/** `deleteArxivSubscription` result: the removed subscription's id. */
+export type ResearchDeleteArxivSubscriptionResult = ResearchResult<{ readonly id: string }>
+
+/**
+ * One subscription's outcome of a `checkArxivSubscriptions` run: the
+ * post-check view (pre-check view when the fetch failed), the entries THIS
+ * run surfaced as new, and the fetch failure when there was one (a failed
+ * subscription leaves its stored record untouched).
+ */
+export interface ArxivSubscriptionCheckView {
+  readonly subscription: ArxivSubscriptionView
+  /** Entries this run found that the subscription had not seen before. */
+  readonly added: readonly ArxivEntry[]
+  /** The fetch failure message, or null when this subscription checked clean. */
+  readonly error: string | null
+}
+
+/** `checkArxivSubscriptions` result: one outcome per checked subscription. */
+export type ResearchCheckArxivSubscriptionsResult = ResearchResult<{ readonly checks: readonly ArxivSubscriptionCheckView[] }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>

@@ -371,6 +371,25 @@ export const zh = {
   'servers.probe.fail.tcp': 'TCP 不可达',
   'servers.probe.fail.ssh': 'SSH 连接或认证失败',
   'servers.probe.fail.gpu': 'GPU 读取失败',
+  // --- arXiv subscriptions (feat/arxiv-subscriptions): keep this block contiguous to avoid merge conflicts ---
+  'subscriptions.title': 'arXiv 订阅',
+  'subscriptions.addPlaceholder': '订阅关键词，如 retrieval augmented generation',
+  'subscriptions.add': '添加订阅',
+  'subscriptions.delete': '删除订阅',
+  'subscriptions.confirmDelete': '删除该订阅？',
+  'subscriptions.check': '检查新文献',
+  'subscriptions.checking': '检查中…',
+  'subscriptions.newBadge': '有 {count} 篇新文献',
+  'subscriptions.import': '导入',
+  'subscriptions.importAll': '全部导入',
+  'subscriptions.empty': '还没有订阅——添加关键词后，系统每天自动检查新论文',
+  'subscriptions.saveFailed': '保存订阅失败',
+  'subscriptions.deleteFailed': '删除订阅失败',
+  'subscriptions.checkFailed': '检查失败',
+  'error.subscriptions': '无法加载订阅',
+  'toast.subscriptionSaved': '订阅已保存',
+  'toast.subscriptionNewPapers': '发现新文献',
+  // --- end arXiv subscriptions ---
 } satisfies Record<string, string>
 
 /** The research namespace key union. */
@@ -754,4 +773,23 @@ export const en = {
   'servers.probe.fail.tcp': 'TCP unreachable',
   'servers.probe.fail.ssh': 'SSH connection or auth failed',
   'servers.probe.fail.gpu': 'GPU readout failed',
+  // --- arXiv subscriptions (feat/arxiv-subscriptions): keep this block contiguous to avoid merge conflicts ---
+  'subscriptions.title': 'arXiv subscriptions',
+  'subscriptions.addPlaceholder': 'Subscribe to a keyword, e.g. retrieval augmented generation',
+  'subscriptions.add': 'Add subscription',
+  'subscriptions.delete': 'Delete subscription',
+  'subscriptions.confirmDelete': 'Delete this subscription?',
+  'subscriptions.check': 'Check for new papers',
+  'subscriptions.checking': 'Checking…',
+  'subscriptions.newBadge': '{count} new papers',
+  'subscriptions.import': 'Import',
+  'subscriptions.importAll': 'Import all',
+  'subscriptions.empty': 'No subscriptions yet — add a keyword and new papers are checked automatically once a day',
+  'subscriptions.saveFailed': 'Could not save the subscription',
+  'subscriptions.deleteFailed': 'Could not delete the subscription',
+  'subscriptions.checkFailed': 'Check failed',
+  'error.subscriptions': 'Could not load subscriptions',
+  'toast.subscriptionSaved': 'Subscription saved',
+  'toast.subscriptionNewPapers': 'New papers found',
+  // --- end arXiv subscriptions ---
 } satisfies Record<ResearchKey, string>
