@@ -445,6 +445,9 @@ export interface ServerGpuView {
   readonly memoryTotalMb: number
 }
 
+/** One stage of the `checkServer` probe pipeline: TCP connect, ssh session, GPU readout. */
+export type ServerProbeStage = 'tcp' | 'ssh' | 'gpu'
+
 /** The settled outcome of one `checkServer` probe. */
 export interface ServerStatusView {
   /** `online` once the TCP probe connects; the GPU readout is best-effort on top. */
@@ -456,6 +459,16 @@ export interface ServerStatusView {
   readonly checkedAt: string
   /** Failure detail (offline reason or the skipped/failed GPU probe); null when clean. */
   readonly message: string | null
+  /**
+   * Stage where the probe settled: the FAILED stage on failure, the deepest
+   * completed stage on success (`tcp` for a TCP-only record without a login
+   * user). Optional — older hosts omit it.
+   */
+  readonly stage?: ServerProbeStage | undefined
+  /** TCP handshake latency in ms (the stage-wise twin of `latencyMs`); absent when the TCP probe never connected. */
+  readonly tcpLatencyMs?: number | undefined
+  /** Wall-clock ms of the ssh GPU readout; absent when it never ran. */
+  readonly gpuLatencyMs?: number | undefined
 }
 
 /** `listServers` result: every remembered server, most recently updated first. */

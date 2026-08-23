@@ -363,6 +363,14 @@ export const zh = {
   'time.hoursAgo': '小时前',
   'time.daysAgo': '天前',
   'error.retry': '重试',
+  // feat/probe-progress: staged server probe progress labels and per-stage failure labels.
+  'servers.probe.stage.tcp': 'TCP 连通性探测…',
+  'servers.probe.stage.ssh': 'SSH 连接…',
+  'servers.probe.stage.gpu': '读取 GPU 占用…',
+  'servers.probe.eta': '最长约 17 秒',
+  'servers.probe.fail.tcp': 'TCP 不可达',
+  'servers.probe.fail.ssh': 'SSH 连接或认证失败',
+  'servers.probe.fail.gpu': 'GPU 读取失败',
 } satisfies Record<string, string>
 
 /** The research namespace key union. */
@@ -738,4 +746,12 @@ export const en = {
   'time.hoursAgo': 'h ago',
   'time.daysAgo': 'd ago',
   'error.retry': 'Retry',
+  // feat/probe-progress: staged server probe progress labels and per-stage failure labels.
+  'servers.probe.stage.tcp': 'Probing TCP reachability…',
+  'servers.probe.stage.ssh': 'Connecting over SSH…',
+  'servers.probe.stage.gpu': 'Reading GPU usage…',
+  'servers.probe.eta': 'up to ~17 s',
+  'servers.probe.fail.tcp': 'TCP unreachable',
+  'servers.probe.fail.ssh': 'SSH connection or auth failed',
+  'servers.probe.fail.gpu': 'GPU readout failed',
 } satisfies Record<ResearchKey, string>
