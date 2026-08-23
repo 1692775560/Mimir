@@ -3246,3 +3246,59 @@ li.dropIndicator {
   gap: 8px;
   align-items: center;
 }
+
+/* Reading notes: the PDF reader's split layout and its side panel. */
+.paperPdfReader {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.paperPdfReader .paperPdfFrame {
+  height: 560px;
+}
+
+.paperNotesPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 560px;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.paperNotesTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-size: 13px;
+}
+
+.paperNoteList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+.paperNoteItem {
+  padding-left: 8px;
+  border-left: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.paperNoteAt {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+}
+
+.paperNoteText {
+  margin: 2px 0 0;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
