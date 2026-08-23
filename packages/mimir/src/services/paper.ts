@@ -17,14 +17,13 @@ import {
   savePaperSourceFile,
   saveTextFileOptimistic,
 } from '../paper-source.ts'
-import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from '../bibtex.ts'
+import { entryFromPaper, parseBibtex, serializeBibtex } from '../bibtex.ts'
 import { compileLatex } from '../tools/latex.ts'
 import type { LatexToolOptions } from '../tools/latex.ts'
 import { captureCompileSnapshot } from './paper-snapshots.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   BibEntry,
-  PaperRecord,
   ResearchBibliographyResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
@@ -360,22 +359,23 @@ export async function saveBibliography(
 }
 
 /**
- * Append `@misc` entries for the given remembered papers to the addressed
- * project's `references.bib`, skipping citation keys already present. Every
- * arXiv id must name a wiki paper (`paper-not-found` on the first unknown
- * one — nothing is written then). The read-merge-write runs inside the
+ * Append parsed BibTeX entries to the addressed project's `references.bib`,
+ * skipping citation keys already present. The paper directory itself must
+ * exist (`paper-not-found` otherwise). The read-merge-write runs inside the
  * writer lock, so a concurrent panel save or agent write cannot be lost.
+ * Shared by `importPapersToBib` (entries projected from wiki papers) and the
+ * Zotero collection export (entries parsed from the API's BibTeX).
  * @param deps - workspace root and open wiki domain.
- * @param request - the selected project, the arXiv ids to append, and an
+ * @param request - the selected project, the entries to append, and an
  * optional explicit paper directory.
  * @returns the appended and the already-present citation keys, or
  * `project-not-found`/`paper-not-found`/`invalid-dir`.
  */
-export async function importPapersToBib(
+export async function appendBibEntries(
   deps: PaperDeps,
   request: {
     projectId: string
-    arxivIds: string[]
+    entries: readonly BibEntry[]
     dir?: string | undefined
   },
 ): Promise<ResearchImportBibResult> {
@@ -392,13 +392,6 @@ export async function importPapersToBib(
     if (isNotFound(error)) return rejected({ code: 'paper-not-found' })
     throw error
   }
-  const papers = deps.domain.table('papers')
-  const sources = new Map<string, PaperRecord>()
-  for (const arxivId of request.arxivIds) {
-    const paper = papers.get(arxivId)
-    if (paper === undefined) return rejected({ code: 'paper-not-found' })
-    sources.set(arxivId, paper)
-  }
   const bibPath = join(dir, 'references.bib')
   return await withFileLock(bibPath, async (): Promise<ResearchImportBibResult> => {
     const snapshot = await readPaperSource(bibPath)
@@ -406,17 +399,50 @@ export async function importPapersToBib(
     const present = new Set(entries.map(entry => entry.key))
     const added: string[] = []
     const skipped: string[] = []
-    for (const [arxivId, paper] of sources) {
-      const key = bibKeyOf(arxivId)
-      if (present.has(key)) { skipped.push(key); continue }
-      entries.push(entryFromPaper(paper))
-      present.add(key)
-      added.push(key)
+    for (const incoming of request.entries) {
+      if (present.has(incoming.key)) { skipped.push(incoming.key); continue }
+      entries.push(incoming)
+      present.add(incoming.key)
+      added.push(incoming.key)
     }
     if (added.length > 0) {
       await writeFileAtomic(bibPath, serializeBibtex(entries), { mode: 0o666 })
     }
     return success({ added: Object.freeze(added), skipped: Object.freeze(skipped) })
+  })
+}
+
+/**
+ * Append `@misc` entries for the given remembered papers to the addressed
+ * project's `references.bib`, skipping citation keys already present. Every
+ * arXiv id must name a wiki paper (`paper-not-found` on the first unknown
+ * one — nothing is written then). The merge itself rides
+ * {@link appendBibEntries}.
+ * @param deps - workspace root and open wiki domain.
+ * @param request - the selected project, the arXiv ids to append, and an
+ * optional explicit paper directory.
+ * @returns the appended and the already-present citation keys, or
+ * `project-not-found`/`paper-not-found`/`invalid-dir`.
+ */
+export async function importPapersToBib(
+  deps: PaperDeps,
+  request: {
+    projectId: string
+    arxivIds: string[]
+    dir?: string | undefined
+  },
+): Promise<ResearchImportBibResult> {
+  const papers = deps.domain.table('papers')
+  const entries: BibEntry[] = []
+  for (const arxivId of request.arxivIds) {
+    const paper = papers.get(arxivId)
+    if (paper === undefined) return rejected({ code: 'paper-not-found' })
+    entries.push(entryFromPaper(paper))
+  }
+  return appendBibEntries(deps, {
+    projectId: request.projectId,
+    entries,
+    ...(request.dir === undefined ? {} : { dir: request.dir }),
   })
 }
 

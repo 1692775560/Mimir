@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ArxivEntry, PaperRecord, ResearchProjectView } from 'dsh-mimir/types'
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
-  ResearchSubscriptionsView,
+  ResearchSubscriptionsView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
 import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
@@ -28,6 +28,7 @@ import { buildRelatedWorkPrompt } from './related-work.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { SubscriptionsBar } from './SubscriptionsBar.tsx'
 import { ViewHead } from './ViewHead.tsx'
+import { ZoteroSection } from './ZoteroSection.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Fields the inline editor saves back through `updatePaper`. */
@@ -248,7 +249,9 @@ function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
 export function PapersView({
   papers, arxivSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv,
   saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
-  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, requestRelatedWork, t,
+  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf,
+  zotero, zoteroSearch, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
+  requestRelatedWork, t,
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
@@ -268,6 +271,15 @@ export function PapersView({
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly zotero: ResearchZoteroView
+  readonly zoteroSearch: ResearchZoteroSearchView | null
+  readonly recheckZotero: () => void
+  readonly searchZotero: (query: string) => void
+  readonly importZoteroItem: (key: string) => Promise<ResearchFailureView | null>
+  readonly exportZoteroCollectionToBib: (
+    projectId: string,
+    collectionKey: string,
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly requestRelatedWork: (prompt: string) => Promise<void>
   readonly t: ResearchT
 }) {
@@ -399,6 +411,18 @@ export function PapersView({
       {actionError !== null && (
         <p className={css.failure} role="alert">{actionError}</p>
       )}
+      <ZoteroSection
+        zotero={zotero}
+        zoteroSearch={zoteroSearch}
+        importedIds={importedIds}
+        selectedProjectId={selectedProjectId}
+        recheckZotero={recheckZotero}
+        searchZotero={searchZotero}
+        importZoteroItem={importZoteroItem}
+        exportZoteroCollectionToBib={exportZoteroCollectionToBib}
+        onError={setActionError}
+        t={t}
+      />
       {arxivSearch !== null && (
         <section className={css.papersSearchPanel}>
           <h3 className={css.sectionTitle}>
