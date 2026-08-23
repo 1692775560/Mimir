@@ -100,14 +100,15 @@ function probeTcp(host: string, port: number): Promise<TcpProbeOutcome> {
 /** Outcome of the best-effort GPU readout over ssh. */
 type GpuProbeOutcome =
   | { readonly ok: true; readonly gpus: readonly ServerGpuView[] }
-  | { readonly ok: false; readonly message: string }
+  | { readonly ok: false; readonly stage: 'ssh' | 'gpu'; readonly message: string }
 
 /**
  * Read one server's GPU table over a batch-mode ssh call. Best-effort: an ssh
  * or `nvidia-smi` failure is the `ok: false` branch, never a rejection, so the
  * caller can still report the server itself as reachable.
  * @param record - the server to probe (host, port, and login user).
- * @returns the parsed GPU rows, or the failure message.
+ * @returns the parsed GPU rows, or the failure stage (`ssh` session vs `gpu`
+ * readout) plus the failure message.
  */
 async function probeGpus(record: ServerRecord): Promise<GpuProbeOutcome> {
   try {
@@ -137,7 +138,14 @@ async function probeGpus(record: ServerRecord): Promise<GpuProbeOutcome> {
     const stderr = typeof error === 'object' && error !== null && 'stderr' in error
       ? String((error as { stderr: unknown }).stderr).trim()
       : ''
-    return { ok: false, message: stderr !== '' ? stderr : error instanceof Error ? error.message : 'ssh probe failed' }
+    const message = stderr !== '' ? stderr : error instanceof Error ? error.message : 'ssh probe failed'
+    // Stage classification: the ssh client exits 255 when the SESSION itself
+    // failed (connect, auth, or the connect timeout); any other exit code is
+    // the remote command's own status, and a timeout kill / spawn error only
+    // surfaces after the 8s budget — past the 5s connect window — so both
+    // land on the `gpu` stage.
+    const code = (error as { code?: unknown }).code
+    return { ok: false, stage: code === 255 ? 'ssh' : 'gpu', message }
   }
 }
 
@@ -242,7 +250,10 @@ export async function deleteServer(
  * connect (failure settles the view `offline`), then — only when the TCP
  * probe connected and the record names a login user — a batch-mode ssh
  * `nvidia-smi` readout whose failure downgrades the GPU table to empty
- * without flipping the state.
+ * without flipping the state. The settled view reports the stage where the
+ * probe stopped (`stage`: the failed stage on failure, the deepest completed
+ * stage on success) and the per-stage latencies (`tcpLatencyMs`,
+ * `gpuLatencyMs`) so the panel can say which stage hung or failed.
  * @param deps - open wiki domain.
  * @param request - the record id; an unknown id is `server-not-found`.
  * @returns the settled probe view.
@@ -263,6 +274,7 @@ export async function checkServer(
       gpus: Object.freeze([]),
       checkedAt: new Date().toISOString(),
       message: tcp.message,
+      stage: 'tcp',
     })
   }
   if (record.username === '') {
@@ -272,8 +284,11 @@ export async function checkServer(
       gpus: Object.freeze([]),
       checkedAt: new Date().toISOString(),
       message: null,
+      stage: 'tcp',
+      tcpLatencyMs: tcp.latencyMs,
     })
   }
+  const gpuStartedAt = Date.now()
   const gpu = await probeGpus(record)
   return success<ServerStatusView>({
     state: 'online',
@@ -281,6 +296,9 @@ export async function checkServer(
     gpus: gpu.ok ? gpu.gpus : Object.freeze([]),
     checkedAt: new Date().toISOString(),
     message: gpu.ok ? null : `gpu probe failed: ${gpu.message}`,
+    stage: gpu.ok ? 'gpu' : gpu.stage,
+    tcpLatencyMs: tcp.latencyMs,
+    gpuLatencyMs: Date.now() - gpuStartedAt,
   })
 }
 

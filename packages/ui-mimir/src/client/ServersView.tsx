@@ -12,7 +12,7 @@ import type { ExperimentRecord, ServerInput, ServerRecord } from 'dsh-mimir/type
 import type {
   ResearchFailureView, ResearchJobsView, ResearchProjectSlice, ResearchServersView, ServerCheckState,
 } from './controller.ts'
-import { collectServerTags, failureCopy, filterServers, relativeTime, type ResearchT } from './view-common.ts'
+import { collectServerTags, failureCopy, filterServers, PROBE_FAILURE_KEYS, PROBE_STAGE_KEYS, probeStageOf, relativeTime, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import { JobsSection } from './JobsSection.tsx'
@@ -48,6 +48,28 @@ function dotStateOf(check: ServerCheckState | undefined): string {
   if (check === undefined) return 'unknown'
   if (check === 'checking') return 'checking'
   return check.state
+}
+
+/**
+ * The in-flight probe's staged progress line. The host reports the stage only
+ * once the probe settles, so while it runs the label is inferred from the
+ * elapsed time and the probe's per-stage budgets (TCP 4s → SSH 5s → GPU
+ * readout), with a worst-case ETA hint. The interval only ticks while this
+ * line is mounted (i.e. while the card's probe is in flight).
+ */
+function ProbeProgressLine({ t }: { readonly t: ResearchT }) {
+  const [elapsedMs, setElapsedMs] = useState(0)
+  useEffect(() => {
+    const startedAt = Date.now()
+    const timer = setInterval(() => { setElapsedMs(Date.now() - startedAt) }, 250)
+    return () => { clearInterval(timer) }
+  }, [])
+  return (
+    <>
+      <span className={css.serverProbeStage} role="status">{t(PROBE_STAGE_KEYS[probeStageOf(elapsedMs)])}</span>
+      <span className={css.serverProbeEta}>{t('servers.probe.eta')}</span>
+    </>
+  )
 }
 
 /**
@@ -343,7 +365,7 @@ export function ServersView({
                 )}
                 <p className={css.serverProbe}>
                   {settled === null
-                    ? checking ? t('servers.state.checking') : t('servers.neverChecked')
+                    ? checking ? <ProbeProgressLine t={t} /> : t('servers.neverChecked')
                     : (
                       <>
                         {settled.latencyMs !== null && <span>{settled.latencyMs} ms · </span>}
@@ -352,7 +374,12 @@ export function ServersView({
                     )}
                 </p>
                 {settled !== null && settled.message !== null && (
-                  <p className={css.serverMessage} role="status">{settled.message}</p>
+                  <p className={css.serverMessage} role="status">
+                    {settled.stage !== undefined && (
+                      <span className={css.serverProbeFailStage}>{t(PROBE_FAILURE_KEYS[settled.stage])}：</span>
+                    )}
+                    {settled.message}
+                  </p>
                 )}
                 {settled !== null && settled.state === 'online' && (
                   settled.gpus.length === 0 ? (

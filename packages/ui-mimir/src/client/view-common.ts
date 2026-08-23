@@ -4,7 +4,8 @@
  * the figure route
  * URL builder, the experiments comparison-chart helpers (numeric metric
  * keys, chart rows, bar widths, value formatting), the library tag
- * collection/filter helpers, and the figure-upload drop filter
+ * collection/filter helpers, the server probe stage inference
+ * ({@link probeStageOf}), and the figure-upload drop filter
  * ({@link filterDropFiles}). No JSX, no subscriptions.
  * @module dsh-client-ui-mimir/client/view-common
  */
@@ -370,6 +371,42 @@ export function collectServerTags(servers: readonly ServerRecord[]): string[] {
   const tags = new Set<string>()
   for (const server of servers) for (const tag of server.tags) tags.add(tag)
   return [...tags].sort()
+}
+
+/** One stage of the server probe pipeline (mirrors `ServerProbeStage` of dsh-mimir). */
+export type ProbeStage = 'tcp' | 'ssh' | 'gpu'
+
+/** End of the TCP stage's time window in ms (the host's TCP probe timeout). */
+export const PROBE_TCP_WINDOW_MS = 4000
+/**
+ * End of the SSH stage's time window in ms: the TCP budget plus the ssh
+ * connect timeout (4s + 5s). Past this the probe is reading the GPU table.
+ */
+export const PROBE_SSH_WINDOW_MS = 9000
+
+/**
+ * The probe stage the panel should DISPLAY after `elapsedMs` of an in-flight
+ * probe, derived from the host's per-stage timeouts (pure client-side
+ * inference — the host only reports the stage once the probe settles).
+ */
+export function probeStageOf(elapsedMs: number): ProbeStage {
+  if (elapsedMs < PROBE_TCP_WINDOW_MS) return 'tcp'
+  if (elapsedMs < PROBE_SSH_WINDOW_MS) return 'ssh'
+  return 'gpu'
+}
+
+/** Locale key of one in-flight probe stage's progress label. */
+export const PROBE_STAGE_KEYS: Record<ProbeStage, ResearchKey> = {
+  tcp: 'servers.probe.stage.tcp',
+  ssh: 'servers.probe.stage.ssh',
+  gpu: 'servers.probe.stage.gpu',
+}
+
+/** Locale key of one settled probe's per-stage failure label (the host's `stage`). */
+export const PROBE_FAILURE_KEYS: Record<ProbeStage, ResearchKey> = {
+  tcp: 'servers.probe.fail.tcp',
+  ssh: 'servers.probe.fail.ssh',
+  gpu: 'servers.probe.fail.gpu',
 }
 
 /** Filter the server list by one active tag; a null selector passes everything. */

@@ -3302,3 +3302,19 @@ li.dropIndicator {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* feat/probe-progress: the in-flight probe's staged progress line — the stage
+   label painted in the in-progress (business) color, the worst-case ETA hint
+   in the tertiary label color, and the settled per-stage failure label. */
+.serverProbeStage {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.serverProbeEta {
+  margin-left: 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+}
+
+.serverProbeFailStage {
+  font-weight: 600;
+}
