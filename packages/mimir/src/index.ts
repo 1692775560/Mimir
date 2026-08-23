@@ -1,8 +1,8 @@
 /**
  * Research-assistant plugin suite: an arXiv literature surface, a persistent
  * research wiki (papers / ideas / claims / projects), a LaTeX compile tool,
- * and an independent fresh-reviewer loop — the ARIS workflow mechanisms as
- * one dsh-native plugin.
+ * nine bundled research-workflow skills, and an independent fresh-reviewer
+ * loop — the ARIS workflow mechanisms as one dsh-native plugin.
  * @module dsh-mimir
  */
 
@@ -27,6 +27,7 @@ import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
 import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
+import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
@@ -100,6 +101,7 @@ export { convertSvgFigure, svgConverterNames, svgProductName, whichOnPath, SVG_C
 export type { SvgConversion, SvgConversionDeps, SvgConverterKind, SvgConverterSpec, SvgRunner } from './svg-convert.ts'
 export { ResearchService } from './service.ts'
 export type { ResearchServiceConfig } from './service.ts'
+export { BUNDLED_SKILLS, registerResearchSkills } from './skills.ts'
 export {
   ARXIV_SUBSCRIPTIONS_FILE,
   ARXIV_SUBSCRIPTION_CHECK_RESULTS,
@@ -210,6 +212,15 @@ export interface Config {
      */
     dir?: string
   }
+  /** Bundled research-skill registration knobs. */
+  skills?: {
+    /**
+     * Master switch (default true); false skips registering the nine bundled
+     * research skills into the composition's skill registry. Registrations
+     * only happen when a `skills` service is mounted at all.
+     */
+    enabled?: boolean
+  }
 }
 
 /** Schemastery configuration for the research suite. */
@@ -240,6 +251,9 @@ export const Config: z<Config> = z.object({
     keep: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(24),
     dir: z.string().default('backups'),
   }).default({ enabled: true, intervalMinutes: 60, keep: 24, dir: 'backups' }),
+  skills: z.object({
+    enabled: z.boolean().default(true),
+  }).default({ enabled: true }),
 })
 
 /** Fully defaulted config view used by tools and commands. */
@@ -259,6 +273,7 @@ interface ResolvedConfig {
     readonly keep: number
     readonly dir: string
   }
+  readonly skills: { readonly enabled: boolean }
 }
 
 /** Validate defaults even when a caller invokes apply() without Loader normalization. */
@@ -278,6 +293,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     keep: config.backup?.keep ?? 24,
     dir: config.backup?.dir ?? 'backups',
   }
+  const skills = { enabled: config.skills?.enabled ?? true }
   if (workspaceDir.trim().length === 0) throw new TypeError('workspaceDir must be a non-empty path')
   if (reviewer.provider.trim().length === 0) throw new TypeError('reviewer.provider must be a non-empty provider name')
   if (!Number.isSafeInteger(reviewer.maxRounds) || reviewer.maxRounds < 1) throw new TypeError('reviewer.maxRounds must be a positive safe integer')
@@ -288,7 +304,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, zotero, subscriptions, backup }
+  return { workspaceDir, reviewer, latex, arxiv, zotero, subscriptions, backup, skills }
 }
 
 /**
@@ -582,6 +598,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   registerPlanCommand(ctx, deps)
   registerReviewCommand(ctx, deps)
   registerPaperCommands(ctx, deps)
+
+  // Bundled research skills: runtime contributions to the composition's
+  // skill registry when one is mounted (ctx.inject makes the dependency
+  // optional — bare compositions load the suite without it).
+  if (resolved.skills.enabled) {
+    registerResearchSkills(ctx)
+  }
 
   // Scheduled wiki backup: first pass one minute after start (startup stays
   // fast), then every intervalMinutes; failures warn and the loop retries

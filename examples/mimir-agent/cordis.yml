@@ -22,3 +22,5 @@
           intervalMinutes: 60         # backup cadence (first pass 1 min after start)
           keep: 24                    # keep the newest N backups, prune the rest
           dir: backups                # backup directory, resolved against workspaceDir
+        skills:
+          enabled: true               # register the nine bundled research skills into the agent's skill catalog
