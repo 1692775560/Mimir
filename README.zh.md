@@ -38,18 +38,17 @@ GIF 预览会自动循环播放。点击 GIF 或上方链接即可观看完整�
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、主张、实验、项目） |
 | `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块（机器上有可用转换器时 SVG 会自动转换为 PDF，兜底为 PNG） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
-| `figure_save` | 保存生成图、记录 caption/实验关联、登记项目工件并返回 LaTeX 片段 |
 
 **Web 工作台（六视图）**——侧栏开关打开 96vw×95vh 浮层：
 
-- **总览**——流水线阶段进度、统计芯片、工件清单，以及数据卡片：把整个 wiki 导出/导入为一份带日期的 JSON 快照（合并跳过已存在主键；替换会先清空，有红字二次确认）。
-- **论文**——大纲栏顶层章节可拖拽重排、`main.tex` 自动保存编辑器带 LaTeX 语法高亮、一键编译、点击跳源码行的错误列表、内嵌 PDF 预览、`references.bib` 面板；分栏可调宽、可全屏、布局持久化。
-- **文献**——已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`。
-- **实验**——运行记录：指标对比条形图（内联 SVG）、可展开指标、新增/编辑内联表单（指标键值对编辑器、服务器关联）、服务器关联 badge 内联换绑，以及渲染后的 `EXPERIMENT_LOG.md`。
+- **总览**——流水线阶段进度、统计芯片、工件清单、最近动态卡片（最近远程任务与实验运行，带状态徽标和相对时间），以及数据卡片：把整个 wiki 导出/导入为一份带日期的 JSON 快照（合并跳过已存在主键；替换会先清空，有红字二次确认）。
+- **论文**——大纲栏顶层章节可拖拽重排、`main.tex` 自动保存编辑器带 LaTeX 语法高亮（窗口化渲染，几千行文件也流畅）、一键编译、点击跳源码行的错误列表（每条带「让 AI 修」按钮，把错误和源码上下文发给当前会话的 agent）、内嵌 PDF 预览、`references.bib` 面板；编辑器头部常显当前项目名；分栏可调宽、可全屏、布局持久化。
+- **文献**——已收录论文：可编辑标签、按项目关联、标签/当前项目筛选栏、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`，以及一键「生成 related work 草稿」——把筛选出的文献（标题、摘要、笔记、引用键）连同写作要求发给 agent。
+- **实验**——运行记录：指标对比条形图（内联 SVG）、可展开指标、新增/编辑内联表单（指标键值对编辑器、服务器关联）、服务器关联 badge 内联换绑、远程任务结束后自动回写的「最近任务」徽标、任意对比图一键「生成论文图」，以及渲染后的 `EXPERIMENT_LOG.md`。
 - **图表**——论文目录图片网格：预览、上传（按钮或拖拽）、删除、复制 LaTeX 引用、插入论文（SVG 卡片会先在宿主侧自动转换为 PDF/PNG）；经 `figure_save` 入库的图会显示 caption 和关联实验徽标。
-- **服务器**——登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；任务区块可经 SSH 提交远程命令（queued → running → succeeded/failed 实时轮询、stdout/stderr 尾部可展开、可关联实验记录并联动其状态）。
+- **服务器**——登记的 GPU 机器：TCP 连通性探测 + 尽力而为的 SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；任务区块可经 SSH 提交远程命令（queued → running → succeeded/failed 实时轮询、stdout/stderr 尾部可展开、可关联实验记录并联动其状态，settle 时把结果/耗时/日志尾部写回实验记录）。
 
-面板头部带深色/浅色主题切换和中/EN 语言切换；快捷键：`1–6` 切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译。窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
+面板头部带深色/浅色主题切换和中/EN 语言切换；快捷键：`1–6` 或方向键切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译。对话框有焦点陷阱，所有控件带可见焦点环；窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
 
 | 深色模式：总览 | 深色模式：论文 | 论文：窄屏 tab 布局 |
 | --- | --- | --- |
@@ -172,7 +171,7 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 ### 总览
 
-落地视图：所选项目的五阶段流水线进度、统计芯片（文献/实验/图表/服务器）、工件清单与时间戳。**数据卡片**显示自动备份状态（周期、保留份数、已备份份数），并可以把整个 wiki 导出为一份带日期的 JSON 快照（`mimir-wiki-<日期>.json`）用于备份或迁移，也可以导入回放：选择文件（`<workspaceDir>/backups/` 下的自动备份可直接选）、确认逐表行数摘要，然后选合并（已存在主键跳过、绝不覆盖）或替换（先清空七张表——有红字二次确认）。导入成功后会刷新所有已加载的视图，并用 toast 汇报导入/跳过总数。
+落地视图：所选项目的五阶段流水线进度、统计芯片（文献/实验/图表/服务器）、工件清单与时间戳。**最近动态**卡片并列展示最近 5 条远程任务（命令、状态徽标、相对时间）和最近 5 条实验运行。**数据卡片**显示自动备份状态（周期、保留份数、已备份份数），并可以把整个 wiki 导出为一份带日期的 JSON 快照（`mimir-wiki-<日期>.json`）用于备份或迁移，也可以导入回放：选择文件（`<workspaceDir>/backups/` 下的自动备份可直接选）、确认逐表行数摘要，然后选合并（已存在主键跳过、绝不覆盖）或替换（先清空七张表——有红字二次确认）。导入成功后会刷新所有已加载的视图，并用 toast 汇报导入/跳过总数。
 
 | 总览 | 总览：wiki 导出/导入 |
 | --- | --- |
@@ -180,7 +179,7 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 ### 论文
 
-项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号、一键编译（标注引擎）、点击跳源码行的错误列表、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
+项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号（高亮层和行号都按可视区窗口化渲染，几千行的论文也保持流畅）、一键编译（标注引擎）、点击跳源码行的错误列表（每条还带**「让 AI 修」**按钮——把该 issue、带行号的 ±3 行源码窗口和修复要求组装成 prompt 发给当前会话的 agent）、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。编辑器头部常显当前项目名——多项目并行时一眼确认在改哪篇。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
 
 | 论文：语法高亮 | 论文：编译问题 | 论文：点击跳源码行 |
 | --- | --- | --- |
@@ -192,7 +191,7 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 ### 文献
 
-每一篇收录论文都是一张卡片（摘要默认三行折叠）：可编辑标签、按项目关联、标签/当前项目筛选栏，以及面板内 arXiv 搜索——一键把结果导入 wiki，再一键追加到项目的 `references.bib`。
+每一篇收录论文都是一张卡片（摘要默认三行折叠）：可编辑标签、按项目关联、标签/当前项目筛选栏，以及面板内 arXiv 搜索——一键把结果导入 wiki，再一键追加到项目的 `references.bib`。工具栏的**「生成 related work 草稿」**按钮把当前筛选出的文献（标题、摘要、你的笔记、引用键）发给当前会话的 agent，要求按主题组织成 `\section{Related Work}`、`\cite` 恰好覆盖这些键、缺失条目补进 `references.bib`，并重新编译直到干净。
 
 | 文献 | 文献：标签 | 文献：arXiv 搜索 |
 | --- | --- | --- |
@@ -200,7 +199,7 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 
 ### 实验
 
-wiki 中的运行记录：每行状态徽标、≥2 个 run 共享的数值指标对比条形图、逐 run 可展开指标、服务器关联 badge 内联下拉换绑、行编辑/删除。工具栏的**新增实验**打开内联表单（名称、状态、指标键值对行编辑器——能解析成数字的值存为数字——、可选服务器关联），走 `saveExperiment` Remote upsert；行内**编辑**按钮回填同一表单。表格下方是用内置受限 Markdown 渲染器渲染的 `EXPERIMENT_LOG.md`（标题、强调、代码、代码块、列表、引用、分隔线、表格、链接——非 http(s) 的链接一律中性化为纯文本）。
+wiki 中的运行记录：每行状态徽标、≥2 个 run 共享的数值指标对比条形图、逐 run 可展开指标、服务器关联 badge 内联下拉换绑、行编辑/删除。每张对比图带**「生成论文图」**按钮：渲染成独立矢量 SVG 条形图、存进论文 `figures/`（wiki 登记自动 caption）、自动转换后把现成的 `\begin{figure}` 块插进 `main.tex`。关联的远程任务 settle 时，行内**「最近任务」**徽标显示结果、耗时和完成时间（悬浮看日志尾部），同一结果也会追加到 `EXPERIMENT_LOG.md`。工具栏的**新增实验**打开内联表单（名称、状态、指标键值对行编辑器——能解析成数字的值存为数字——、可选服务器关联），走 `saveExperiment` Remote upsert；行内**编辑**按钮回填同一表单。表格下方是用内置受限 Markdown 渲染器渲染的 `EXPERIMENT_LOG.md`（标题、强调、代码、代码块、列表、引用、分隔线、表格、链接——非 http(s) 的链接一律中性化为纯文本）。
 
 | 实验 |
 | --- |
@@ -310,7 +309,7 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 
 目录结构：
 
-- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、`research` Remote 命名空间（27 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
+- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、`research` Remote 命名空间（36 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
 - `packages/ui-mimir`——浏览器工作台（`dsh-client-ui-mimir`）：侧栏开关 + 浮层面板。
 - `packages/typert-protocol`——Typert 协议的 vendored 源码副本，从不发布（见下）。
 - `examples/mimir-agent`——快速上手使用的 cordis patch。
@@ -326,6 +325,29 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 - `packages/typert-protocol` 是 `@deepseek-ai/dsh-typert-protocol@0.1.0-rc.8` 的 **vendored、从不发布**的源码副本：Typert 生成器只识别 workspace 注册包内声明的 `Remote` 元数据，因此协议必须在仓内编译。运行时消费者仍然解析 npm 发布版。
 - Typert 生成运行在**按贡献者过滤的 workspace 模式**（`packages/mimir/tsdown.config.ts` 里 `mode: 'workspace'`）：只有暴露 `./typert`/`./remote` 入口的包——仅 dsh-mimir——会被建模。默认的包模式会连带分析 vendored 协议，而后者在被 npm 发布版增强的 Typert map 接口上会失败（session/agent 有意保持为 npm 外部依赖，正是为了让它们的类型永不展开）。
 - `build/client-preset/` vendored 了 dsh 客户端打包的 tsdown 预设（闭包工厂浏览器产物 + lightningcss 流水线），裁剪到本仓库所需的范围。
+
+## 更新日志
+
+### 0.4.0
+
+- 文献：一键**生成 related work 草稿**——把筛选出的文献（标题、摘要、笔记、引用键）连同主题写作与引用要求发给会话 agent。
+- 实验：任意指标对比图一键**生成论文图**——独立矢量 SVG，经新 Remote `saveFigure` 存进 `figures/`，自动转换并插入 `main.tex`。
+- 论文：编辑器头部常显**当前项目名**。
+
+### 0.3.0
+
+- 图表：**插入论文**——现成的 `\begin{figure}` 块（caption、净化 label）落到 `\end{document}` 前，带重复检测与跳转；**SVG 自动转换**为 PDF（rsvg-convert/inkscape/magick）或 PNG（macOS `qlmanage` 兜底），`figure_save` 工具同样支持。
+- 论文：每条编译 issue 带**「让 AI 修」**按钮，把错误和源码上下文发给会话 agent。
+- 实验：远程任务 settle 后自动**回写**关联实验——状态翻转、结果/耗时/日志尾部徽标、`EXPERIMENT_LOG.md` 追加一行。
+
+### 0.2.0
+
+- `figure_save` 工具与 wiki `figures` 元数据表（caption、关联实验）。
+- 工作台美化：可折叠大纲栏、项目名两行显示、卡片徽章自适应、指标标签折行、图表网格加密。
+
+### 0.2.x / 0.1.x
+
+- 编辑器高亮层与行号按可视区窗口化（大文件流畅）；深色模式原生表单控件适配；键盘导航、焦点陷阱与 ARIA 审查；大纲子章节拖拽；文献 PDF 抓取与内嵌阅读器；实验内联表单；SSH 远程任务；wiki 备份/导出/导入。
 
 ## 致谢
 
