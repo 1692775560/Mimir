@@ -124,8 +124,8 @@ export class ResearchService extends TypertRemoteService {
       workspaceDir: config.workspaceDir,
       domain: config.domain,
       latex: config.latex,
-      backup: config.backup,
-      svg: config.svg,
+      ...(config.backup === undefined ? {} : { backup: config.backup }),
+      ...(config.svg === undefined ? {} : { svg: config.svg }),
     }
     this.state = { compileStatus: new Map(), jobSeq: 0 }
   }
