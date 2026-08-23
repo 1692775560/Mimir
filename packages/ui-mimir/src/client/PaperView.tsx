@@ -18,10 +18,11 @@
  */
 
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
+import type { BibEntry, OutlineNode, PaperSnapshotView, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
-  ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchSourceView,
+  ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchProjectSlice,
+  ResearchSnapshotDetailView, ResearchSourceView,
 } from './controller.ts'
 import { wrapIndex } from './focus.ts'
 import { buildCompileFixPrompt } from './compile-fix.ts'
@@ -36,6 +37,7 @@ import type { PaperFullscreen } from './store.ts'
 import { failureCopy, lineRangeOf, outlineSectionTitles, SAVE_KEYS, sectionMoveFromDrop, subsectionMoveFromDrop } from './view-common.ts'
 import type { ResearchT, SubsectionDrag } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
+import { SnapshotsPanel } from './SnapshotsPanel.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Editor line height in px (re-exported name kept local to the jump math). */
@@ -288,7 +290,8 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
 export function PaperView({
   outline, compileView, source, projectId, projectTitle, dir, editSource, reloadSource, compile, requestCompileFix,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
-  ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen, t,
+  ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen,
+  snapshots, snapshotDetail, loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot, t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -330,6 +333,14 @@ export function PaperView({
   /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
   readonly fullscreen: PaperFullscreen | null
   readonly setFullscreen: (pane: PaperFullscreen | null) => void
+  /** The selected project's snapshot list; null until the snapshots panel first opens. */
+  readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
+  /** The snapshot expanded for diffing; null when closed. */
+  readonly snapshotDetail: ResearchSnapshotDetailView | null
+  readonly loadSnapshots: (projectId: string, force?: boolean) => void
+  readonly loadSnapshotDetail: (projectId: string, id: string) => void
+  readonly closeSnapshotDetail: () => void
+  readonly revertSnapshot: (projectId: string, id: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
@@ -344,6 +355,9 @@ export function PaperView({
   const [flashLine, setFlashLine] = useState<number | null>(null)
   // The bibliography panel replaces the PDF preview while open.
   const [bibOpen, setBibOpen] = useState(false)
+  // The snapshots panel replaces the PDF preview while open (mutually
+  // exclusive with the bib panel).
+  const [snapOpen, setSnapOpen] = useState(false)
   // The last rejected section reorder, surfaced in the rail.
   const [reorderError, setReorderError] = useState<ResearchFailureView | null>(null)
   // The issue row whose fix prompt is in flight (one send at a time).
@@ -367,6 +381,7 @@ export function PaperView({
   // for the new project on the next open.
   useEffect(() => {
     setBibOpen(false)
+    setSnapOpen(false)
     setFullscreen(null)
     setReorderError(null)
   }, [projectId, setFullscreen])
@@ -892,9 +907,26 @@ export function PaperView({
             disabled={projectId === null}
             data-active={bibOpen || undefined}
             aria-pressed={bibOpen}
-            onClick={() => { setBibOpen(prev => !prev) }}
+            onClick={() => {
+              setBibOpen(prev => !prev)
+              setSnapOpen(false)
+            }}
           >
             {bibOpen ? t('bib.close') : t('bib.open')}
+          </button>
+          <button
+            type="button"
+            className={css.snapToggle}
+            disabled={projectId === null}
+            data-active={snapOpen || undefined}
+            aria-pressed={snapOpen}
+            onClick={() => {
+              setSnapOpen(prev => !prev)
+              setBibOpen(false)
+              if (snapOpen) closeSnapshotDetail()
+            }}
+          >
+            {snapOpen ? t('snapshots.close') : t('snapshots.open')}
           </button>
           {!narrow && (
             <button
@@ -962,7 +994,25 @@ export function PaperView({
               t={t}
             />
           )
-          : pdfUrl === null
+          : snapOpen && projectId !== null
+            ? (
+              <SnapshotsPanel
+                snapshots={snapshots}
+                snapshotDetail={snapshotDetail}
+                source={source}
+                projectId={projectId}
+                loadSnapshots={loadSnapshots}
+                loadSnapshotDetail={loadSnapshotDetail}
+                closeSnapshotDetail={closeSnapshotDetail}
+                revertSnapshot={revertSnapshot}
+                onClose={() => {
+                  setSnapOpen(false)
+                  closeSnapshotDetail()
+                }}
+                t={t}
+              />
+            )
+            : pdfUrl === null
             ? (
               <div className={css.previewEmpty}>
                 <span className={css.emptyGlyph} aria-hidden>📄</span>

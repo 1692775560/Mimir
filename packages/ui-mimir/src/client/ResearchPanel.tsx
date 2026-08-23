@@ -125,6 +125,7 @@ export function ResearchPanel({
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
+  loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -148,6 +149,8 @@ export function ResearchPanel({
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
   const bib = useResearch(view => view.bib)
+  const snapshots = useResearch(view => view.snapshots)
+  const snapshotDetail = useResearch(view => view.snapshotDetail)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
@@ -415,6 +418,12 @@ export function ResearchPanel({
             consumePaperJump={consumePaperJump}
             fullscreen={paperFullscreen}
             setFullscreen={actions.setPaperFullscreen}
+            snapshots={snapshots}
+            snapshotDetail={snapshotDetail}
+            loadSnapshots={loadSnapshots}
+            loadSnapshotDetail={loadSnapshotDetail}
+            closeSnapshotDetail={closeSnapshotDetail}
+            revertSnapshot={revertSnapshot}
             t={t}
           />
         )}
