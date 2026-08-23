@@ -551,6 +551,68 @@ export type ResearchImportBibResult = ResearchResult<{
   readonly skipped: readonly string[]
 }>
 
+/** One Zotero collection as the panel lists it. */
+export interface ZoteroCollectionView {
+  readonly key: string
+  readonly name: string
+  readonly itemCount: number
+}
+
+/** One Zotero item reduced to the fields the literature workbench shows. */
+export interface ZoteroItemView {
+  readonly key: string
+  readonly title: string
+  /** Display names of the item's creators, in order. */
+  readonly authors: readonly string[]
+  /** Four-digit publication year, or '' when the date does not carry one. */
+  readonly year: string
+  /** DOI, or '' when the item has none. */
+  readonly doi: string
+  /** Bare arXiv id recovered from `extra`/`url`, or null when absent. */
+  readonly arxivId: string | null
+  /** Journal/proceedings title, or '' for item types without one. */
+  readonly publicationTitle: string
+  /** Best external link: the item URL, else the DOI resolver link, else ''. */
+  readonly url: string
+}
+
+/** The settled outcome of one `checkZotero` probe. */
+export interface ZoteroStatusView {
+  /**
+   * `unconfigured` when the plugin config carries no API key/user id,
+   * `ok` when the API accepted the credentials, `failed` otherwise.
+   */
+  readonly state: 'unconfigured' | 'ok' | 'failed'
+  /** Failure reason when the state is `failed`; absent otherwise. */
+  readonly message?: string | undefined
+}
+
+/** `checkZotero` result: the settled connection status (never a business failure). */
+export type ResearchCheckZoteroResult = ResearchResult<ZoteroStatusView>
+
+/** `listZoteroCollections` result: every collection of the configured user library. */
+export type ResearchZoteroCollectionsResult = ResearchResult<{
+  readonly collections: readonly ZoteroCollectionView[]
+}>
+
+/** `searchZotero` result: the parsed items matching the query. */
+export type ResearchZoteroSearchResult = ResearchResult<{
+  readonly results: readonly ZoteroItemView[]
+}>
+
+/** `importZoteroItem` result: whether the paper was newly imported, plus its papers-table id. */
+export type ResearchZoteroImportResult = ResearchResult<{
+  readonly imported: boolean
+  /** The papers-table key: the bare arXiv id, or `zotero-<item key>` for arXiv-less items. */
+  readonly paperId: string
+}>
+
+/** `exportZoteroCollectionToBib` result: appended and already-present citation keys. */
+export type ResearchZoteroExportResult = ResearchResult<{
+  readonly added: readonly string[]
+  readonly skipped: readonly string[]
+}>
+
 /** The seven research-wiki tables, in domain order (the runtime-only `jobs` table is excluded). */
 export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers' | 'figures'
 

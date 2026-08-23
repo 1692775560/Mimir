@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 45 `@Remote` signatures intact, and forwards every method body to a
+ * all 50 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -62,6 +62,11 @@ import type {
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
+  ResearchCheckZoteroResult,
+  ResearchZoteroCollectionsResult,
+  ResearchZoteroExportResult,
+  ResearchZoteroImportResult,
+  ResearchZoteroSearchResult,
   SectionMove,
   SectionOutlineTitles,
   ServerInput,
@@ -70,6 +75,7 @@ import type {
 import * as paper from './services/paper.ts'
 import * as paperSnapshots from './services/paper-snapshots.ts'
 import * as library from './services/library.ts'
+import * as zotero from './services/zotero.ts'
 import * as subscriptions from './services/subscriptions.ts'
 import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
@@ -107,11 +113,21 @@ export interface ResearchServiceConfig {
    * process runner apply.
    */
   readonly svg?: SvgConversionDeps
+  /**
+   * Resolved Zotero Web API credentials; absent (or empty) disables the
+   * integration — every Zotero Remote method then rejects `invalid-input`
+   * (`checkZotero` reports `unconfigured`). The key is a secret: it only
+   * ever reaches the API as a header.
+   */
+  readonly zotero?: {
+    readonly apiKey: string
+    readonly userId: string
+  }
 }
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 45 `@Remote` signatures; every method
+ * `research` Remote namespace and all 50 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -135,6 +151,7 @@ export class ResearchService extends TypertRemoteService {
       latex: config.latex,
       ...(config.backup === undefined ? {} : { backup: config.backup }),
       ...(config.svg === undefined ? {} : { svg: config.svg }),
+      ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
     }
     this.state = { compileStatus: new Map(), jobSeq: 0 }
   }
@@ -185,6 +202,36 @@ export class ResearchService extends TypertRemoteService {
   @Remote('fetchPaperPdf')
   fetchPaperPdf(request: { arxivId: string }): Promise<ResearchFetchPaperPdfResult> {
     return library.fetchPaperPdf(this.deps, request)
+  }
+
+  // zotero domain: read-only bridge to a configured Zotero user library
+  @Remote('checkZotero')
+  checkZotero(): Promise<ResearchCheckZoteroResult> {
+    return zotero.checkZotero(this.deps)
+  }
+
+  @Remote('listZoteroCollections')
+  listZoteroCollections(): Promise<ResearchZoteroCollectionsResult> {
+    return zotero.listZoteroCollections(this.deps)
+  }
+
+  @Remote('searchZotero')
+  searchZotero(request: { query: string; maxResults?: number }): Promise<ResearchZoteroSearchResult> {
+    return zotero.searchZotero(this.deps, request)
+  }
+
+  @Remote('importZoteroItem')
+  importZoteroItem(request: { key: string }): Promise<ResearchZoteroImportResult> {
+    return zotero.importZoteroItem(this.deps, request)
+  }
+
+  @Remote('exportZoteroCollectionToBib')
+  exportZoteroCollectionToBib(request: {
+    projectId: string
+    collectionKey: string
+    dir?: string | undefined
+  }): Promise<ResearchZoteroExportResult> {
+    return zotero.exportZoteroCollectionToBib(this.deps, request)
   }
 
   // subscription domain: arXiv new-paper checks (pure filesystem storage)

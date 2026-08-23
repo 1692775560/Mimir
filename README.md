@@ -341,7 +341,7 @@ pnpm run typecheck   # tsc -b both packages; assumes a prior build (ui-mimir
 
 Layout:
 
-- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (45 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
+- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (50 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
 - `packages/ui-mimir` — the browser workbench (`dsh-client-ui-mimir`): sidebar toggle + overlay panel.
 - `packages/typert-protocol` — vendored, never-published source copy of the Typert protocol (see below).
 - `examples/mimir-agent` — the cordis patch used in the Quickstart.

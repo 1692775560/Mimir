@@ -34,6 +34,7 @@ import type {
   ResearchBibliographyResult,
   ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
+  ResearchCheckZoteroResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
@@ -75,16 +76,22 @@ import type {
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
+  ResearchZoteroCollectionsResult,
+  ResearchZoteroExportResult,
+  ResearchZoteroImportResult,
+  ResearchZoteroSearchResult,
   SectionMove,
   SectionOutlineTitles,
   ServerInput,
   ServerRecord,
   ServerStatusView,
   SubsectionMove,
+  ZoteroCollectionView,
+  ZoteroItemView,
 } from 'dsh-mimir/types'
 
 /**
- * The forty Remote calls this controller needs, exactly as the
+ * The Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -110,6 +117,15 @@ export interface ResearchRemote {
     notes?: string | undefined
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
   fetchPaperPdf: (request: { arxivId: string }) => Promise<RemoteResult<ResearchFetchPaperPdfResult>>
+  checkZotero: () => Promise<RemoteResult<ResearchCheckZoteroResult>>
+  listZoteroCollections: () => Promise<RemoteResult<ResearchZoteroCollectionsResult>>
+  searchZotero: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchZoteroSearchResult>>
+  importZoteroItem: (request: { key: string }) => Promise<RemoteResult<ResearchZoteroImportResult>>
+  exportZoteroCollectionToBib: (request: {
+    projectId: string
+    collectionKey: string
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchZoteroExportResult>>
   listArxivSubscriptions: () => Promise<RemoteResult<ResearchArxivSubscriptionsResult>>
   saveArxivSubscription: (request: { query: string }) => Promise<RemoteResult<ResearchSaveArxivSubscriptionResult>>
   deleteArxivSubscription: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteArxivSubscriptionResult>>
@@ -253,6 +269,26 @@ export interface ResearchArxivSearchView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The papers view's Zotero section: connection status plus the collection list. */
+export interface ResearchZoteroView {
+  readonly status: ResearchLoadStatus
+  /** The settled probe outcome; null while the first check is still cold. */
+  readonly state: 'unconfigured' | 'ok' | 'failed' | null
+  /** The probe's failure reason (state `failed`); null otherwise. */
+  readonly message: string | null
+  /** The configured library's collections; empty until a successful check loads them. */
+  readonly collections: readonly ZoteroCollectionView[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The Zotero search panel: the last query's outcome (null before any search). */
+export interface ResearchZoteroSearchView {
+  readonly query: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly list: readonly ZoteroItemView[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** The arXiv subscription bar of the papers view. */
 export interface ResearchSubscriptionsView {
   readonly status: ResearchLoadStatus
@@ -341,6 +377,10 @@ export interface ResearchView {
   readonly arxivSearch: ResearchArxivSearchView | null
   /** The papers view's arXiv subscription bar. */
   readonly arxivSubscriptions: ResearchSubscriptionsView
+  /** The papers view's Zotero section (connection status plus collections). */
+  readonly zotero: ResearchZoteroView
+  /** The Zotero section's search outcome; null before the first search. */
+  readonly zoteroSearch: ResearchZoteroSearchView | null
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
@@ -375,6 +415,10 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   arxivSubscriptions: Object.freeze({
     status: 'cold', list: Object.freeze([]), checking: false, failure: null, checkErrors: Object.freeze({}),
   }),
+  zotero: Object.freeze({
+    status: 'cold', state: null, message: null, collections: Object.freeze([]), failure: null,
+  }),
+  zoteroSearch: null,
   experiments: null,
   artifact: null,
   figures: null,
@@ -416,6 +460,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   private backupPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
   private subscriptionsPromise: Promise<void> | null = null
+  private zoteroPromise: Promise<void> | null = null
+  private zoteroGeneration = 0
   private serversPromise: Promise<void> | null = null
   private jobsPromise: Promise<void> | null = null
   private outlineGeneration = 0
@@ -1344,6 +1390,166 @@ export class ResearchController implements HostObservable<ResearchView> {
       await this.loadPapers()
       this.notify('success', 'toast.pdfFetched')
       return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Probe the Zotero connection once, on the papers view's first open; a
+   * successful probe also loads the collection list. A failed or unconfigured
+   * probe stays retryable through {@link recheckZotero}.
+   */
+  ensureZotero(): void {
+    if (this.view.zotero.status === 'ready' || this.zoteroPromise !== null) return
+    this.zoteroPromise = this.loadZotero().finally(() => { this.zoteroPromise = null })
+  }
+
+  /** Re-probe the Zotero connection (the section's retry entry). */
+  recheckZotero(): void {
+    this.zoteroPromise ??= this.loadZotero().finally(() => { this.zoteroPromise = null })
+  }
+
+  /** Run the connection probe; on `ok` follow it with the collection list. */
+  private async loadZotero(): Promise<void> {
+    const publishZotero = (view: ResearchZoteroView): void => {
+      if (this.disposed) return
+      this.publish({ zotero: Object.freeze(view) })
+    }
+    publishZotero({ status: 'loading', state: null, message: null, collections: [], failure: null })
+    try {
+      const carried = await this.remote.checkZotero()
+      if (!carried.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: failureOf(carried.error.code, carried.error.message),
+        })
+        return
+      }
+      const probe = carried.value
+      if (!probe.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: businessFailure(probe.error),
+        })
+        return
+      }
+      const status = probe.value
+      if (status.state !== 'ok') {
+        publishZotero({
+          status: 'ready', state: status.state, message: status.message ?? null,
+          collections: [], failure: null,
+        })
+        return
+      }
+      const listed = await this.remote.listZoteroCollections()
+      if (!listed.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: failureOf(listed.error.code, listed.error.message),
+        })
+        return
+      }
+      if (!listed.value.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: businessFailure(listed.value.error),
+        })
+        return
+      }
+      publishZotero({ status: 'ready', state: 'ok', message: null, collections: listed.value.value.collections, failure: null })
+    } catch (error) {
+      publishZotero({ status: 'error', state: null, message: null, collections: [], failure: transportFailure(error) })
+    }
+  }
+
+  /**
+   * Search the configured Zotero library from the papers view; the outcome
+   * lands in the view's `zoteroSearch` slice. A superseded query never
+   * publishes.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchZotero(query: string): void {
+    const trimmed = query.trim()
+    if (trimmed === '') return
+    this.zoteroGeneration += 1
+    const generation = this.zoteroGeneration
+    this.publish({
+      zoteroSearch: Object.freeze({ query: trimmed, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSearch = (view: ResearchZoteroSearchView): void => {
+        if (this.disposed || generation !== this.zoteroGeneration) return
+        this.publish({ zoteroSearch: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.searchZotero({ query: trimmed })
+        if (!carried.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSearch({ query: trimmed, status: 'ready', list: result.value.results, failure: null })
+      } catch (error) {
+        publishSearch({ query: trimmed, status: 'error', list: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Import one Zotero item into the wiki, then refresh the literature list so
+   * the library grid and the item's imported state repaint. The failure view
+   * of a rejected import is returned so the row can surface it.
+   * @param key - the Zotero item key.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async importZoteroItem(key: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.importZoteroItem({ key })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      this.notify('success', 'toast.paperImported')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Export one Zotero collection into one project's `references.bib`, then
+   * repaint the open bib panel from the Host's authoritative file. The
+   * settled counts are returned so the invoking button shows its own feedback.
+   * @param projectId - wiki project id.
+   * @param collectionKey - the Zotero collection to export.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  async exportZoteroCollectionToBib(
+    projectId: string,
+    collectionKey: string,
+  ): Promise<ResearchFailureView | ResearchImportCounts> {
+    try {
+      const carried = await this.remote.exportZoteroCollectionToBib({
+        projectId, collectionKey, dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const counts = Object.freeze({ added: result.value.added, skipped: result.value.skipped })
+      if (this.disposed) return counts
+      this.notify('success', 'toast.bibImported', `× ${counts.added}`)
+      const bib = this.view.bib
+      if (bib !== null && bib.projectId === projectId && bib.status !== 'loading') {
+        this.publish({ bib: Object.freeze({ ...bib, lastImport: counts }) })
+        this.reloadBibliography()
+      }
+      return counts
     } catch (error) {
       return transportFailure(error)
     }
