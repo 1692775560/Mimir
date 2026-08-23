@@ -49,6 +49,24 @@ arXiv literature · persistent research wiki · experiments &amp; remote GPUs ·
 | `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block (SVG sources are auto-converted to PDF — PNG as the raster fallback — when a converter is available) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
 
+**Nine bundled research skills**
+
+When the host composition mounts a skill registry (the shipped web profile does), Mimir registers nine workflow playbooks into the agent's skill catalog — no setup needed. They encode the research methodology (what to persist in the wiki, which gate comes next) and drive the tools and commands above. A project-level skill with the same name overrides the bundled one, so teams can replace any playbook with their own.
+
+| Skill | Playbook |
+| --- | --- |
+| `research-pipeline` | End-to-end orchestration: ideation → novelty gate → literature → plan → experiments → claim gate → writing → review |
+| `research-lit-review` | Curated, noted literature base in the wiki via `arxiv_search` + `paper_fetch`; Zotero import and arXiv subscriptions when configured |
+| `research-novelty-check` | Verdict-bearing novelty gate — live searches from mechanism / application / result angles before any compute is spent |
+| `research-experiment-plan` | Claim-mapped run order with budgets, wiki experiment records, and Servers-tab feasibility |
+| `research-result-to-claim` | Post-experiment gate: which claims the results support / invalidate / leave pending, with the settling run named |
+| `research-paper-drafting` | Section-by-section LaTeX drafting with an immediate compile loop and supported-claims-only discipline |
+| `research-citation-audit` | Zero-trust bibliography audit: every .bib entry verified against live search, every citation earned |
+| `research-rebuttal` | Grounded, venue-limited rebuttal drafting from parsed reviewer concerns |
+| `research-figure-plan` | Claim-carrying figure design; reproducible production; filing through `figure_save` into the Figures tab |
+
+Disable them with `skills.enabled: false` (see the configuration reference).
+
 ### Web workbench — six views, one overlay
 
 A sidebar toggle opens a 96vw×95vh workbench:
@@ -286,6 +304,10 @@ The agent reaches the same capabilities mid-conversation:
 - `wiki_note` — the wiki's read/write surface, one flat parameter set keyed by `action`: `add_paper`, `add_idea`, `fail_idea`, `add_claim`, `set_claim`, `set_project` (points a project at its paper directory), `add_experiment`, `set_experiment` (status `running`/`success`/`failed`), plus `list` and `get` over the five tables.
 - `latex_compile` — "compile the paper in `paper/`" (`project_dir` parameter); returns parsed file/line diagnostics.
 
+### Bundled skills in practice
+
+The nine bundled skills need no invocation syntax — the agent's skill catalog routes to them from natural requests ("帮我查新一下这个想法", "audit the citations before we submit", "plan the ablations"). They are playbooks, not new capabilities: every step drives the same tools, commands, and wiki tables listed above, so everything a skill does stays visible in the workbench. To override one, drop a same-named `SKILL.md` in your project's skill roots — project entries outrank the bundled runtime ones.
+
 ## Configuration reference
 
 All keys are optional; these are the defaults from `packages/mimir/src/index.ts`:
@@ -302,6 +324,7 @@ All keys are optional; these are the defaults from `packages/mimir/src/index.ts`
 | `backup.intervalMinutes` | `60` | Backup cadence in minutes (positive integer); the first pass runs one minute after plugin start |
 | `backup.keep` | `24` | Keep the newest N backups, prune the rest (positive integer) |
 | `backup.dir` | `backups` | Backup directory, resolved against `workspaceDir` unless absolute |
+| `skills.enabled` | `true` | Register the nine bundled research skills into the composition's skill registry (when one is mounted); `false` skips registration |
 
 Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-agent/cordis.yml).
 

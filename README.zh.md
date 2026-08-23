@@ -49,6 +49,24 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 | `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块（机器上有可用转换器时 SVG 会自动转换为 PDF，兜底为 PNG） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
 
+**九个内置科研 skills**
+
+当宿主组合挂载了 skill registry（自带的 web profile 已挂载）时，Mimir 会向 agent 的 skill 目录注册九个工作流 playbook——零配置。它们沉淀的是科研方法论（何时把什么写进 wiki、下一道门槛是什么），驱动上面列出的工具与命令。项目级同名 skill 会覆盖内置版本，团队可以替换掉任何一个 playbook。
+
+| Skill | Playbook |
+| --- | --- |
+| `research-pipeline` | 端到端编排：立意 → 查新门槛 → 文献 → 计划 → 实验 → 主张门槛 → 写作 → 评审 |
+| `research-lit-review` | 经 `arxiv_search` + `paper_fetch` 在 wiki 中建带笔记的文献库；配置后可接 Zotero 导入与 arXiv 订阅 |
+| `research-novelty-check` | 带结论的查新门槛——花算力之前，从机理 / 应用 / 结果三个角度做实时检索 |
+| `research-experiment-plan` | 主张驱动、带预算的运行排序，落到 wiki 实验记录并对照服务器面板可行性 |
+| `research-result-to-claim` | 实验后门槛：结果支撑 / 推翻 / 搁置哪些主张，并指出能定夺的那一组实验 |
+| `research-paper-drafting` | 逐节 LaTeX 写作，随写随编译，只写已支撑的主张 |
+| `research-citation-audit` | 零信任参考文献审计：每条 .bib 记录实时检索验证，每处引用都要名副其实 |
+| `research-rebuttal` | 把审稿意见拆成原子关切，基于证据、在会议篇幅限制内起草回复 |
+| `research-figure-plan` | 设计能支撑主张的图，可复现地产出，并经 `figure_save` 归入图表面板 |
+
+可用 `skills.enabled: false` 关闭（见配置参考）。
+
 ### Web 工作台——六视图，一个浮层
 
 侧栏开关打开 96vw×95vh 工作台：
@@ -286,6 +304,10 @@ agent 在对话中途可以触达同一组能力：
 - `wiki_note`——wiki 的读写面，以 `action` 为键的一套扁平参数：`add_paper`、`add_idea`、`fail_idea`、`add_claim`、`set_claim`、`set_project`（把项目指向它的论文目录）、`add_experiment`、`set_experiment`（状态 `running`/`success`/`failed`），以及对五张表的 `list` 和 `get`。
 - `latex_compile`——“编译 `paper/` 里的论文”（`project_dir` 参数）；返回解析后的文件/行号诊断。
 
+### 内置 skills 实战
+
+九个内置 skill 不需要特殊调用语法——agent 的 skill 目录会从自然语言请求路由过去（“帮我查新一下这个想法”、“提交前审一遍引用”、“规划一下消融实验”）。它们是 playbook 而不是新能力：每一步驱动的都是上面列出的同一组工具、命令和 wiki 表，所以 skill 做的一切都在工作台里可见。要覆盖某一个，把同名 `SKILL.md` 放进项目的 skill 根目录即可——项目级条目优先于内置 runtime 条目。
+
 ## 配置参考
 
 所有键都可缺省；以下默认值来自 `packages/mimir/src/index.ts`：
@@ -302,6 +324,7 @@ agent 在对话中途可以触达同一组能力：
 | `backup.intervalMinutes` | `60` | 备份周期（分钟，正整数）；插件启动 1 分钟后做首次备份 |
 | `backup.keep` | `24` | 保留最近 N 份，超出裁剪（正整数） |
 | `backup.dir` | `backups` | 备份目录，相对 `workspaceDir` 解析（也接受绝对路径） |
+| `skills.enabled` | `true` | 把九个内置科研 skill 注册进组合的 skill registry（已挂载时）；`false` 跳过注册 |
 
 带注释的完整示例见 [examples/mimir-agent/cordis.yml](examples/mimir-agent/cordis.yml)。
 
