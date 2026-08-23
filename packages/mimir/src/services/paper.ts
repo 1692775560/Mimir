@@ -20,6 +20,7 @@ import {
 import { bibKeyOf, entryFromPaper, parseBibtex, serializeBibtex } from '../bibtex.ts'
 import { compileLatex } from '../tools/latex.ts'
 import type { LatexToolOptions } from '../tools/latex.ts'
+import { captureCompileSnapshot } from './paper-snapshots.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   BibEntry,
@@ -421,7 +422,9 @@ export async function importPapersToBib(
 
 /**
  * Compile the addressed project's paper directory once and record the
- * outcome.
+ * outcome. A successful run also captures the paper's `.tex`/`.bib` sources
+ * as a new snapshot under `<workspaceDir>/snapshots/<projectId>/` (kept to
+ * the newest 50); the capture is best-effort and never fails the compile.
  * @param deps - workspace root, open wiki domain, and LaTeX knobs.
  * @param state - the service's mutable compile-status map (read/write here).
  * @param request - the addressed project (omitted compiles the unkeyed
@@ -477,6 +480,12 @@ export async function compile(
       : previous.pdfUpdatedAt,
   })
   state.compileStatus.set(key, settled)
+  if (outcome.success && request.projectId !== undefined) {
+    // Best-effort: a snapshot I/O failure must never fail the compile it
+    // rides on. The unkeyed compile slot never snapshots (snapshots are
+    // per project).
+    await captureCompileSnapshot(deps, request.projectId, dir).catch(() => undefined)
+  }
   return success(settled)
 }
 

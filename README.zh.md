@@ -197,7 +197,7 @@ dsh plugin --profile web add "$PWD/packages/mimir"
 <details>
 <summary><strong>📝 论文</strong>——Overleaf 式工作室 · 让 AI 修 · PDF 实时预览</summary>
 
-项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号（高亮层和行号都按可视区窗口化渲染，几千行的论文也保持流畅）、一键编译（标注引擎）、点击跳源码行的错误列表（每条还带**「让 AI 修」**按钮——把该 issue、带行号的 ±3 行源码窗口和修复要求组装成 prompt 发给当前会话的 agent）、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。编辑器头部常显当前项目名——多项目并行时一眼确认在改哪篇。未再改动的草稿保存成功约 1.5 s 后自动编译。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
+项目论文目录的 Overleaf 式编辑器：可折叠大纲栏（顶层章节从行首手柄拖拽重排，重写 `main.tex` 的 `\section` 顺序）、自动保存的 `main.tex` 编辑器（约 800 ms 防抖、乐观并发——被顶掉的草稿会冻结并提供重载）带 LaTeX 语法高亮与同步行号（高亮层和行号都按可视区窗口化渲染，几千行的论文也保持流畅）、一键编译（标注引擎）、点击跳源码行的错误列表（每条还带**「让 AI 修」**按钮——把该 issue、带行号的 ±3 行源码窗口和修复要求组装成 prompt 发给当前会话的 agent）、内嵌 PDF 预览，以及覆盖 `references.bib` 的参考文献面板（删除条目、冲突安全保存、勾选文献库论文追加）。编辑器头部常显当前项目名——多项目并行时一眼确认在改哪篇。未再改动的草稿保存成功约 1.5 s 后自动编译。每次编译成功还会自动把论文的 `.tex`/`.bib` 源码存成快照（每项目保留最近 50 个，位于 `<workspaceDir>/snapshots/<projectId>/`）；「快照」面板按时间倒序列出，可逐行对比任一快照与当前源码的差异，也可确认后回滚——回滚沿用编辑器保存的乐观并发语义，agent 中途动过文件会报冲突而不是静默覆盖。拖拽手柄调整三栏宽度（布局持久化）；编辑器/预览可一键全屏。`⌘/Ctrl+Enter` 编译。
 
 | 论文：语法高亮 | 论文：编译问题 | 论文：让 AI 修 | 论文：点击跳源码行 |
 | --- | --- | --- | --- |
@@ -341,7 +341,7 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 
 目录结构：
 
-- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、`research` Remote 命名空间（36 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
+- `packages/mimir`——宿主插件（`dsh-mimir`）：命令、工具、wiki domain、评审循环、LaTeX 编译、BibTeX 管理、论文快照、`research` Remote 命名空间（41 个方法），以及 `/research/pdf` / `/research/figure` / `/research/figure-upload` 路由。
 - `packages/ui-mimir`——浏览器工作台（`dsh-client-ui-mimir`）：侧栏开关 + 浮层面板。
 - `packages/typert-protocol`——Typert 协议的 vendored 源码副本，从不发布（见下）。
 - `examples/mimir-agent`——快速上手使用的 cordis patch。

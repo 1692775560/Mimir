@@ -258,6 +258,28 @@ export interface ResearchPanelInjected {
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   /**
+   * List one project's paper snapshots (the snapshots panel's open).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip (the refresh path).
+   */
+  loadSnapshots: (projectId: string, force?: boolean) => void
+  /**
+   * Fetch one snapshot's files for the panel's diff view.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   */
+  loadSnapshotDetail: (projectId: string, id: string) => void
+  /** Close the snapshots panel's diff view. */
+  closeSnapshotDetail: () => void
+  /**
+   * Revert the paper to one snapshot under optimistic concurrency; the source
+   * and outline re-read from the Host on success (and on a conflict).
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  revertSnapshot: (projectId: string, id: string) => Promise<ResearchFailureView | null>
+  /**
    * Reorder the top-level sections of one project's `main.tex`.
    * @param projectId - wiki project id.
    * @param moves - the drops, applied in order.

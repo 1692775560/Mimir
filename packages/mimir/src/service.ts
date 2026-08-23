@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 34 `@Remote` signatures intact, and forwards every method body to a
+ * all 41 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -42,9 +42,12 @@ import type {
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
+  ResearchPaperSnapshotResult,
+  ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchRemovePaperResult,
+  ResearchRevertPaperSnapshotResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSaveFigureResult,
@@ -61,6 +64,7 @@ import type {
   SubsectionMove,
 } from './types.ts'
 import * as paper from './services/paper.ts'
+import * as paperSnapshots from './services/paper-snapshots.ts'
 import * as library from './services/library.ts'
 import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
@@ -102,7 +106,7 @@ export interface ResearchServiceConfig {
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 34 `@Remote` signatures; every method
+ * `research` Remote namespace and all 41 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -281,6 +285,27 @@ export class ResearchService extends TypertRemoteService {
   @Remote('getCompileStatus')
   getCompileStatus(request: { projectId?: string }): Promise<ResearchCompileStatusResult> {
     return paper.getCompileStatus(this.deps, this.state, request)
+  }
+
+  // paper domain: compile snapshots (pure filesystem storage)
+  @Remote('listPaperSnapshots')
+  listPaperSnapshots(request: { projectId: string }): Promise<ResearchPaperSnapshotsResult> {
+    return paperSnapshots.listPaperSnapshots(this.deps, request)
+  }
+
+  @Remote('getPaperSnapshot')
+  getPaperSnapshot(request: { projectId: string; id: string }): Promise<ResearchPaperSnapshotResult> {
+    return paperSnapshots.getPaperSnapshot(this.deps, request)
+  }
+
+  @Remote('revertPaperSnapshot')
+  revertPaperSnapshot(request: {
+    projectId: string
+    id: string
+    baseMtimeMs: number
+    dir?: string | undefined
+  }): Promise<ResearchRevertPaperSnapshotResult> {
+    return paperSnapshots.revertPaperSnapshot(this.deps, request)
   }
 
   // experiment domain: figures

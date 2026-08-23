@@ -32,7 +32,7 @@ export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
   ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
-  ResearchSaveState, ResearchSourceView, ResearchView,
+  ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchView,
 } from './controller.ts'
 export type {
   ResearchPanelInjected, ResearchPanelProps, ResearchPanelStore, ResearchToggleProps,
@@ -219,6 +219,10 @@ export function apply(ctx: ClientContext): void {
       deleteBibEntry: key => controller.deleteBibEntry(key),
       updateBibEntry: (originalKey, entry) => controller.updateBibEntry(originalKey, entry),
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
+      loadSnapshots: (projectId, force) => { controller.loadSnapshots(projectId, force) },
+      loadSnapshotDetail: (projectId, id) => { controller.loadSnapshotDetail(projectId, id) },
+      closeSnapshotDetail: () => { controller.closeSnapshotDetail() },
+      revertSnapshot: (projectId, id) => controller.revertSnapshot(projectId, id),
       reorderPaperSections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSections(projectId, moves, baseOutline),
       reorderPaperSubsections: (projectId, moves, baseOutline) =>
