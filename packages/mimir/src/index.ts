@@ -28,19 +28,25 @@ import { resolvePaperDir } from './paper-source.ts'
 import { isFigureFile } from './artifacts.ts'
 import { ResearchService } from './service.ts'
 import { startWikiBackupLoop } from './backup.ts'
+import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
 export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
 export type {
+  ArxivSubscriptionCheckView,
+  ArxivSubscriptionView,
   FigureEntry,
   OutlineNode,
   ResearchArtifactResult,
+  ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
+  ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileState,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
   ResearchConvertFigureResult,
+  ResearchDeleteArxivSubscriptionResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
@@ -61,6 +67,7 @@ export type {
   ResearchRemovePaperResult,
   ResearchResult,
   ResearchSaveExperimentResult,
+  ResearchSaveArxivSubscriptionResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -85,12 +92,33 @@ export { convertSvgFigure, svgConverterNames, svgProductName, whichOnPath, SVG_C
 export type { SvgConversion, SvgConversionDeps, SvgConverterKind, SvgConverterSpec, SvgRunner } from './svg-convert.ts'
 export { ResearchService } from './service.ts'
 export type { ResearchServiceConfig } from './service.ts'
+export {
+  ARXIV_SUBSCRIPTIONS_FILE,
+  ARXIV_SUBSCRIPTION_CHECK_RESULTS,
+  ARXIV_SUBSCRIPTION_FIRST_DELAY_MS,
+  ARXIV_SUBSCRIPTION_FETCH_TIMEOUT_MS,
+  ARXIV_SUBSCRIPTION_GAP_MS,
+  ARXIV_SUBSCRIPTION_NEW_LIMIT,
+  ARXIV_SUBSCRIPTION_QUERY_MAX,
+  ARXIV_SUBSCRIPTION_SEEN_LIMIT,
+  foldArxivSubscriptionCheck,
+  loadArxivSubscriptions,
+  runArxivSubscriptionCheck,
+  saveArxivSubscriptions,
+  startArxivSubscriptionLoop,
+} from './arxiv-subscriptions.ts'
+export type {
+  ArxivSubscriptionCheckOptions,
+  ArxivSubscriptionCheckOutcome,
+  ArxivSubscriptionLoopOptions,
+  ArxivSubscriptionRecord,
+} from './arxiv-subscriptions.ts'
 export { runReview, renderReviewRound } from './reviewer.ts'
 export type { ReviewerOptions, ReviewRequest } from './reviewer.ts'
 export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEngine, parseTectonicErrors } from './tools/latex.ts'
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
-export type { ArxivEntry } from './tools/arxiv.ts'
+export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 export { createFigureSaveTool } from './tools/figure.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
@@ -140,6 +168,13 @@ export interface Config {
     /** Default result cap for `arxiv_search` (default 10). */
     maxResults?: number
   }
+  /** arXiv subscription new-paper check knobs. */
+  subscriptions?: {
+    /** Master switch of the scheduled check (default true); false disables the timer entirely. */
+    enabled?: boolean
+    /** Check cadence in minutes (default 1440 — once a day, >= 1). */
+    intervalMinutes?: number
+  }
   /** Scheduled wiki backup knobs. */
   backup?: {
     /** Master switch (default true); false disables the timer entirely. */
@@ -170,6 +205,10 @@ export const Config: z<Config> = z.object({
   arxiv: z.object({
     maxResults: z.number().step(1).min(1).max(100).default(10),
   }).default({ maxResults: 10 }),
+  subscriptions: z.object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(1440),
+  }).default({ enabled: true, intervalMinutes: 1440 }),
   backup: z.object({
     enabled: z.boolean().default(true),
     intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(60),
@@ -184,6 +223,10 @@ interface ResolvedConfig {
   readonly reviewer: { readonly provider: string; readonly maxRounds: number }
   readonly latex: { readonly engine: string; readonly timeoutMs: number }
   readonly arxiv: { readonly maxResults: number }
+  readonly subscriptions: {
+    readonly enabled: boolean
+    readonly intervalMinutes: number
+  }
   readonly backup: {
     readonly enabled: boolean
     readonly intervalMinutes: number
@@ -198,6 +241,10 @@ function resolveConfig(config: Config): ResolvedConfig {
   const reviewer = { provider: config.reviewer?.provider ?? 'spawn', maxRounds: config.reviewer?.maxRounds ?? 3 }
   const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
   const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
+  const subscriptions = {
+    enabled: config.subscriptions?.enabled ?? true,
+    intervalMinutes: config.subscriptions?.intervalMinutes ?? 1440,
+  }
   const backup = {
     enabled: config.backup?.enabled ?? true,
     intervalMinutes: config.backup?.intervalMinutes ?? 60,
@@ -210,10 +257,11 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (latex.engine.trim().length === 0) throw new TypeError('latex.engine must be a non-empty engine selection')
   if (!Number.isSafeInteger(latex.timeoutMs) || latex.timeoutMs < 1) throw new TypeError('latex.timeoutMs must be a positive safe integer')
   if (!Number.isSafeInteger(arxiv.maxResults) || arxiv.maxResults < 1) throw new TypeError('arxiv.maxResults must be a positive safe integer')
+  if (!Number.isSafeInteger(subscriptions.intervalMinutes) || subscriptions.intervalMinutes < 1) throw new TypeError('subscriptions.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, backup }
+  return { workspaceDir, reviewer, latex, arxiv, subscriptions, backup }
 }
 
 /**
@@ -530,6 +578,20 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         onError: (error) => { console.warn('[mimir] wiki backup failed:', error) },
       }),
       'mimir.wikiBackup',
+    )
+  }
+  // Scheduled arXiv subscription check (same timer pattern as the wiki
+  // backup): first pass two minutes after start, then every intervalMinutes
+  // (default once a day). Per-subscription fetch failures are captured in the
+  // run's outcomes and never reach onError; the panel also surfaces them.
+  if (resolved.subscriptions.enabled) {
+    ctx.effect(
+      () => startArxivSubscriptionLoop({
+        workspaceDir: deps.workspaceDir,
+        intervalMs: resolved.subscriptions.intervalMinutes * 60_000,
+        onError: (error) => { console.warn('[mimir] arXiv subscription check failed:', error) },
+      }),
+      'mimir.arxivSubscriptions',
     )
   }
   ctx.effect(

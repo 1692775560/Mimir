@@ -75,6 +75,25 @@ export interface ResearchPanelInjected {
   reloadSource: () => void
   /** Load the literature list once, on the papers view's first open. */
   ensurePapers: () => void
+  /** Load the arXiv subscription list once (a stale list triggers one open-time check). */
+  ensureSubscriptions: () => void
+  /**
+   * Add one arXiv subscription, then refresh the list.
+   * @param query - the free-text query; an empty or duplicate one is rejected.
+   * @returns null on success, the settled failure otherwise.
+   */
+  saveArxivSubscription: (query: string) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one arXiv subscription, then refresh the list.
+   * @param id - the subscription id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteArxivSubscription: (id: string) => Promise<ResearchFailureView | null>
+  /**
+   * Check every subscription for new papers now (the bar's manual button).
+   * @returns null on success, the settled failure otherwise.
+   */
+  checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   /**
    * Search arXiv from the papers view; the outcome lands in the view's
    * `arxivSearch` slice.

@@ -3246,3 +3246,207 @@ li.dropIndicator {
   gap: 8px;
   align-items: center;
 }
+
+/* Reading notes: the PDF reader's split layout and its side panel. */
+.paperPdfReader {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.paperPdfReader .paperPdfFrame {
+  height: 560px;
+}
+
+.paperNotesPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 560px;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-specific-menu, #fff);
+}
+
+/* --- arXiv subscriptions (feat/arxiv-subscriptions): keep this block at the end of the file to avoid merge conflicts --- */
+/* The papers view's subscription bar: add form, removable pills with the
+   unimported-new badge, and the inline new-entry list with import buttons. */
+.subscriptionsBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.paperNotesTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-size: 13px;
+}
+
+.paperNoteList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+.paperNoteItem {
+  padding-left: 8px;
+  border-left: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.paperNoteAt {
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+}
+
+.paperNoteText {
+  margin: 2px 0 0;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* feat/probe-progress: the in-flight probe's staged progress line — the stage
+   label painted in the in-progress (business) color, the worst-case ETA hint
+   in the tertiary label color, and the settled per-stage failure label. */
+.serverProbeStage {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.serverProbeEta {
+  margin-left: 6px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+}
+
+.serverProbeFailStage {
+  font-weight: 600;
+}
+
+.subscriptionsHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscriptionsHead .sectionTitle {
+  margin: 0;
+}
+
+.subscriptionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--mimir-accent, #4f7cff), var(--mimir-accent-strong, #315fe9));
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  font-size: 12px;
+  line-height: 1.6;
+  font-weight: 600;
+}
+
+.subscriptionsForm {
+  display: flex;
+  gap: 8px;
+}
+
+.subscriptionsForm .input {
+  flex: 1;
+}
+
+.subscriptionPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.subscriptionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.subscriptionPillCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--mimir-accent, #4f7cff), var(--mimir-accent-strong, #315fe9));
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.subscriptionNew {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  padding-top: 8px;
+}
+
+.subscriptionNewHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subscriptionNewHead .sectionTitle {
+  margin: 0;
+}
+
+.subscriptionNewGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subscriptionNewGroup .hint {
+  margin: 0;
+}
+
+.subscriptionEntry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-markdown-code-block, #f1f3f5);
+}
+
+.subscriptionEntryHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subscriptionEntryHead .paperCardTitle {
+  margin: 0;
+}
+
+.subscriptionEntry .paperCardMeta {
+  margin: 0;
+}
+/* --- end arXiv subscriptions --- */

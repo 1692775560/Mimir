@@ -9,7 +9,7 @@
  * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
-import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
@@ -249,7 +249,7 @@ describe('ResearchService server CRUD', () => {
 })
 
 describe('ResearchService.checkServer', () => {
-  it('settles an unreachable address as offline with the socket message', async () => {
+  it('settles an unreachable address as offline with the socket message, stopped at the tcp stage', async () => {
     const { service } = await harness()
     const created = await service.saveServer({
       server: { ...SERVER_INPUT, host: '127.0.0.1', port: 19999 },
@@ -261,6 +261,9 @@ describe('ResearchService.checkServer', () => {
     expect(checked.value.latencyMs).toBeNull()
     expect(checked.value.gpus).toEqual([])
     expect(checked.value.message).toBeTruthy()
+    expect(checked.value.stage).toBe('tcp')
+    expect(checked.value.tcpLatencyMs).toBeUndefined()
+    expect(checked.value.gpuLatencyMs).toBeUndefined()
     expect(Date.parse(checked.value.checkedAt)).not.toBeNaN()
   })
 
@@ -286,19 +289,23 @@ describe('ResearchService.checkServer', () => {
       expect(checked.value.latencyMs).toBeGreaterThanOrEqual(0)
       expect(checked.value.gpus).toEqual([])
       expect(checked.value.message).toBeNull()
+      expect(checked.value.stage).toBe('tcp')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeUndefined()
     } finally {
       await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
     }
   })
 
-  it('keeps a reachable server online when the ssh GPU readout fails', async () => {
+  it('keeps a reachable server online when the ssh session itself fails, stopped at the ssh stage', async () => {
     const listener = createServer((socket) => { socket.destroy() })
     await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
     try {
       const port = (listener.address() as AddressInfo).port
       const { service } = await harness()
       // A username is set, so the probe attempts ssh against a socket that is
-      // not an sshd: the readout fails but the server stays online.
+      // not an sshd: the readout fails (ssh exits 255, a session failure) but
+      // the server stays online.
       const created = await service.saveServer({
         server: { ...SERVER_INPUT, host: '127.0.0.1', port },
       })
@@ -308,11 +315,88 @@ describe('ResearchService.checkServer', () => {
       expect(checked.value.state).toBe('online')
       expect(checked.value.gpus).toEqual([])
       expect(checked.value.message).toContain('gpu probe failed')
+      expect(checked.value.stage).toBe('ssh')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
     } finally {
       await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
     }
   }, 20_000)
+
+  it('lands a remote nvidia-smi failure on the gpu stage (non-255 exit)', async () => {
+    const listener = createServer()
+    await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
+    try {
+      const port = (listener.address() as AddressInfo).port
+      await stubFakeSshForGpuProbe()
+      const { service } = await harness()
+      // The fake ssh exits 3 (a remote command failure, not a session
+      // failure) when the login user names the gpu-fail marker.
+      const created = await service.saveServer({
+        server: { ...SERVER_INPUT, host: '127.0.0.1', port, username: 'gpu-fail' },
+      })
+      if (!created.ok) throw new Error('create failed')
+      const checked = await service.checkServer({ id: created.value.server.id })
+      if (!checked.ok) throw new Error('check rejected')
+      expect(checked.value.state).toBe('online')
+      expect(checked.value.gpus).toEqual([])
+      expect(checked.value.message).toContain('gpu probe failed')
+      expect(checked.value.stage).toBe('gpu')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
+    } finally {
+      await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
+    }
+  })
+
+  it('reaches the gpu stage with the parsed table when the readout succeeds', async () => {
+    const listener = createServer()
+    await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
+    try {
+      const port = (listener.address() as AddressInfo).port
+      await stubFakeSshForGpuProbe()
+      const { service } = await harness()
+      const created = await service.saveServer({
+        server: { ...SERVER_INPUT, host: '127.0.0.1', port },
+      })
+      if (!created.ok) throw new Error('create failed')
+      const checked = await service.checkServer({ id: created.value.server.id })
+      if (!checked.ok) throw new Error('check rejected')
+      expect(checked.value.state).toBe('online')
+      expect(checked.value.message).toBeNull()
+      expect(checked.value.stage).toBe('gpu')
+      expect(checked.value.gpus).toEqual([
+        { name: 'Fake GPU 0', utilizationPct: 37, memoryUsedMb: 2048, memoryTotalMb: 24576 },
+      ])
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
+    } finally {
+      await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
+    }
+  })
 })
+
+/**
+ * Shim a fake `ssh` onto PATH for the GPU-stage checkServer tests: it prints
+ * one `nvidia-smi` CSV row, or exits 3 (a remote command failure, distinct
+ * from the ssh session's own 255) when the login user names `gpu-fail`.
+ * PATH restores via `vi.unstubAllEnvs`.
+ */
+async function stubFakeSshForGpuProbe(): Promise<void> {
+  const binDir = await mkdtemp(join(tmpdir(), 'mimir-fake-ssh-gpu-'))
+  const script = [
+    '#!/bin/bash',
+    'for arg in "$@"; do',
+    '  case "$arg" in *gpu-fail@*) echo "nvidia-smi exploded" >&2; exit 3 ;; esac',
+    'done',
+    'echo "Fake GPU 0, 37, 2048, 24576"',
+    'exit 0',
+    '',
+  ].join('\n')
+  await writeFile(join(binDir, 'ssh'), script)
+  await chmod(join(binDir, 'ssh'), 0o755)
+  vi.stubEnv('PATH', `${binDir}:${process.env.PATH ?? ''}`)
+}
 
 const ARXIV_FEED = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -336,7 +420,7 @@ const ARXIV_ENTRY = {
   url: 'https://arxiv.org/abs/2103.00020v2',
 }
 
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 describe('parseArxivFeed', () => {
   it('parses entries, unescapes entities, and derives abs urls', () => {
@@ -1109,5 +1193,55 @@ describe('ResearchService.saveExperiment', () => {
     })
     if (!updated.ok) throw new Error('unreachable')
     expect(updated.value.experiment.serverId).toBe(serverId)
+  })
+})
+
+describe('ResearchService arXiv subscriptions (facade)', () => {
+  it('saves, checks (baseline seeding over a stubbed feed), lists, and deletes', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', async (url: string) => {
+      requestedUrl = url
+      return new Response(ARXIV_FEED, { status: 200 })
+    })
+    const { service } = await harness()
+    await expect(service.saveArxivSubscription({ query: '  ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    const saved = await service.saveArxivSubscription({ query: 'egocentric whole body' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // The first check only seeds the baseline: seen, but nothing new.
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks).toHaveLength(1)
+    expect(checked.value.checks[0]).toMatchObject({ added: [], error: null })
+    expect(checked.value.checks[0]?.subscription.lastCheckedAt).not.toBeNull()
+    expect(requestedUrl).toContain('sortBy=submittedDate&sortOrder=descending')
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions).toMatchObject([{ id, query: 'egocentric whole body', newEntries: [] }])
+    await expect(service.checkArxivSubscriptions({ id: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'subscription-not-found' } })
+    await expect(service.deleteArxivSubscription({ id })).resolves.toEqual({ ok: true, value: { id } })
+    const empty = await service.listArxivSubscriptions()
+    expect(empty.ok && empty.value.subscriptions.length).toBe(0)
+  })
+
+  it('surfaces a newly published entry with its details on the second check', async () => {
+    const { service } = await harness()
+    const saved = await service.saveArxivSubscription({ query: 'mesh' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // First check seeds the baseline (empty feed), the second surfaces one.
+    vi.stubGlobal('fetch', async () => new Response(
+      '<feed xmlns="http://www.w3.org/2005/Atom"></feed>', { status: 200 },
+    ))
+    await service.checkArxivSubscriptions({ id })
+    vi.stubGlobal('fetch', async () => new Response(ARXIV_FEED, { status: 200 }))
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks[0]?.added).toEqual([ARXIV_ENTRY])
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions[0]?.newEntries).toEqual([ARXIV_ENTRY])
   })
 })

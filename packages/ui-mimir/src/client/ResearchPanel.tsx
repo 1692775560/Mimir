@@ -121,6 +121,7 @@ export function ResearchPanel({
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
   requestRelatedWork,
   ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensureSubscriptions, saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   insertFigure, consumePaperJump, generateMetricFigure,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
@@ -142,6 +143,7 @@ export function ResearchPanel({
   const source = useResearch(view => view.source)
   const papers = useResearch(view => view.papers)
   const arxivSearch = useResearch(view => view.arxivSearch)
+  const arxivSubscriptions = useResearch(view => view.arxivSubscriptions)
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
@@ -170,7 +172,8 @@ export function ResearchPanel({
   }, [open, projectsStatus, selectedProjectId, projects, selectProject])
   useEffect(() => {
     if (open && activeTab === 'papers') ensurePapers()
-  }, [open, activeTab, ensurePapers])
+    if (open && activeTab === 'papers') ensureSubscriptions()
+  }, [open, activeTab, ensurePapers, ensureSubscriptions])
   // The overview's stat chips count the papers and figures slices, both lazy:
   // warm them when the overview opens so the chips show real numbers instead
   // of dashes; the activity card reads the jobs slice, equally lazy. The
@@ -431,9 +434,13 @@ export function ResearchPanel({
           <PapersView
             papers={papers}
             arxivSearch={arxivSearch}
+            arxivSubscriptions={arxivSubscriptions}
             projects={projects}
             selectedProjectId={selectedProjectId}
             ensurePapers={ensurePapers}
+            saveArxivSubscription={saveArxivSubscription}
+            deleteArxivSubscription={deleteArxivSubscription}
+            checkArxivSubscriptions={checkArxivSubscriptions}
             searchArxiv={searchArxiv}
             importPaper={importPaper}
             updatePaper={updatePaper}

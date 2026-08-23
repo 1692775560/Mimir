@@ -13,11 +13,13 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
 import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths } from './figure-insert.ts'
+import { anySubscriptionDue } from './subscriptions.ts'
 import { metricFigureCaption, metricFigureFileName, metricFigureSvg } from './metric-figure.ts'
 import type { MetricChartRow } from './view-common.ts'
 import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
+  ArxivSubscriptionView,
   BibEntry,
   ExperimentRecord,
   ExperimentInput,
@@ -27,13 +29,16 @@ import type {
   PaperRecord,
   PaperSnapshotView,
   ResearchArtifactResult,
+  ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
   ResearchBibliographyResult,
+  ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
   ResearchConvertFigureResult,
+  ResearchDeleteArxivSubscriptionResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -59,6 +64,7 @@ import type {
   ResearchProjectView,
   ResearchRemovePaperResult,
   ResearchRevertPaperSnapshotResult,
+  ResearchSaveArxivSubscriptionResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
@@ -78,7 +84,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-six Remote calls this controller needs, exactly as the
+ * The forty Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -104,6 +110,10 @@ export interface ResearchRemote {
     notes?: string | undefined
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
   fetchPaperPdf: (request: { arxivId: string }) => Promise<RemoteResult<ResearchFetchPaperPdfResult>>
+  listArxivSubscriptions: () => Promise<RemoteResult<ResearchArxivSubscriptionsResult>>
+  saveArxivSubscription: (request: { query: string }) => Promise<RemoteResult<ResearchSaveArxivSubscriptionResult>>
+  deleteArxivSubscription: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteArxivSubscriptionResult>>
+  checkArxivSubscriptions: (request: { id?: string }) => Promise<RemoteResult<ResearchCheckArxivSubscriptionsResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   updateExperiment: (request: {
@@ -243,6 +253,18 @@ export interface ResearchArxivSearchView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The arXiv subscription bar of the papers view. */
+export interface ResearchSubscriptionsView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly ArxivSubscriptionView[]
+  /** True while a check run is in flight (manual or open-triggered). */
+  readonly checking: boolean
+  /** Whole-call failure of the list load; per-subscription check failures live in `checkErrors`. */
+  readonly failure: ResearchFailureView | null
+  /** The last run's per-subscription fetch failures, keyed by subscription id. */
+  readonly checkErrors: Readonly<Record<string, string>>
+}
+
 /** One per-project fetched view (experiments, artifact, figures). */
 export interface ResearchProjectSlice<T> {
   readonly projectId: string
@@ -317,6 +339,8 @@ export interface ResearchView {
   readonly papers: ResearchPapersView
   /** The papers view's arXiv search outcome; null before the first search. */
   readonly arxivSearch: ResearchArxivSearchView | null
+  /** The papers view's arXiv subscription bar. */
+  readonly arxivSubscriptions: ResearchSubscriptionsView
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
@@ -348,6 +372,9 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   source: null,
   papers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   arxivSearch: null,
+  arxivSubscriptions: Object.freeze({
+    status: 'cold', list: Object.freeze([]), checking: false, failure: null, checkErrors: Object.freeze({}),
+  }),
   experiments: null,
   artifact: null,
   figures: null,
@@ -388,6 +415,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private loadPromise: Promise<void> | null = null
   private backupPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
+  private subscriptionsPromise: Promise<void> | null = null
   private serversPromise: Promise<void> | null = null
   private jobsPromise: Promise<void> | null = null
   private outlineGeneration = 0
@@ -548,6 +576,173 @@ export class ResearchController implements HostObservable<ResearchView> {
   ensurePapers(): void {
     if (this.view.papers.status === 'ready' || this.papersPromise !== null) return
     this.papersPromise = this.loadPapers().finally(() => { this.papersPromise = null })
+  }
+
+  /**
+   * Load the arXiv subscription list once, on the papers view's first open;
+   * once the list settles, a stale subscription (never checked, or checked
+   * over the auto-check gap ago) triggers one open-time check — the host's
+   * scheduled daily check is the steady-state path, this only freshens.
+   */
+  ensureSubscriptions(): void {
+    if (this.view.arxivSubscriptions.status === 'ready' || this.subscriptionsPromise !== null) return
+    this.subscriptionsPromise = this.loadSubscriptions()
+      .then(() => {
+        const { list, checking } = this.view.arxivSubscriptions
+        if (!checking && anySubscriptionDue(list, Date.now())) void this.checkArxivSubscriptions()
+      })
+      .finally(() => { this.subscriptionsPromise = null })
+  }
+
+  /**
+   * Add one arXiv subscription, then refresh the list. The failure view of a
+   * rejected save (empty or duplicate query) is returned so the bar surfaces it.
+   * @param query - the free-text query.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveArxivSubscription(query: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.saveArxivSubscription({ query })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadSubscriptions()
+      this.notify('success', 'toast.subscriptionSaved', result.value.subscription.query)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one arXiv subscription, then refresh the list.
+   * @param id - the subscription id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteArxivSubscription(id: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteArxivSubscription({ id })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadSubscriptions()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Check every subscription for new papers (the bar's manual button and the
+   * open-triggered refresh). The run republishes the list with each checked
+   * subscription's post-check view; per-subscription fetch failures land in
+   * `checkErrors`, a whole-call failure returns as the failure view.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async checkArxivSubscriptions(): Promise<ResearchFailureView | null> {
+    const current = this.view.arxivSubscriptions
+    if (current.checking) return null
+    this.publish({
+      arxivSubscriptions: Object.freeze({ ...current, checking: true, checkErrors: Object.freeze({}) }),
+    })
+    try {
+      const carried = await this.remote.checkArxivSubscriptions({})
+      if (this.disposed) return null
+      if (!carried.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+        return failureOf(carried.error.code, carried.error.message)
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+        return businessFailure(result.error)
+      }
+      // Checked subscriptions take their post-check view; unchecked ones (none
+      // today — the panel always checks all) carry over.
+      const checked = new Map(result.value.checks.map(check => [check.subscription.id, check]))
+      const checkErrors: Record<string, string> = {}
+      for (const check of result.value.checks) {
+        if (check.error !== null) checkErrors[check.subscription.id] = check.error
+      }
+      const list = this.view.arxivSubscriptions.list
+        .map(subscription => checked.get(subscription.id)?.subscription ?? subscription)
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'ready',
+          list: Object.freeze(list),
+          checking: false,
+          failure: null,
+          checkErrors: Object.freeze(checkErrors),
+        }),
+      })
+      const added = result.value.checks.reduce((sum, check) => sum + check.added.length, 0)
+      if (added > 0) this.notify('success', 'toast.subscriptionNewPapers', `× ${added}`)
+      return null
+    } catch (error) {
+      if (!this.disposed) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+      }
+      return transportFailure(error)
+    }
+  }
+
+  /** Fetch the arXiv subscription list and publish it. */
+  private async loadSubscriptions(): Promise<void> {
+    const current = this.view.arxivSubscriptions
+    this.publish({
+      arxivSubscriptions: Object.freeze({ ...current, status: 'loading', failure: null }),
+    })
+    try {
+      const carried = await this.remote.listArxivSubscriptions()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({
+            ...this.view.arxivSubscriptions,
+            status: 'error',
+            failure: failureOf(carried.error.code, carried.error.message),
+          }),
+        })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({
+            ...this.view.arxivSubscriptions,
+            status: 'error',
+            failure: businessFailure(result.error),
+          }),
+        })
+        return
+      }
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'ready',
+          list: result.value.subscriptions,
+          failure: null,
+        }),
+      })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'error',
+          failure: transportFailure(error),
+        }),
+      })
+    }
   }
 
   /**
