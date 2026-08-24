@@ -11,6 +11,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact } from '../artifacts.ts'
 import { isNotFound, resolvePaperDir } from '../paper-source.ts'
+import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
 import { convertSvgFigure, svgConverterNames } from '../svg-convert.ts'
 import type { SvgConversionDeps } from '../svg-convert.ts'
 import type { ResearchWikiDomain } from '../store.ts'
@@ -90,10 +91,17 @@ export async function deleteExperiment(
   request: { id: string },
 ): Promise<ResearchDeleteExperimentResult> {
   const table = deps.domain.table('experiments')
-  if (table.get(request.id) === undefined) {
+  const removed = table.get(request.id)
+  if (removed === undefined) {
     return rejected({ code: 'experiment-not-found', id: request.id })
   }
   await table.delete(request.id)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'experiments.deleted',
+    refs: { experimentId: removed.id, projectId: removed.projectId },
+    payload: { name: removed.name, destructive: true },
+  })
   return success({ id: request.id })
 }
 
@@ -144,6 +152,15 @@ export async function saveExperiment(
       updatedAt: now,
     }
     await table.put(input.id, next)
+    await emitEvent(deps.domain, {
+      actor: PANEL_ACTOR,
+      action: 'experiments.saved',
+      refs: {
+        experimentId: next.id, projectId: next.projectId,
+        ...(next.serverId === undefined ? {} : { serverId: next.serverId }),
+      },
+      payload: { name: next.name, status: next.status, created: false, metricCount: Object.keys(next.metrics).length },
+    })
     return success({ experiment: next })
   }
   const created: ExperimentRecord = {
@@ -157,6 +174,15 @@ export async function saveExperiment(
     updatedAt: now,
   }
   await table.put(created.id, created)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'experiments.saved',
+    refs: {
+      experimentId: created.id, projectId: created.projectId,
+      ...(created.serverId === undefined ? {} : { serverId: created.serverId }),
+    },
+    payload: { name: created.name, status: created.status, created: true, metricCount: Object.keys(created.metrics).length },
+  })
   return success({ experiment: created })
 }
 
@@ -193,6 +219,15 @@ export async function updateExperiment(
     next = { ...existing, serverId: request.serverId }
   }
   await table.put(request.id, next)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'experiments.server.relinked',
+    refs: {
+      experimentId: request.id,
+      ...(request.serverId === null || request.serverId === undefined ? {} : { serverId: request.serverId }),
+    },
+    payload: { cleared: request.serverId === null },
+  })
   return success({ experiment: next })
 }
 
@@ -294,6 +329,15 @@ export async function deleteFigure(
   }
   // Drop the metadata row with the file so a stale caption never outlives it.
   await deps.domain.table('figures').delete(`${request.projectId}:${request.relPath}`)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'figures.deleted',
+    refs: {
+      projectId: request.projectId,
+      figureId: `${request.projectId}:${request.relPath}`,
+    },
+    payload: { relPath: request.relPath, destructive: true },
+  })
   return success({ relPath: request.relPath })
 }
 
@@ -435,6 +479,16 @@ export async function saveFigure(
     artifacts: [...new Set([...current.artifacts, artifactPath])],
     updatedAt: new Date().toISOString(),
   }))
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'figures.saved',
+    refs: {
+      projectId: request.projectId,
+      figureId: id,
+      ...(existing?.experimentId === undefined ? {} : { experimentId: existing.experimentId }),
+    },
+    payload: { relPath, converted: converted === undefined ? null : converted.relPath },
+  })
   return success({ relPath, caption, ...(converted === undefined ? {} : { converted }), ...(warning === undefined ? {} : { warning }) })
 }
 

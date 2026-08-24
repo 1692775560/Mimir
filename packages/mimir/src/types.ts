@@ -774,3 +774,102 @@ export interface ResearchBackupStatusView {
 
 /** `listBackups` result: the backup status line for the overview. */
 export type ResearchListBackupsResult = ResearchResult<{ readonly backup: ResearchBackupStatusView }>
+
+/**
+ * Research-ledger (audit trail) types. The `events` wiki table is
+ * append-only by convention in v1 (no remote/UI path deletes rows); the
+ * event is the trail, the record it accompanies is the state.
+ */
+
+/** Who performed a ledgered action. */
+export type LedgerActorKind = 'user' | 'agent' | 'subagent' | 'module' | 'system'
+
+/** One ledger actor: the kind plus a stable identifying string. */
+export interface LedgerActor {
+  readonly kind: LedgerActorKind
+  /** e.g. `panel`, `wiki_note`, `reviewer`, `autor`, `service`. */
+  readonly id: string
+}
+
+/**
+ * A value that round-trips losslessly through JSON. Declared in THIS package
+ * on purpose: the Typert generator only codes recursive types declared in the
+ * files of the package it generates for — an external alias (dsh-session's
+ * `JsonValue`, zod's `JSONType`) is rejected at the Remote boundary ("not
+ * owned by this face"). Structurally identical to both, so values are
+ * interchangeable across those boundaries.
+ */
+export type LedgerJsonValue = null | boolean | number | string | LedgerJsonValue[] | { [key: string]: LedgerJsonValue }
+
+/** Cross-record references carried by one event (the provenance edges). */
+export interface EventRefs {
+  readonly projectId?: string | undefined
+  readonly experimentId?: string | undefined
+  readonly runId?: string | undefined
+  readonly serverId?: string | undefined
+  readonly jobId?: string | undefined
+  readonly artifactId?: string | undefined
+  readonly figureId?: string | undefined
+  readonly claimId?: string | undefined
+  readonly ideaId?: string | undefined
+  readonly paperId?: string | undefined
+}
+
+/**
+ * One append-only ledger event, written at decision-grade moments (record
+ * state changes, job lifecycle flips, compiles, review rounds, destructive
+ * operations) — never for high-frequency reads or editor autosaves.
+ */
+export interface EventRecord {
+  /** `ev-` id; the trailing sequence keeps same-millisecond writes ordered. */
+  readonly id: string
+  /** ISO-8601 timestamp (lexicographically sortable). */
+  readonly ts: string
+  readonly actor: LedgerActor
+  /** Dotted action name, `<module>.<action>` (e.g. `compute.job.settled`). */
+  readonly action: string
+  /** Cross-record references; every field optional. */
+  readonly refs: EventRefs
+  /**
+   * Bounded context; truncated with a marker past the payload cap. Constrained
+   * to JSON values (the event crosses the Remote boundary via `listEvents` —
+   * the Typert generator rejects unconstrained `unknown` there).
+   */
+  readonly payload: Record<string, LedgerJsonValue>
+}
+
+/** `listEvents` filter; every field optional, timestamps ISO-8601 bounds. */
+export interface ResearchEventFilter {
+  readonly projectId?: string | undefined
+  readonly actorKind?: LedgerActorKind | undefined
+  /** Match events whose action starts with this prefix (e.g. `compute.`). */
+  readonly actionPrefix?: string | undefined
+  readonly since?: string | undefined
+  readonly until?: string | undefined
+  /** Max events to return (default 200, hard cap 1000). */
+  readonly limit?: number | undefined
+  /** Sort direction (default `asc`). */
+  readonly order?: 'asc' | 'desc' | undefined
+}
+
+/** `listEvents` result. */
+export type ResearchListEventsResult = ResearchResult<{ readonly events: readonly EventRecord[] }>
+
+/**
+ * `generateProgressReport` options: a project filter plus ISO-8601 bounds
+ * (`since` inclusive, `until` exclusive). A recent window (e.g. `since` = 7
+ * days before now) turns the report into a weekly 组会 / progress digest;
+ * omitted bounds cover full history.
+ */
+export interface ResearchProgressReportOptions {
+  readonly projectId?: string | undefined
+  readonly since?: string | undefined
+  readonly until?: string | undefined
+}
+
+/** `generateProgressReport` result: the rendered Markdown report. */
+export type ResearchProgressReportResult = ResearchResult<{
+  readonly markdown: string
+  readonly generatedAt: string
+  readonly eventCount: number
+}>

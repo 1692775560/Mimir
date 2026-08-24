@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from '../tools/arxiv.ts'
 import { fetchWebSearch } from '../tools/web-search.ts'
 import type { WebSearchRunner } from '../tools/web-search.ts'
+import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   ArxivEntry,
@@ -202,6 +203,12 @@ export async function importPaper(
     addedAt: existing?.addedAt ?? new Date().toISOString(),
   }
   await table.put(arxivId, record)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'literature.paper.imported',
+    refs: { paperId: arxivId },
+    payload: { title: entry.title, imported: existing === undefined },
+  })
   return success({ imported: existing === undefined })
 }
 
@@ -216,10 +223,17 @@ export async function removePaper(
   request: { arxivId: string },
 ): Promise<ResearchRemovePaperResult> {
   const table = deps.domain.table('papers')
-  if (table.get(request.arxivId) === undefined) {
+  const removed = table.get(request.arxivId)
+  if (removed === undefined) {
     return rejected({ code: 'paper-not-found' })
   }
   await table.delete(request.arxivId)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'literature.paper.removed',
+    refs: { paperId: request.arxivId },
+    payload: { title: removed.title, destructive: true },
+  })
   return success({ arxivId: request.arxivId })
 }
 
@@ -283,6 +297,13 @@ export async function updatePaper(
     }),
   }
   await table.put(request.arxivId, next)
+  const changed = (['tags', 'projectIds', 'notes', 'relevance'] as const).filter(field => request[field] !== undefined)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'literature.paper.updated',
+    refs: { paperId: request.arxivId },
+    payload: { changed: [...changed] },
+  })
   return success({ paper: next })
 }
 
@@ -320,5 +341,11 @@ export async function fetchPaperPdf(
   await writeBytesAtomic(join(dir, paperPdfFileName(request.arxivId)), bytes)
   const next: PaperRecord = { ...existing, pdfPath: relPath }
   await table.put(request.arxivId, next)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'literature.pdf.fetched',
+    refs: { paperId: request.arxivId },
+    payload: { pdfPath: relPath },
+  })
   return success({ paper: next })
 }
