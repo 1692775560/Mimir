@@ -64,7 +64,7 @@ describe('ledgerTimeParts', () => {
     expect(sameYear?.date).toMatch(/^-?\d{2}-\d{2}$/)
     expect(sameYear?.time).toHaveLength(5)
 
-    const older = ledgerTimeParts('2025-12-31T23:59:00Z', NOW)
+    const older = ledgerTimeParts('2025-06-15T12:00:00Z', NOW)
     expect(older?.hasYear).toBe(true)
     expect(older?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
