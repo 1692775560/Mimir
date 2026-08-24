@@ -351,7 +351,9 @@ export async function submitJob(
     serverId: server.id,
     command,
     status: 'queued',
-    experimentId: request.experimentId,
+    // Absent, never `undefined`: an explicit undefined key would pollute the
+    // stored record and trip the gateway's JSON boundary validation.
+    ...(request.experimentId === undefined ? {} : { experimentId: request.experimentId }),
     exitCode: null,
     stdoutTail: '',
     stderrTail: '',

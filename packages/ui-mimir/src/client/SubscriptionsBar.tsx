@@ -8,12 +8,22 @@
  * @module dsh-client-ui-mimir/client/SubscriptionsBar
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ArxivEntry, ArxivSubscriptionView } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchSubscriptionsView } from './controller.ts'
 import { subscriptionNewCount, totalNewSubscriptionCount, unimportedNewEntries } from './subscriptions.ts'
 import { failureCopy, type ResearchT } from './view-common.ts'
 import css from './ResearchPanel.module.css'
+
+/** localStorage key the new-paper list fold persists under. */
+const NEW_ENTRIES_COLLAPSED_STORAGE_KEY = 'mimir.subscriptions.newCollapsed'
+
+/** 10×10 disclosure chevron, rotated while collapsed. */
+const CHEVRON_ICON = (
+  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 3.5 5 6l2.5-2.5" />
+  </svg>
+)
 
 /** One new entry's row: linked title, authors and date, and its import button. */
 function NewEntryRow({ entry, imported, importing, onImport, t }: {
@@ -73,6 +83,18 @@ export function SubscriptionsBar({
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState<string | null>(null)
   const [importingAll, setImportingAll] = useState(false)
+  // The new-paper list defaults to folded (a long list floods the library
+  // view); a successful manual check unfolds it once. The fold persists.
+  const [newCollapsed, setNewCollapsed] = useState(
+    () => localStorage.getItem(NEW_ENTRIES_COLLAPSED_STORAGE_KEY) !== '0',
+  )
+  useEffect(() => {
+    try {
+      localStorage.setItem(NEW_ENTRIES_COLLAPSED_STORAGE_KEY, newCollapsed ? '1' : '0')
+    } catch {
+      // A full/blocked localStorage drops persistence; the fold still works.
+    }
+  }, [newCollapsed])
   const newTotal = totalNewSubscriptionCount(subscriptions.list, importedIds)
 
   const add = (): void => {
@@ -104,6 +126,8 @@ export function SubscriptionsBar({
     setActionError(null)
     void checkArxivSubscriptions().then((failure) => {
       setActionError(failure === null ? null : `${t('subscriptions.checkFailed')}：${failure.message}`)
+      // A successful manual check is the user's ask to SEE the arrivals.
+      if (failure === null) setNewCollapsed(false)
     })
   }
 
@@ -215,11 +239,20 @@ export function SubscriptionsBar({
         )
       })}
       {newTotal > 0 && (
-        <div className={css.subscriptionNew}>
+        <div className={css.subscriptionNew} data-collapsed={newCollapsed || undefined}>
           <div className={css.subscriptionNewHead}>
-            <h3 className={css.sectionTitle}>
-              {t('subscriptions.newBadge', { count: newTotal })}
-            </h3>
+            <button
+              type="button"
+              className={css.subscriptionNewToggle}
+              aria-expanded={!newCollapsed}
+              aria-label={t(newCollapsed ? 'subscriptions.expandNew' : 'subscriptions.collapseNew')}
+              onClick={() => { setNewCollapsed(prev => !prev) }}
+            >
+              <span className={css.collapseChevron} data-up={newCollapsed || undefined} aria-hidden>{CHEVRON_ICON}</span>
+              <span className={css.sectionTitle}>
+                {t('subscriptions.newBadge', { count: newTotal })}
+              </span>
+            </button>
             <button
               type="button"
               className={css.btnPrimary}
@@ -229,7 +262,7 @@ export function SubscriptionsBar({
               {importingAll ? t('papers.importing') : t('subscriptions.importAll')}
             </button>
           </div>
-          {subscriptions.list.map((subscription) => {
+          {!newCollapsed && subscriptions.list.map((subscription) => {
             const entries = unimportedNewEntries(subscription, importedIds)
             return entries.length === 0 ? null : (
               <div key={subscription.id} className={css.subscriptionNewGroup}>

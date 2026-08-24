@@ -57,7 +57,9 @@ function projectView(record: {
     id: record.id,
     title: record.title,
     stage: record.stage,
-    paperDir: record.paperDir,
+    // Absent, never `undefined`: an explicit undefined key trips the
+    // gateway's JSON boundary validation and fails the whole list call.
+    ...(record.paperDir === undefined ? {} : { paperDir: record.paperDir }),
     reviewRounds: record.reviewRounds,
     artifacts: Object.freeze([...record.artifacts]),
     updatedAt: record.updatedAt,

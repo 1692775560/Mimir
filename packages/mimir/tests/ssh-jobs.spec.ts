@@ -113,6 +113,21 @@ describe('ResearchService.submitJob validation', () => {
 })
 
 describe('ResearchService job lifecycle', () => {
+  it('omits experimentId from an unlinked job instead of writing undefined', async () => {
+    const { domain, service } = await harness()
+    await stubFakeSsh()
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    // `undefined` values would trip the gateway's JSON boundary validation
+    // and pollute the stored record, so the key must be absent entirely.
+    const submitted = await service.submitJob({ serverId: created.value.server.id, command: 'echo unlinked' })
+    if (!submitted.ok) throw new Error('submit rejected')
+    expect('experimentId' in submitted.value.job).toBe(false)
+    expect('experimentId' in domain.table('jobs').get(submitted.value.job.id)!).toBe(false)
+    const settled = await settleJob(service, submitted.value.job.id)
+    expect(settled.status).toBe('succeeded')
+  })
+
   it('runs a submitted job to succeeded, keeps the output tails, and writes back the linked experiment', async () => {
     const { domain, service, workspaceDir } = await harness()
     await stubFakeSsh()

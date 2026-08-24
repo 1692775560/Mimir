@@ -11,7 +11,7 @@
  * @module dsh-client-ui-mimir/client/ResearchPanel
  */
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
 import { arrowTab, trapFocusIndex } from './focus.ts'
@@ -83,6 +83,16 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
 
 /** The artifact shown by the experiments view's log section. */
 const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
+
+/** localStorage key the sidebar project-list fold persists under. */
+const PROJECTS_COLLAPSED_STORAGE_KEY = 'mimir.sideProjects.collapsed'
+
+/** 10×10 disclosure chevron, rotated by the consumer's data attribute. */
+const CHEVRON_ICON = (
+  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 3.5 5 6l2.5-2.5" />
+  </svg>
+)
 
 /** 14×14 header glyphs for the theme and language switches. */
 const MOON_ICON = (
@@ -160,6 +170,19 @@ export function ResearchPanel({
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // Sidebar project list fold; persists across panel opens like the paper
+  // pane layout does. Collapsed still shows the selected project's name.
+  const [projectsCollapsed, setProjectsCollapsed] = useState(
+    () => localStorage.getItem(PROJECTS_COLLAPSED_STORAGE_KEY) === '1',
+  )
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROJECTS_COLLAPSED_STORAGE_KEY, projectsCollapsed ? '1' : '0')
+    } catch {
+      // A full/blocked localStorage drops persistence; the fold still works.
+    }
+  }, [projectsCollapsed])
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -360,12 +383,26 @@ export function ResearchPanel({
             </button>
           ))}
         </nav>
-        <div className={css.sideProjects}>
-          <h3 className={css.sectionTitle}>{t('projects.title')}</h3>
-          {(projectsStatus === 'cold' || projectsStatus === 'loading') && (
+        <div className={css.sideProjects} data-collapsed={projectsCollapsed || undefined}>
+          <button
+            type="button"
+            className={css.sideProjectsToggle}
+            aria-expanded={!projectsCollapsed}
+            aria-label={t(projectsCollapsed ? 'projects.expand' : 'projects.collapse')}
+            onClick={() => { setProjectsCollapsed(prev => !prev) }}
+          >
+            <span className={css.collapseChevron} data-up={projectsCollapsed || undefined} aria-hidden>{CHEVRON_ICON}</span>
+            <span className={css.sectionTitle}>{t('projects.title')}</span>
+            {projectsCollapsed && selectedProject !== undefined && (
+              <span className={css.sideProjectsCurrent} title={selectedProject.title}>
+                {selectedProject.title}
+              </span>
+            )}
+          </button>
+          {!projectsCollapsed && (projectsStatus === 'cold' || projectsStatus === 'loading') && (
             <p className={css.hint}>{t('projects.loading')}</p>
           )}
-          {projectsStatus === 'error' && (
+          {!projectsCollapsed && projectsStatus === 'error' && (
             <p className={css.failure} role="status">
               {t('error.projects')}
               <button type="button" className={css.retry} onClick={ensure}>
@@ -373,10 +410,10 @@ export function ResearchPanel({
               </button>
             </p>
           )}
-          {projectsStatus === 'ready' && projects.length === 0 && (
+          {!projectsCollapsed && projectsStatus === 'ready' && projects.length === 0 && (
             <p className={css.hint}>{t('projects.empty')}</p>
           )}
-          {projectsStatus === 'ready' && projects.length > 0 && (
+          {!projectsCollapsed && projectsStatus === 'ready' && projects.length > 0 && (
             <div className={css.projectList}>
               {projects.map(project => (
                 <button
