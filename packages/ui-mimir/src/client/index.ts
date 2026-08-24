@@ -30,10 +30,10 @@ import { en, zh, type ResearchKey } from './locales.ts'
 
 export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
-  ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
+  ResearchImportCounts, ResearchJobsView, ResearchLedgerView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
-  ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchSubscriptionsView,
-  ResearchView, ResearchZoteroSearchView, ResearchZoteroView,
+  ResearchReportView, ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView,
+  ResearchSubscriptionsView, ResearchView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 export type {
   ResearchPanelInjected, ResearchPanelProps, ResearchPanelStore, ResearchToggleProps,
@@ -42,6 +42,12 @@ export type { ResearchPanelState, ResearchTab } from './store.ts'
 export { createResearchPanelStore } from './store.ts'
 export type { WorkbenchChrome } from './shortcuts.ts'
 export type { ResearchKey } from './locales.ts'
+export {
+  ACTOR_KEYS, LEDGER_LIST_LIMIT, LEDGER_WINDOWS,
+  ledgerIsDestructive, ledgerPayloadLine, ledgerTimeParts, ledgerWindowFilter,
+  reportFileName, reportWindowOptions,
+  type LedgerTimeParts, type LedgerWindow,
+} from './ledger-view.ts'
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'research'
@@ -280,6 +286,8 @@ export function apply(ctx: ClientContext): void {
         controller.reorderPaperSections(projectId, moves, baseOutline),
       reorderPaperSubsections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSubsections(projectId, moves, baseOutline),
+      loadLedger: filter => { controller.loadLedger(filter) },
+      generateReport: options => controller.generateReport(options),
       exportWiki: () => controller.exportWiki(),
       importWiki: (snapshot, mode, confirmReplace) => controller.importWiki(snapshot, mode, confirmReplace),
       dismissToast: (id) => { controller.dismissToast(id) },

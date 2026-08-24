@@ -41,6 +41,7 @@ import type {
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
+  ResearchListEventsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -49,6 +50,7 @@ import type {
   ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
+  ResearchProgressReportResult,
   ResearchRemovePaperResult,
   ResearchRenameFigureResult,
   ResearchRevertPaperSnapshotResult,
@@ -91,6 +93,7 @@ import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
 import * as venue from './services/venue.ts'
 import * as meeting from './services/meeting.ts'
+import * as ledger from './services/ledger.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -538,6 +541,29 @@ export class ResearchService extends TypertRemoteService {
   @Remote('listBackups')
   listBackups(): Promise<ResearchListBackupsResult> {
     return wikiAdmin.listBackups(this.deps)
+  }
+
+  // ledger domain: the append-only growth record (query + progress report)
+  @Remote('listEvents')
+  listEvents(request: {
+    projectId?: string | undefined
+    actorKind?: string | undefined
+    actionPrefix?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+    limit?: number | undefined
+    order?: string | undefined
+  }): Promise<ResearchListEventsResult> {
+    return ledger.listEventsRemote(this.deps, request)
+  }
+
+  @Remote('generateProgressReport')
+  generateProgressReport(request: {
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchProgressReportResult> {
+    return ledger.generateProgressReportRemote(this.deps, request)
   }
 }
 

@@ -34,7 +34,7 @@ import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
-export type { Verdict, PaperRecord, PaperRelevance, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
+export type { Verdict, PaperRecord, PaperRelevance, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus, EventRecord, LedgerActor, LedgerActorKind, EventRefs, LedgerJsonValue, ResearchEventFilter, ResearchListEventsResult, ResearchProgressReportOptions, ResearchProgressReportResult } from './types.ts'
 export type {
   ArxivSubscriptionCheckView,
   ArxivSubscriptionView,
@@ -94,6 +94,22 @@ export type {
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
+export {
+  appendEvent,
+  buildProgressReport,
+  emitEvent,
+  listEvents,
+  newEvent,
+  truncatePayload,
+  PANEL_ACTOR,
+  REVIEWER_ACTOR,
+  SERVICE_ACTOR,
+  WIKI_AGENT_ACTOR,
+  EVENT_PAYLOAD_MAX_CHARS,
+  LIST_EVENTS_DEFAULT_LIMIT,
+  LIST_EVENTS_MAX_LIMIT,
+} from './ledger.ts'
+export type { LedgerEventInput } from './ledger.ts'
 export { parseLatexErrors } from './latex-log.ts'
 export type { LatexIssue } from './latex-log.ts'
 export { parseTexOutline } from './outline.ts'

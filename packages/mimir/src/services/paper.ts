@@ -21,6 +21,7 @@ import { entryFromPaper, parseBibtex, serializeBibtex } from '../bibtex.ts'
 import { compileLatex } from '../tools/latex.ts'
 import type { LatexToolOptions } from '../tools/latex.ts'
 import { captureCompileSnapshot } from './paper-snapshots.ts'
+import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   BibEntry,
@@ -216,6 +217,12 @@ export async function reorderPaperSections(
   if (outcome.kind === 'conflict') {
     return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
   }
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'writing.paper.reordered',
+    refs: { projectId: request.projectId },
+    payload: { level: 'section', moves: request.moves.length },
+  })
   return success({ mtimeMs: outcome.mtimeMs })
 }
 
@@ -282,6 +289,12 @@ export async function reorderPaperSubsections(
   if (outcome.kind === 'conflict') {
     return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
   }
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'writing.paper.reordered',
+    refs: { projectId: request.projectId },
+    payload: { level: 'subsection', moves: request.moves.length },
+  })
   return success({ mtimeMs: outcome.mtimeMs })
 }
 
@@ -355,6 +368,12 @@ export async function saveBibliography(
   if (outcome.kind === 'conflict') {
     return rejected({ code: 'conflict', currentMtimeMs: outcome.currentMtimeMs })
   }
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'writing.bib.saved',
+    refs: { projectId: request.projectId },
+    payload: { entries: request.entries.length, created: request.baseMtimeMs === null },
+  })
   return success({ mtimeMs: outcome.mtimeMs })
 }
 
@@ -439,11 +458,20 @@ export async function importPapersToBib(
     if (paper === undefined) return rejected({ code: 'paper-not-found' })
     entries.push(entryFromPaper(paper))
   }
-  return appendBibEntries(deps, {
+  const result = await appendBibEntries(deps, {
     projectId: request.projectId,
     entries,
     ...(request.dir === undefined ? {} : { dir: request.dir }),
   })
+  if (result.ok) {
+    await emitEvent(deps.domain, {
+      actor: PANEL_ACTOR,
+      action: 'writing.bib.imported',
+      refs: { projectId: request.projectId },
+      payload: { added: result.value.added.length, skipped: result.value.skipped.length },
+    })
+  }
+  return result
 }
 
 /**
@@ -506,6 +534,14 @@ export async function compile(
       : previous.pdfUpdatedAt,
   })
   state.compileStatus.set(key, settled)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'writing.compile.settled',
+    refs: {
+      ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+    },
+    payload: { state: settled.state, engine: settled.engine, issues: settled.issues.length },
+  })
   if (outcome.success && request.projectId !== undefined) {
     // Best-effort: a snapshot I/O failure must never fail the compile it
     // rides on. The unkeyed compile slot never snapshots (snapshots are

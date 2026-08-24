@@ -381,10 +381,10 @@ describe('ResearchService.exportZoteroCollectionToBib', () => {
 })
 
 describe('wiki schema regression', () => {
-  it('the domain spec stays at version 2 with the eight existing tables', () => {
+  it('the domain spec stays at version 2 with the nine existing tables', () => {
     expect(researchWikiDomainSpec.version).toBe(2)
     expect(Object.keys(researchWikiDomainSpec.tables)).toEqual([
-      'papers', 'ideas', 'claims', 'projects', 'experiments', 'servers', 'jobs', 'figures',
+      'papers', 'ideas', 'claims', 'projects', 'experiments', 'servers', 'jobs', 'figures', 'events',
     ])
   })
 })
