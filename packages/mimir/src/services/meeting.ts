@@ -10,7 +10,7 @@
  * @module dsh-mimir/src/services/meeting
  */
 
-import { mkdir, readdir, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type {
   ExperimentRecord,
@@ -29,11 +29,15 @@ import type { WikiAdminDeps } from './wiki-admin.ts'
 
 /** Directory under the workspace root holding one subfolder per project. */
 export const MEETINGS_DIR_NAME = 'meetings'
+/** Directory under meetings/ holding per-paper extracted figure crops (the 逐图 assets). */
+export const PAPER_FIGURES_DIR_NAME = '.paper-figures'
 /** The deck font, per the group-meeting house style. */
 export const DECK_FONT = 'Microsoft YaHei'
 /** Caps keeping a deck presentable: papers and figures per deck. */
 export const DECK_MAX_PAPERS = 12
 export const DECK_MAX_FIGURES = 12
+/** Per-paper figure-crop cap inside the papers section (the 逐图 slides). */
+export const DECK_MAX_PAPER_FIGURES = 3
 
 const DEFAULT_INCLUDE: MeetingInclude = Object.freeze({
   progress: true, experiments: true, figures: true, papers: true,
@@ -46,6 +50,16 @@ export interface MeetingFigureInput {
   readonly imagePath: string
 }
 
+/** One figure crop extracted from a paper's PDF (the 逐图 slides of the papers section). */
+export interface PaperFigureAsset {
+  /** Absolute path of the extracted crop (png). */
+  readonly imagePath: string
+  /** Figure label as printed in the paper (`Figure 2`, `Fig. 3a`…). */
+  readonly label: string
+  /** Caption text — the takeaway sentence after the agent's polish pass. */
+  readonly caption: string
+}
+
 /** Everything {@link buildDeckModel} needs, already gathered. */
 export interface DeckModelInput {
   readonly project: ProjectRecord
@@ -55,6 +69,8 @@ export interface DeckModelInput {
   /** Total library papers associated with the project (the slide's count, uncapped). */
   readonly paperCount: number
   readonly papers: readonly PaperRecord[]
+  /** Extracted figure crops per paper, keyed by arXiv id (missing = text-only paper slide). */
+  readonly paperFigures: Readonly<Record<string, readonly PaperFigureAsset[]>>
   readonly experiments: readonly ExperimentRecord[]
   readonly figures: readonly MeetingFigureInput[]
   readonly include: MeetingInclude
@@ -165,6 +181,16 @@ export function buildDeckModel(input: DeckModelInput): readonly DeckSlide[] {
         heading: paper.title,
         bullets: bullets.length > 0 ? bullets : [{ text: paper.summary.slice(0, 200) }],
       })
+      // 逐图 slides: extracted figure crops follow the paper's intro slide,
+      // one figure per slide with its takeaway caption (the house layout).
+      for (const asset of input.paperFigures[paper.arxivId] ?? []) {
+        slides.push({
+          kind: 'figure',
+          heading: `${asset.label} · ${paper.title}`,
+          imagePath: asset.imagePath,
+          caption: asset.caption,
+        })
+      }
     }
   }
 
@@ -308,6 +334,52 @@ function slugOf(title: string, fallback: string): string {
 }
 
 /**
+ * Load one paper's extracted figure crops, when an extraction pass ran (the
+ * research-meeting-deck skill's script writes `manifest.json` plus png crops
+ * here). A missing/invalid manifest reads as none; entries whose file is
+ * gone are dropped. Capped at {@link DECK_MAX_PAPER_FIGURES}.
+ * @param workspaceDir - research workspace root.
+ * @param arxivId - the paper's bare arXiv id (the manifest folder name).
+ * @returns the paper's deck-ready figure assets, possibly empty.
+ */
+export async function loadPaperFigures(
+  workspaceDir: string,
+  arxivId: string,
+): Promise<readonly PaperFigureAsset[]> {
+  const dir = join(workspaceDir, MEETINGS_DIR_NAME, PAPER_FIGURES_DIR_NAME, arxivId)
+  let raw: string
+  try {
+    raw = await readFile(join(dir, 'manifest.json'), 'utf8')
+  } catch {
+    return []
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+  const assets: PaperFigureAsset[] = []
+  for (const entry of parsed as readonly { file?: unknown; label?: unknown; caption?: unknown }[]) {
+    const file = basename(typeof entry?.file === 'string' ? entry.file : '')
+    if (file === '' || extname(file).toLowerCase() !== '.png') continue
+    const imagePath = join(dir, file)
+    const stats = await stat(imagePath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) continue
+    assets.push({
+      imagePath,
+      label: typeof entry.label === 'string' && entry.label !== ''
+        ? entry.label
+        : file.replace(/\.png$/, ''),
+      caption: typeof entry.caption === 'string' ? entry.caption : '',
+    })
+    if (assets.length >= DECK_MAX_PAPER_FIGURES) break
+  }
+  return Object.freeze(assets)
+}
+
+/**
  * Generate one project's meeting deck. Gathers the selected (or default)
  * papers/experiments/figures, plans the slides, renders the pptx into
  * `meetings/<projectId>/`, and returns the file name plus the slide count.
@@ -379,8 +451,18 @@ export async function generateMeetingDeck(
 
   const date = request.date?.trim() || dateOnly(new Date().toISOString())
   const title = request.title?.trim() || `${project.title} · 组会汇报`
+
+  // 逐图 assets of the selected papers (extraction ran → crops + manifest).
+  const paperFigures: Record<string, readonly PaperFigureAsset[]> = {}
+  if (include.papers) {
+    for (const paper of papers) {
+      const assets = await loadPaperFigures(deps.workspaceDir, paper.arxivId)
+      if (assets.length > 0) paperFigures[paper.arxivId] = assets
+    }
+  }
+
   const slides = buildDeckModel({
-    project, title, date, presenter: request.presenter, paperCount: associated.length, papers, experiments, figures, include,
+    project, title, date, presenter: request.presenter, paperCount: associated.length, papers, paperFigures, experiments, figures, include,
   })
 
   const meetingsDir = join(deps.workspaceDir, MEETINGS_DIR_NAME, project.id)
