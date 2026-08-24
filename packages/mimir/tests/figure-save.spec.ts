@@ -18,7 +18,7 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
-import { createFigureSaveTool } from '../src/tools/figure.ts'
+import { createFigureOrganizeTool, createFigureSaveTool } from '../src/tools/figure.ts'
 import { ResearchService } from '../src/service.ts'
 import type { SvgConversionDeps } from '../src/svg-convert.ts'
 import type { ProjectRecord } from '../src/types.ts'
@@ -167,5 +167,55 @@ describe('figures metadata in the workbench service', () => {
     expect(domain.table('figures').get('p1:figures/curve.png')).toBeUndefined()
     const listed = await service.listFigures({ projectId: 'p1' })
     expect(listed).toEqual({ ok: true, value: { figures: [] } })
+  })
+})
+
+
+describe('figure_organize', () => {
+  /** Boot the suite plus the organize tool. */
+  async function organizeHarness() {
+    const base = await harness()
+    return { ...base, organize: createFigureOrganizeTool(base.workspaceDir, base.domain) }
+  }
+
+  it('renames the file and sets the caption in one call', async () => {
+    const { domain, workspaceDir, organize } = await organizeHarness()
+    const figuresDir = join(workspaceDir, 'paper', 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    await writeFile(join(figuresDir, 'screenshot-1.png'), PIXELS)
+    await writeFile(join(workspaceDir, 'paper', 'main.tex'), '\\includegraphics{figures/screenshot-1.png}\n')
+    const outcome = await organize.execute({
+      project_id: 'p1',
+      path: 'figures/screenshot-1.png',
+      new_name: 'teaser.png',
+      caption: 'The teaser figure.',
+    }, NO_EXEC) as Record<string, unknown>
+    expect(outcome).toMatchObject({
+      ok: true, relPath: 'figures/teaser.png', caption: 'The teaser figure.', renamedFrom: 'figures/screenshot-1.png',
+    })
+    expect(domain.table('figures').get('p1:figures/teaser.png')?.caption).toBe('The teaser figure.')
+    await expect(readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8'))
+      .resolves.toContain('figures/teaser.png')
+  })
+
+  it('updates only the caption when no new name is given', async () => {
+    const { domain, workspaceDir, organize } = await organizeHarness()
+    const figuresDir = join(workspaceDir, 'paper', 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    await writeFile(join(figuresDir, 'plot.png'), PIXELS)
+    const outcome = await organize.execute({
+      project_id: 'p1', path: 'figures/plot.png', caption: 'Loss over steps.',
+    }, NO_EXEC) as Record<string, unknown>
+    expect(outcome).toMatchObject({ ok: true, relPath: 'figures/plot.png', caption: 'Loss over steps.' })
+    expect(outcome['renamedFrom']).toBeUndefined()
+    expect(domain.table('figures').get('p1:figures/plot.png')?.caption).toBe('Loss over steps.')
+  })
+
+  it('requires at least one change and surfaces service failures', async () => {
+    const { organize } = await organizeHarness()
+    await expect(organize.execute({ project_id: 'p1', path: 'figures/x.png' }, NO_EXEC))
+      .rejects.toThrow('at least one of new_name or caption')
+    await expect(organize.execute({ project_id: 'nope', path: 'figures/x.png', caption: 'c' }, NO_EXEC))
+      .rejects.toThrow()
   })
 })

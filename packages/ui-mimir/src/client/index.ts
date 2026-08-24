@@ -26,7 +26,7 @@ import { ResearchToggle } from './ResearchToggle.tsx'
 import type { ResearchPanelInjected } from './slots.ts'
 import { nextColorScheme, nextLocale, type WorkbenchChrome } from './shortcuts.ts'
 import { createResearchPanelStore } from './store.ts'
-import { en, zh } from './locales.ts'
+import { en, zh, type ResearchKey } from './locales.ts'
 
 export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
@@ -126,13 +126,13 @@ export function apply(ctx: ClientContext): void {
   }, ResearchToggle))
 
   // Queue one assembled prompt as one user message in the current session.
-  // Shared by the "fix with AI" and "draft related work" buttons; the agent's
-  // edits land on disk and the panel's reload/re-compile flow takes it from
-  // there.
+  // Shared by the "fix with AI", "draft related work", "score relevance", and
+  // "organize figure" buttons; the agent's edits land on disk or in the wiki
+  // and the panel's reload/poll flow takes it from there.
   const sendPromptToCurrentSession = async (
     prompt: string,
-    sentCopy: 'toast.fixSent' | 'toast.relworkSent',
-    failedCopy: 'toast.fixSendFailed' | 'toast.relworkSendFailed',
+    sentCopy: ResearchKey,
+    failedCopy: ResearchKey,
   ): Promise<void> => {
     const current = sessions.list.getSnapshot().current
     const binding = current === undefined ? undefined : sessions.binding(current)
@@ -171,26 +171,31 @@ export function apply(ctx: ClientContext): void {
       requestCompileFix: prompt => sendPromptToCurrentSession(prompt, 'toast.fixSent', 'toast.fixSendFailed'),
       // The papers view's "draft related work" button: same session channel.
       requestRelatedWork: prompt => sendPromptToCurrentSession(prompt, 'toast.relworkSent', 'toast.relworkSendFailed'),
+      // The papers view's "score relevance with AI" buttons: same channel.
+      requestPaperScore: prompt => sendPromptToCurrentSession(prompt, 'toast.scoreSent', 'toast.scoreSendFailed'),
+      // The figures view's "organize with AI" button: same channel.
+      requestFigureOrganize: prompt => sendPromptToCurrentSession(prompt, 'toast.figureOrganizeSent', 'toast.figureOrganizeSendFailed'),
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
+      refreshPapers: () => { controller.refreshPapers() },
       ensureSubscriptions: () => { controller.ensureSubscriptions() },
       saveArxivSubscription: query => controller.saveArxivSubscription(query),
       deleteArxivSubscription: id => controller.deleteArxivSubscription(id),
       checkArxivSubscriptions: () => controller.checkArxivSubscriptions(),
       searchArxiv: (query) => { controller.searchArxiv(query) },
-      importPaper: (entry) => controller.importPaper(entry),
+      importPaper: (entry, projectId) => controller.importPaper(entry, projectId),
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),
       fetchPaperPdf: (arxivId) => controller.fetchPaperPdf(arxivId),
       ensureZotero: () => { controller.ensureZotero() },
       recheckZotero: () => { controller.recheckZotero() },
       searchZotero: (query) => { controller.searchZotero(query) },
-      importZoteroItem: key => controller.importZoteroItem(key),
+      importZoteroItem: (key, projectId) => controller.importZoteroItem(key, projectId),
       exportZoteroCollectionToBib: (projectId, collectionKey) =>
         controller.exportZoteroCollectionToBib(projectId, collectionKey),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
-      loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
+      loadFigures: (projectId, force, quiet) => { controller.loadFigures(projectId, force, quiet) },
       uploadFigures: async (projectId, dir, files, onProgress) => {
         let done = 0
         for (const file of files) {
@@ -202,6 +207,8 @@ export function apply(ctx: ClientContext): void {
         if (done > 0) controller.notify('success', 'toast.figuresUploaded', `× ${done}`)
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
+      renameFigure: (projectId, relPath, newName) => controller.renameFigure(projectId, relPath, newName),
+      updateFigure: (projectId, relPath, caption) => controller.updateFigure(projectId, relPath, caption),
       // A successful insert (or the duplicate's jump) lands in the paper view.
       insertFigure: async (projectId, entry) => {
         const line = await controller.insertFigureIntoPaper(projectId, entry)

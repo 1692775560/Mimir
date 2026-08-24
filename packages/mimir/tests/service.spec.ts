@@ -1280,3 +1280,154 @@ describe('ResearchService arXiv subscriptions (facade)', () => {
     expect(listed.value.subscriptions[0]?.newEntries).toEqual([ARXIV_ENTRY])
   })
 })
+
+
+describe('ResearchService.importPaper project link', () => {
+  it('links a new import to the given project and keeps the link on re-import', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const first = await service.importPaper({ entry: ARXIV_ENTRY, projectId: 'p1' })
+    expect(first).toEqual({ ok: true, value: { imported: true } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.projectIds).toEqual(['p1'])
+    // A re-import without the project keeps the existing link and relevance.
+    await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 8, reason: 'central' },
+    })
+    const again = await service.importPaper({ entry: ARXIV_ENTRY })
+    expect(again).toEqual({ ok: true, value: { imported: false } })
+    const stored = domain.table('papers').get(ARXIV_ENTRY.id)
+    expect(stored?.projectIds).toEqual(['p1'])
+    expect(stored?.relevance?.['p1']?.score).toBe(8)
+  })
+
+  it('rejects an unknown project id', async () => {
+    const { service } = await harness()
+    await expect(service.importPaper({ entry: ARXIV_ENTRY, projectId: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+  })
+})
+
+describe('ResearchService.updatePaper relevance', () => {
+  it('scores a paper against one project without touching other verdicts', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('projects').put('p2', { ...PROJECT, id: 'p2' })
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    const scored = await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 8.5, reason: 'central to the direction' },
+    })
+    if (!scored.ok) throw new Error('unreachable')
+    expect(scored.value.paper.relevance?.['p1']?.score).toBe(8.5)
+    const rescored = await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p2', score: 2, reason: 'peripheral there' },
+    })
+    if (!rescored.ok) throw new Error('unreachable')
+    expect(rescored.value.paper.relevance?.['p1']?.score).toBe(8.5)
+    expect(rescored.value.paper.relevance?.['p2']?.score).toBe(2)
+  })
+
+  it('rejects an out-of-range score and an unknown project', async () => {
+    const { service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    await expect(service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 11, reason: 'too high' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    const { domain, service: service2 } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await service2.importPaper({ entry: ARXIV_ENTRY })
+    await expect(service2.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 11, reason: 'too high' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service2.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: Number.NaN, reason: 'not a number' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+})
+
+describe('ResearchService.renameFigure', () => {
+  /** Scaffold a paper dir whose main.tex references the seeded figure. */
+  async function scaffoldWithReference(workspaceDir: string): Promise<void> {
+    await scaffoldPaper(workspaceDir)
+    await mkdir(join(workspaceDir, 'paper', 'sections'), { recursive: true })
+    await writeFile(
+      join(workspaceDir, 'paper', 'main.tex'),
+      '\\documentclass{article}\n\\begin{document}\n\\includegraphics[width=\\linewidth]{figures/plot.png}\n\\end{document}\n',
+    )
+    await writeFile(
+      join(workspaceDir, 'paper', 'sections', 'results.tex'),
+      '\\includegraphics{figures/plot}\n',
+    )
+  }
+
+  it('renames the file, moves the metadata row, and rewrites .tex references', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, { ...PROJECT, artifacts: ['paper/figures/plot.png'] })
+    await scaffoldWithReference(workspaceDir)
+    await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'Training loss' })
+    const outcome = await service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'loss-curve.png' })
+    expect(outcome).toEqual({ ok: true, value: { relPath: 'figures/loss-curve.png', references: 2 } })
+    // The file moved, the caption followed, and the references point at the new name.
+    await stat(join(workspaceDir, 'paper', 'figures', 'loss-curve.png'))
+    expect(domain.table('figures').get('p1:figures/plot.png')).toBeUndefined()
+    expect(domain.table('figures').get('p1:figures/loss-curve.png')?.caption).toBe('Training loss')
+    await expect(readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8'))
+      .resolves.toContain('figures/loss-curve.png')
+    await expect(readFile(join(workspaceDir, 'paper', 'sections', 'results.tex'), 'utf8'))
+      .resolves.toContain('{figures/loss-curve}')
+    expect(domain.table('projects').get('p1')?.artifacts).toEqual(['paper/figures/loss-curve.png'])
+  })
+
+  it('rejects an extension change, an existing target, and a missing source', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldWithReference(workspaceDir)
+    await writeFile(join(workspaceDir, 'paper', 'figures', 'taken.png'), Buffer.from([1]))
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'plot.svg' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'taken.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/gone.png', newName: 'x.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'figure-not-found' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'sub/plot.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+  })
+
+  it('treats a same-name rename as a no-op', async () => {
+    const { domain, service, workspaceDir } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'plot.png' }))
+      .resolves.toEqual({ ok: true, value: { relPath: 'figures/plot.png', references: 0 } })
+  })
+})
+
+describe('ResearchService.updateFigure', () => {
+  it('upserts the caption and preserves the experiment link', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const created = await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'first' })
+    expect(created).toEqual({ ok: true, value: { relPath: 'figures/plot.png', caption: 'first' } })
+    // Seed an experiment link, then confirm a caption update preserves it.
+    await domain.table('figures').update('p1:figures/plot.png', current => ({ ...current, experimentId: 'exp-1' }))
+    const updated = await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'second' })
+    expect(updated).toEqual({ ok: true, value: { relPath: 'figures/plot.png', caption: 'second' } })
+    expect(domain.table('figures').get('p1:figures/plot.png')?.experimentId).toBe('exp-1')
+  })
+
+  it('rejects an unknown project and a non-figure path', async () => {
+    const { domain, service } = await harness()
+    await expect(service.updateFigure({ projectId: 'nope', relPath: 'figures/x.png', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await expect(service.updateFigure({ projectId: 'p1', relPath: '../x.png', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-path' } })
+    await expect(service.updateFigure({ projectId: 'p1', relPath: 'figures/x.txt', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-path' } })
+  })
+})
