@@ -60,6 +60,11 @@ import type {
   ResearchVenueTemplatesResult,
   ResearchApplyVenueResult,
   ResearchClearVenueResult,
+  ResearchDeleteMeetingDeckResult,
+  ResearchGenerateMeetingResult,
+  ResearchMeetingDecksResult,
+  MeetingDeckView,
+  MeetingInclude,
   VenueTemplateView,
   ResearchOutlineResult,
   ResearchPaperSnapshotResult,
@@ -175,6 +180,17 @@ export interface ResearchRemote {
     customName?: string | undefined
   }) => Promise<RemoteResult<ResearchApplyVenueResult>>
   clearVenueTemplate: (request: { projectId: string }) => Promise<RemoteResult<ResearchClearVenueResult>>
+  generateMeetingDeck: (request: {
+    projectId: string
+    title?: string | undefined
+    presenter?: string | undefined
+    date?: string | undefined
+    paperIds?: readonly string[] | undefined
+    figureRelPaths?: readonly string[] | undefined
+    include?: Partial<MeetingInclude> | undefined
+  }) => Promise<RemoteResult<ResearchGenerateMeetingResult>>
+  listMeetingDecks: (request: { projectId: string }) => Promise<RemoteResult<ResearchMeetingDecksResult>>
+  deleteMeetingDeck: (request: { projectId: string; file: string }) => Promise<RemoteResult<ResearchDeleteMeetingDeckResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -417,6 +433,8 @@ export interface ResearchView {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
+  /** The meetings view's generated decks of the selected project; null until first opened. */
+  readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -457,6 +475,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   experiments: null,
   artifact: null,
   figures: null,
+  meetings: null,
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
   jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
@@ -508,6 +527,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   private snapshotsGeneration = 0
   private snapshotDetailGeneration = 0
   private figuresInFlight = false
+  private meetingsGeneration = 0
+  private meetingsInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
@@ -1001,6 +1022,101 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
+      this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * List one project's generated meeting decks. Skips a reload of an
+   * already-ready same project unless forced (generation and deletion force).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip.
+   */
+  loadMeetings(projectId: string, force = false): void {
+    const current = this.view.meetings
+    if (this.meetingsInFlight) return
+    if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
+    this.meetingsGeneration += 1
+    const generation = this.meetingsGeneration
+    this.meetingsInFlight = true
+    this.publish({
+      meetings: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishMeetings = (view: ResearchProjectSlice<readonly MeetingDeckView[]>): void => {
+        if (this.disposed || generation !== this.meetingsGeneration) return
+        this.publish({ meetings: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.listMeetingDecks({ projectId })
+        if (!carried.ok) {
+          publishMeetings({ projectId, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishMeetings({ projectId, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishMeetings({ projectId, status: 'ready', list: result.value.decks, failure: null })
+      } catch (error) {
+        publishMeetings({ projectId, status: 'error', list: [], failure: transportFailure(error) })
+      } finally {
+        this.meetingsInFlight = false
+      }
+    })()
+  }
+
+  /**
+   * Generate one project's meeting deck, then force a deck-list reload.
+   * Failures surface as the returned failure view; success toasts the slide
+   * count.
+   * @param projectId - wiki project id.
+   * @param request - the deck options (title/presenter/date/selections).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async generateMeetingDeck(
+    projectId: string,
+    request: {
+      title?: string | undefined
+      presenter?: string | undefined
+      date?: string | undefined
+      paperIds?: readonly string[] | undefined
+      figureRelPaths?: readonly string[] | undefined
+      include?: Partial<MeetingInclude> | undefined
+    },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.generateMeetingDeck({ projectId, ...request })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.meetingsInFlight = false
+      this.loadMeetings(projectId, true)
+      this.notify('success', 'meetings.generated', String(result.value.slides))
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one generated deck and force a deck-list reload.
+   * @param projectId - wiki project id.
+   * @param file - the deck file name within the project's meetings directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteMeetingDeck(projectId: string, file: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteMeetingDeck({ projectId, file })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.meetingsInFlight = false
+      this.loadMeetings(projectId, true)
       this.notify('success', 'toast.deleted')
       return null
     } catch (error) {

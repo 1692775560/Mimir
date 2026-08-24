@@ -381,6 +381,57 @@ Design and produce the paper's figures so each one earns its column width.
   column width, referenced in the text, and captioned with its takeaway.
 ` + SHARED_RULES
 
+// The deck-style rules below (Chinese slide voice, one message per slide,
+// figure-left/caption-right, Fig.X takeaway captions) are adapted from the
+// academic-Group-meeting-skills project
+// (https://github.com/mlxbc12138/academic-Group-meeting-skills) — credit and
+// thanks; Mimir renders them deterministically via pptxgenjs instead of
+// per-slide HTML.
+export const RESEARCH_MEETING_DECK = String.raw`
+# Meeting Deck — prepare a group-meeting report from the wiki
+
+Prepare the material for a group-meeting (组会) deck, then let the workbench
+render it. The 组会 / Meetings tab generates the .pptx deterministically from
+the wiki — your job is to make sure what it reads is worth projecting.
+
+## Slide voice (the house style)
+
+- Chinese, plain and direct: one slide carries one message, stated in the
+  heading — never "实验结果", always "方法 X 在 Y 上超过 baseline 2.1 个点".
+- Figures present as image-left / caption-right; the caption is the takeaway
+  sentence ("Fig.2 去掉检索模块后召回掉 8 个点"), not a description of axes.
+- Progress is stated against the project stage and the venue target, not as a
+  diary.
+
+## Prepare the material
+
+1. **Papers** — the deck pulls the project's library papers, relevance-sorted,
+   capped at 12. Re-read the project's paper notes: each kept paper needs a
+   one-paragraph \`notes\` (update with \`wiki_note { action: 'update_paper' }\`)
+   and a relevance score so the sort is honest. A paper without notes shows up
+   as its abstract — weak on a slide.
+2. **Figures** — every figure slide takes its caption from the wiki registry.
+   Walk the 图表 tab and give each figure its takeaway caption before
+   generating; an empty caption wastes the right column.
+3. **Experiments** — the deck lists up to 8 recent runs with their metrics.
+   Make sure the runs you want projected are logged via
+   \`wiki_note { action: 'add_experiment' }\` with real metric values.
+4. **Progress** — \`wiki_note { action: 'set_project' }\` must reflect the
+   true stage, and the venue target (venue tab) should be set if the project
+   is aiming at a conference.
+
+## Generate, then polish
+
+- Tell the user to open the 组会 tab, pick the papers/figures to include,
+  and hit 生成 — the deck lands in \`meetings/<project>/\` and downloads from
+  the tab. If you are preparing a specific meeting, draft the deck title and
+  the 下一步计划 talking points for them.
+- After generation, ask for the one-slide feedback: which slide would the
+  advisor attack first? Strengthen that slide's evidence (a missing run, a
+  missing baseline) before the meeting, not during it.
+` + SHARED_RULES
+
+
 /** Every skill bundled with the suite, in catalog order. */
 export const BUNDLED_SKILLS: readonly BundledSkill[] = [
   {
@@ -436,6 +487,12 @@ export const BUNDLED_SKILLS: readonly BundledSkill[] = [
     description: 'Design claim-carrying figures, produce them reproducibly, and file them through figure_save so the Figures tab and the paper stay in sync. Use when the user says "画图", "figure plan", "论文配图", or a paper needs its figures designed.',
     whenToUse: 'A paper or report needs figures planned, produced, and registered in the workbench.',
     content: RESEARCH_FIGURE_PLAN,
+  },
+  {
+    name: 'research-meeting-deck',
+    description: 'Prepare group-meeting (组会) material — paper notes, figure takeaway captions, logged runs, honest stage — so the Meetings tab renders a deck worth projecting. Use when the user says "组会", "组会汇报", "meeting deck", "group meeting slides", or a lab meeting is coming.',
+    whenToUse: 'A group meeting is coming and the deck should be generated from curated wiki material.',
+    content: RESEARCH_MEETING_DECK,
   },
 ]
 

@@ -27,6 +27,7 @@ import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
 import { isFigureFile } from './artifacts.ts'
 import { TEMPLATE_DIR_NAME } from './services/venue.ts'
+import { meetingDeckPath } from './services/meeting.ts'
 import { ResearchService } from './service.ts'
 import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
@@ -636,12 +637,65 @@ function createTemplateUploadHandler(
   }
 }
 
+/**
+ * Download one generated group-meeting deck. The query carries `?project=`
+ * (an unknown id is a 404) and `?file=` (reduced to its basename and confined
+ * to `meetings/<projectId>/` by {@link meetingDeckPath}, so no traversal is
+ * expressible; a non-.pptx name is a 400). Streams the pptx as an attachment,
+ * so the panel's `<a href>` forces a download.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createMeetingDeckHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const projectId = url.searchParams.get('project')
+    const file = url.searchParams.get('file')
+    if (projectId === null || file === null) {
+      res.writeHead(400).end('expected ?project=<project id>&file=<deck file>')
+      return
+    }
+    if (deps.domain.table('projects').get(projectId) === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const deckPath = meetingDeckPath(root, projectId, file)
+    if (deckPath === undefined) {
+      res.writeHead(400).end('file must name a .pptx deck')
+      return
+    }
+    const stats = await stat(deckPath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) {
+      res.writeHead(404).end('meeting deck not found')
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'Content-Length': stats.size,
+      'Content-Disposition': `attachment; filename="${basename(deckPath)}"`,
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
+    createReadStream(deckPath).pipe(res)
+  }
+}
+
 
 /**
  * Mount the research suite: open the wiki domain, register the four tools and
  * the five commands, mount the research panel's Remote service and its HTTP
  * routes (compiled-paper PDF, paper PDF, figure, figure upload, template
- * upload), and tie the domain's close to the plugin lifecycle.
+ * upload, meeting-deck download), and tie the domain's close to the plugin lifecycle.
  * @param ctx - Plugin context.
  * @param config - Validated plugin config.
  * @returns resolution after the domain is open and every surface is registered.
@@ -755,5 +809,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       handler: createTemplateUploadHandler(deps),
     }),
     'mimir.templateUploadRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/meeting',
+      handler: createMeetingDeckHandler(deps),
+    }),
+    'mimir.meetingDeckRoute',
   )
 }
