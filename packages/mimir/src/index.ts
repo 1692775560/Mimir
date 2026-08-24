@@ -18,6 +18,7 @@ import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
 import { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
+import { createMeetingDeckTool } from './tools/meeting.ts'
 import { createLatexCompileTool } from './tools/latex.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
@@ -137,6 +138,7 @@ export { createZoteroClient } from './tools/zotero.ts'
 export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 export { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
+export { createMeetingDeckTool } from './tools/meeting.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
 export type { WikiSnapshotSource } from './wiki-snapshot.ts'
 export {
@@ -717,6 +719,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createWikiNoteTool(domain))
   ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
   ctx.tools.register(createFigureOrganizeTool(deps.workspaceDir, domain))
+  ctx.tools.register(createMeetingDeckTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
 
   registerIdeaCommand(ctx, deps)
