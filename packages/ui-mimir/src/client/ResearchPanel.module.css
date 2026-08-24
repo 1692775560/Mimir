@@ -2009,7 +2009,21 @@ li.dropIndicator {
 
 .papersSearchBar {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+/* The arXiv/Web source switch inside the search bar (reuses the paper tab
+   pill styles, always visible here unlike the narrow-width paper tabs). */
+.papersSourceTabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 10px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  flex-shrink: 0;
 }
 
 .papersSearchBar .input {
@@ -3263,6 +3277,12 @@ li.dropIndicator {
   font-size: 12px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* The source switch's tabs are always rendered; the paper editor's narrow
+   variant hides its own bar outside the breakpoint. */
+.papersSourceTabs .paperTab {
+  display: block;
 }
 
 .paperTab[data-active] {

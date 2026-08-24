@@ -45,6 +45,7 @@ arXiv literature · persistent research wiki · experiments &amp; remote GPUs ·
 | Tool | Purpose |
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv search; selected-paper fetch automatically archives and links it |
+| `web_search` | Optional SearXNG web search through the `sxng` CLI (auto-registered when the CLI is on PATH); complements arXiv with non-arXiv sources |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block (SVG sources are auto-converted to PDF — PNG as the raster fallback — when a converter is available) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
@@ -75,7 +76,7 @@ A sidebar toggle opens a 96vw×95vh workbench:
 | --- | --- |
 | 📊 **Overview** | Five-stage pipeline progress, stat chips, artifact list, recent activity (latest remote jobs + experiment runs), and one-file wiki export/import with guarded replace |
 | 📝 **Paper** | Overleaf-style three-pane studio: drag-to-reorder outline, autosaving editor with windowed syntax highlighting (smooth on thousand-line files), one-click compile, click-to-jump issues with a per-issue **Let AI fix** button, inline PDF preview, `references.bib` panel, project name always in view |
-| 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv search with one-click import, add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
+| 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv **and SearXNG web** search (a tab switch over one search box; web hits whose URL is an arXiv link import in one click), add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
 | 🧪 **Experiments** | Run records with metric-comparison charts, inline create/edit form, server relink dropdowns, automatic **last-job writeback** when a remote run settles, one-click **paper figure** from any comparison chart, and a rendered `EXPERIMENT_LOG.md` |
 | 🖼️ **Figures** | Paper-directory image grid: preview, drag-and-drop upload, copy-LaTeX-reference, insert-into-paper (SVG auto-converts to PDF/PNG on the host); `figure_save` figures show caption + linked-experiment badges |
 | 🎞️ **Meetings** | One-click group-meeting deck: pick papers (default = top 12 by AI relevance) and figures, toggle sections, and the host renders a 16:9 pptx deterministically (no agent round-trip) into `meetings/<project>/`; decks list with download/delete |
@@ -112,6 +113,7 @@ npm view dsh-mimir version
   brew install tectonic        # macOS; see https://tectonic-typesetting.github.io for others
   ```
 - **arXiv access** — literature search calls `export.arxiv.org`; behind a proxy, export `HTTPS_PROXY` before starting dsh.
+- **A SearXNG deployment + sxng CLI** — only for the optional web search. This is the most involved prerequisite: it means self-hosting SearXNG (docker compose with Valkey, a `settings.yml` enabling JSON output, WSL keep-alive on Windows…) and installing the [sxng-cli](https://github.com/hkwuks/sxng-cli) wrapper. **Follow the full step-by-step setup in the [sxng-cli README](https://github.com/hkwuks/sxng-cli#readme)** — it covers the container stack, the `settings.yml` template (30+ engines), `sxng init`, and health checks. Once `sxng --health` reports healthy, Mimir picks it up automatically: with the default `search.command: auto`, the `web_search` tool and the Library web search register themselves when `sxng` is on PATH.
 
 ### 1. Install Mimir
 
@@ -293,6 +295,7 @@ Registers a project in the wiki, scaffolds `IDEA_REPORT.md` in the workspace, su
 The agent reaches the same capabilities mid-conversation:
 
 - `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`); search results alone do not pollute the library.
+- `web_search` — "search the web for the project's official docs and code repositories" (optional; requires the [sxng CLI](https://github.com/hkwuks/sxng-cli) against a self-hosted SearXNG instance). Supports `limit`, `categories`, `lang`, and `time_range`; results are transient and never written to the wiki, though hits whose URL points at an arXiv paper can be imported from the workbench.
 - `paper_fetch` — fetch a useful paper by arXiv id and automatically archive its metadata, usefulness notes, and tags. It links to an explicit `project_id`, or the latest active project when omitted. Re-fetching refreshes arXiv metadata without losing existing notes, tags, links, or a downloaded PDF.
 - `wiki_note` — the wiki's read/write surface, one flat parameter set keyed by `action`: `add_paper`, `add_idea`, `fail_idea`, `add_claim`, `set_claim`, `set_project` (points a project at its paper directory), `add_experiment`, `set_experiment` (status `running`/`success`/`failed`), plus `list` and `get` over the five tables.
 - `latex_compile` — "compile the paper in `paper/`" (`project_dir` parameter); returns parsed file/line diagnostics.
@@ -313,6 +316,8 @@ All keys are optional; these are the defaults from `packages/mimir/src/index.ts`
 | `latex.engine` | `auto` | `auto` (probe `latexmk` then `tectonic` on PATH), an engine name, or an absolute binary path (basename picks the dialect) |
 | `latex.timeoutMs` | `120000` | Compile kill timeout (ms); raise it for tectonic's first network fetch |
 | `arxiv.maxResults` | `10` | Default `arxiv_search` result cap |
+| `search.command` | `auto` | Web search CLI: `auto` registers the `web_search` tool and panel search only when `sxng` resolves on PATH; an explicit name/path always registers it |
+| `search.timeoutMs` | `30000` | Web search kill timeout (ms) |
 | `backup.enabled` | `true` | Scheduled wiki backup timer; `false` disables it entirely |
 | `backup.intervalMinutes` | `60` | Backup cadence in minutes (positive integer); the first pass runs one minute after plugin start |
 | `backup.keep` | `24` | Keep the newest N backups, prune the rest (positive integer) |
@@ -328,6 +333,7 @@ Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-age
 - **LaTeX engine not found** — install tectonic (single binary): `brew install tectonic` on macOS, or see <https://tectonic-typesetting.github.io>. Alternatively point `latex.engine` at an absolute binary path. `engine: auto` probes `latexmk` first, then `tectonic`.
 - **Compile errors** — `/paper-compile` prints parsed file/line diagnostics; in the workbench's Paper view, clicking an error jumps the editor to that source line. First tectonic runs download packages over the network — raise `latex.timeoutMs` if the initial compile times out.
 - **arXiv search fails** — the tools call `export.arxiv.org`; check connectivity, and export `HTTPS_PROXY`/`HTTP_PROXY` before starting dsh when you are behind a proxy.
+- **`web_search` unavailable / panel web search errors** — install the sxng CLI (`npm install -g sxng-cli`), run `sxng init` against a self-hosted SearXNG instance, and restart dsh. With `search.command: auto` the tool appears only when `sxng` is on PATH; the Library view's Web tab reports setup guidance when the host has none configured.
 - **Where is my data / how do I back it up** — the wiki lives at `~/.dsh/storages/research_wiki.json`, research artifacts under `workspaceDir` (default `./.research`). Two backup tracks: the host writes a full snapshot to `<workspaceDir>/backups/mimir-wiki-<UTC timestamp>.json` every `backup.intervalMinutes` (keeps the newest `backup.keep`, atomic writes, failures only warn and retry next cycle), and the Overview view's data card exports the same snapshot manually on demand. Both files import back through the data card (merge is non-destructive) — to restore from an auto-backup, pick the file under `backups/` in the import flow.
 
 ## Known limitations

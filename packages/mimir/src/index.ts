@@ -7,6 +7,7 @@
  */
 
 import { createReadStream } from 'node:fs'
+import { execFile } from 'node:child_process'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { basename, extname, join, resolve, sep } from 'node:path'
@@ -16,6 +17,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
+import { createWebSearchTool } from './tools/web-search.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
 import { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
 import { createMeetingDeckTool } from './tools/meeting.ts'
@@ -26,6 +28,7 @@ import { registerReviewCommand } from './commands/review.ts'
 import { registerPaperCommands } from './commands/paper.ts'
 import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
+import type { ResearchServiceConfig } from './service.ts'
 import { isFigureFile } from './artifacts.ts'
 import { TEMPLATE_DIR_NAME } from './services/venue.ts'
 import { meetingDeckPath } from './services/meeting.ts'
@@ -76,6 +79,8 @@ export type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
+  WebSearchEntry,
   ResearchSubmitJobResult,
   ResearchSuccess,
   ResearchUpdateFigureResult,
@@ -134,6 +139,8 @@ export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEn
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
+export { createWebSearchTool, fetchWebSearch } from './tools/web-search.ts'
+export type { WebSearchOptions, WebSearchRunner } from './tools/web-search.ts'
 export { createZoteroClient } from './tools/zotero.ts'
 export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
@@ -185,6 +192,18 @@ export interface Config {
   arxiv?: {
     /** Default result cap for `arxiv_search` (default 10). */
     maxResults?: number
+  }
+  /** Web search deployment knobs (the sxng CLI over a self-hosted SearXNG). */
+  search?: {
+    /**
+     * The sxng executable (default `auto`): `'auto'` registers the
+     * `web_search` tool only when the command resolves on PATH; an explicit
+     * binary name or absolute path registers it unconditionally and fails
+     * per call with install guidance when missing.
+     */
+    command?: string
+    /** Search kill timeout in milliseconds (default 30000). */
+    timeoutMs?: number
   }
   /**
    * Zotero Web API credentials (read-only integration; both absent disables
@@ -243,6 +262,10 @@ export const Config: z<Config> = z.object({
   arxiv: z.object({
     maxResults: z.number().step(1).min(1).max(100).default(10),
   }).default({ maxResults: 10 }),
+  search: z.object({
+    command: z.string().default('auto'),
+    timeoutMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(30_000),
+  }).default({ command: 'auto', timeoutMs: 30_000 }),
   zotero: z.object({
     apiKey: z.string().default(''),
     userId: z.string().default(''),
@@ -268,6 +291,7 @@ interface ResolvedConfig {
   readonly reviewer: { readonly provider: string; readonly maxRounds: number }
   readonly latex: { readonly engine: string; readonly timeoutMs: number }
   readonly arxiv: { readonly maxResults: number }
+  readonly search: { readonly command: string; readonly timeoutMs: number }
   readonly zotero: { readonly apiKey: string; readonly userId: string }
   readonly subscriptions: {
     readonly enabled: boolean
@@ -288,6 +312,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const reviewer = { provider: config.reviewer?.provider ?? 'spawn', maxRounds: config.reviewer?.maxRounds ?? 3 }
   const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
   const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
+  const search = { command: config.search?.command ?? 'auto', timeoutMs: config.search?.timeoutMs ?? 30_000 }
   const zotero = { apiKey: config.zotero?.apiKey ?? '', userId: config.zotero?.userId ?? '' }
   const subscriptions = {
     enabled: config.subscriptions?.enabled ?? true,
@@ -306,11 +331,13 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (latex.engine.trim().length === 0) throw new TypeError('latex.engine must be a non-empty engine selection')
   if (!Number.isSafeInteger(latex.timeoutMs) || latex.timeoutMs < 1) throw new TypeError('latex.timeoutMs must be a positive safe integer')
   if (!Number.isSafeInteger(arxiv.maxResults) || arxiv.maxResults < 1) throw new TypeError('arxiv.maxResults must be a positive safe integer')
+  if (search.command.trim().length === 0) throw new TypeError('search.command must be a non-empty command name')
+  if (!Number.isSafeInteger(search.timeoutMs) || search.timeoutMs < 1) throw new TypeError('search.timeoutMs must be a positive safe integer')
   if (!Number.isSafeInteger(subscriptions.intervalMinutes) || subscriptions.intervalMinutes < 1) throw new TypeError('subscriptions.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, zotero, subscriptions, backup, skills }
+  return { workspaceDir, reviewer, latex, arxiv, search, zotero, subscriptions, backup, skills }
 }
 
 /**
@@ -443,6 +470,24 @@ const FIGURE_CONTENT_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.pdf': 'application/pdf',
+}
+
+/** The sxng CLI command the auto-detected web search resolves to. */
+const SXNG_COMMAND = 'sxng'
+
+/**
+ * Whether one bare command name resolves to a runnable executable (a PATH
+ * lookup via `<command> --version`). Injectable probe paths live in the
+ * tools; this is the plugin's one startup check.
+ * @param command - the bare command name.
+ * @returns whether the executable resolved and ran.
+ */
+function commandOnPath(command: string): Promise<boolean> {
+  return new Promise((resolveProbe) => {
+    execFile(command, ['--version'], { timeout: 10_000 }, (error) => {
+      resolveProbe(!(error !== null && (error as { code?: unknown }).code === 'ENOENT'))
+    })
+  })
 }
 
 /**
@@ -714,6 +759,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     latex: resolved.latex,
   }
 
+  // Scheduled wiki backup: first pass one minute after start (startup stays
+  // fast), then every intervalMinutes; failures warn and the loop retries
+  // next cycle. The effect ties the timers to the plugin lifecycle; the
+  // service gets the resolved knobs either way so listBackups can report
+  // `enabled: false` when the timer is configured off.
+  const backupDir = resolve(deps.workspaceDir, resolved.backup.dir)
+
   ctx.tools.register(createArxivSearchTool(resolved.arxiv.maxResults))
   ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
@@ -721,6 +773,32 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createFigureOrganizeTool(deps.workspaceDir, domain))
   ctx.tools.register(createMeetingDeckTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
+
+  // Web search is optional: `auto` registers the tool only when the sxng CLI
+  // resolves on PATH (probed once); an explicit command always registers and
+  // reports install guidance per call when missing. The panel's searchWeb
+  // Remote follows the same availability.
+  const searchCommand = resolved.search.command === 'auto'
+    ? (await commandOnPath(SXNG_COMMAND)) ? SXNG_COMMAND : undefined
+    : resolved.search.command
+  const searchConfig = searchCommand === undefined
+    ? undefined
+    : { command: searchCommand, timeoutMs: resolved.search.timeoutMs }
+  if (searchCommand !== undefined) {
+    ctx.tools.register(createWebSearchTool({
+      command: searchCommand,
+      timeoutMs: resolved.search.timeoutMs,
+      maxResults: resolved.arxiv.maxResults,
+    }))
+  }
+  const serviceConfig: ResearchServiceConfig = {
+    workspaceDir: deps.workspaceDir,
+    domain,
+    latex: resolved.latex,
+    backup: { ...resolved.backup, dir: backupDir },
+    ...(searchConfig === undefined ? {} : { search: searchConfig }),
+    zotero: resolved.zotero,
+  }
 
   registerIdeaCommand(ctx, deps)
   registerPlanCommand(ctx, deps)
@@ -734,19 +812,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     registerResearchSkills(ctx)
   }
 
-  // Scheduled wiki backup: first pass one minute after start (startup stays
-  // fast), then every intervalMinutes; failures warn and the loop retries
-  // next cycle. The effect ties the timers to the plugin lifecycle; the
-  // service gets the resolved knobs either way so listBackups can report
-  // `enabled: false` when the timer is configured off.
-  const backupDir = resolve(deps.workspaceDir, resolved.backup.dir)
-  ctx.plugin(ResearchService, {
-    workspaceDir: deps.workspaceDir,
-    domain,
-    latex: resolved.latex,
-    backup: { ...resolved.backup, dir: backupDir },
-    zotero: resolved.zotero,
-  })
+  ctx.plugin(ResearchService, serviceConfig)
   if (resolved.backup.enabled) {
     ctx.effect(
       () => startWikiBackupLoop({

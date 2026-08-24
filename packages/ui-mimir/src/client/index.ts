@@ -216,6 +216,7 @@ export function apply(ctx: ClientContext): void {
       deleteArxivSubscription: id => controller.deleteArxivSubscription(id),
       checkArxivSubscriptions: () => controller.checkArxivSubscriptions(),
       searchArxiv: (query) => { controller.searchArxiv(query) },
+      searchWeb: (query) => { controller.searchWeb(query) },
       importPaper: (entry, projectId) => controller.importPaper(entry, projectId),
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),

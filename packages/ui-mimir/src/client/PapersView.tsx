@@ -21,12 +21,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import type { ArxivEntry, PaperRecord, ResearchProjectView } from 'dsh-mimir/types'
+import type { ArxivEntry, PaperRecord, ResearchProjectView, WebSearchEntry } from 'dsh-mimir/types'
 import type {
-  ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView,
+  ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView, ResearchWebSearchView,
   ResearchSubscriptionsView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
-import { collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
+import { arxivIdFromUrl, collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
 import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
 import { buildPaperScorePrompt } from './paper-score.ts'
 import { buildRelatedWorkPrompt } from './related-work.ts'
@@ -325,6 +325,114 @@ function RelevanceChip({ paper, projectId, projects, t }: {
 }
 
 /**
+ * The web search panel (SearXNG results through the sxng CLI): one card per
+ * result with the title link, engine/category/date meta, and the snippet.
+ * A result whose URL points at an arXiv abstract or PDF gains an import
+ * button — the bridge from a generic web hit into the wiki library.
+ * @param props - the web search slice, the imported-id set, the in-flight
+ * import id, the import verb, the retry verb, and copy.
+ */
+function WebSearchPanel({
+  webSearch, importedIds, importing, importEntry, searchWeb, t,
+}: {
+  readonly webSearch: ResearchWebSearchView | null
+  readonly importedIds: ReadonlySet<string>
+  readonly importing: string | null
+  readonly importEntry: (entry: ArxivEntry) => void
+  readonly searchWeb: (query: string) => void
+  readonly t: ResearchT
+}) {
+  if (webSearch === null) return null
+  return (
+    <section className={css.papersSearchPanel}>
+      <h3 className={css.sectionTitle}>
+        {t('papers.webSearchResults')}：{webSearch.query}
+      </h3>
+      {webSearch.status === 'loading' ? (
+        <p className={css.hint}>{t('papers.searching')}</p>
+      ) : webSearch.status === 'error' ? (
+        <p className={css.failure} role="alert">
+          {t('error.webSearch')}：{failureCopy(t, webSearch.failure)}
+          <button type="button" className={css.btn} onClick={() => { searchWeb(webSearch.query) }}>
+            {t('error.retry')}
+          </button>
+        </p>
+      ) : webSearch.list.length === 0 ? (
+        <p className={css.hint}>{t('papers.webSearchEmpty')}</p>
+      ) : (
+        <div className={css.papersResults}>
+          {webSearch.list.map(entry => (
+            <WebResultCard
+              key={entry.url}
+              entry={entry}
+              imported={importedIds.has(arxivIdFromUrl(entry.url) ?? '')}
+              importing={importing === arxivIdFromUrl(entry.url)}
+              importEntry={importEntry}
+              t={t}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * One web result card. When the URL names an arXiv paper not yet in the
+ * library, an import button builds an {@link ArxivEntry} from the row and
+ * hands it to the shared import flow.
+ */
+function WebResultCard({ entry, imported, importing, importEntry, t }: {
+  readonly entry: WebSearchEntry
+  readonly imported: boolean
+  readonly importing: boolean
+  readonly importEntry: (entry: ArxivEntry) => void
+  readonly t: ResearchT
+}) {
+  const arxivId = arxivIdFromUrl(entry.url)
+  return (
+    <article key={entry.url} className={css.paperResult}>
+      <div className={css.paperResultHead}>
+        <h3 className={css.paperCardTitle}>
+          <a href={entry.url} target="_blank" rel="noreferrer">
+            {entry.title === '' ? entry.url : entry.title}
+          </a>
+        </h3>
+        {arxivId !== null && (
+          imported ? (
+            <button type="button" className={css.btn} disabled>{t('papers.imported')}</button>
+          ) : (
+            <button
+              type="button"
+              className={css.btnPrimary}
+              disabled={importing}
+              onClick={() => {
+                importEntry({
+                  id: arxivId,
+                  title: entry.title,
+                  authors: [],
+                  summary: entry.content,
+                  published: entry.publishedDate,
+                  url: `https://arxiv.org/abs/${arxivId}`,
+                })
+              }}
+            >
+              {importing ? t('papers.importing') : t('papers.import')}
+            </button>
+          )
+        )}
+      </div>
+      <p className={css.paperCardMeta}>
+        {`${t('papers.engine')}：${entry.engine === '' ? '—' : entry.engine}`}
+        {entry.category !== '' && ` · ${entry.category}`}
+        {entry.publishedDate !== '' && ` · ${entry.publishedDate.slice(0, 10)}`}
+      </p>
+      {entry.content !== '' && <p className={css.paperSummary} data-static>{entry.content}</p>}
+    </article>
+  )
+}
+
+/**
  * @param props - the literature view, the arXiv search slice, the project
  * list (for link checkboxes and badges), the selected project (the
  * current-project filter), the load/search/import/update/remove verbs, and
@@ -332,7 +440,7 @@ function RelevanceChip({ paper, projectId, projects, t }: {
  * @returns the search bar and results over the filterable library grid.
  */
 export function PapersView({
-  papers, arxivSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv,
+  papers, arxivSearch, webSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv, searchWeb,
   saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf,
   zotero, zoteroSearch, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
@@ -340,6 +448,7 @@ export function PapersView({
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
+  readonly webSearch: ResearchWebSearchView | null
   readonly arxivSubscriptions: ResearchSubscriptionsView
   readonly projects: readonly ResearchProjectView[]
   readonly selectedProjectId: string | null
@@ -348,6 +457,7 @@ export function PapersView({
   readonly deleteArxivSubscription: (id: string) => Promise<ResearchFailureView | null>
   readonly checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   readonly searchArxiv: (query: string) => void
+  readonly searchWeb: (query: string) => void
   readonly importPaper: (entry: ArxivEntry, projectId?: string) => Promise<ResearchFailureView | null>
   readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly removePaper: (arxivId: string) => Promise<ResearchFailureView | null>
@@ -374,6 +484,7 @@ export function PapersView({
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [query, setQuery] = useState('')
+  const [source, setSource] = useState<'arxiv' | 'web'>('arxiv')
   const [importing, setImporting] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
@@ -471,7 +582,8 @@ export function PapersView({
   const submitSearch = (): void => {
     if (query.trim() === '') return
     setActionError(null)
-    searchArxiv(query)
+    if (source === 'web') searchWeb(query)
+    else searchArxiv(query)
   }
   const importEntry = (entry: ArxivEntry): void => {
     if (importing !== null) return
@@ -550,18 +662,33 @@ export function PapersView({
           submitSearch()
         }}
       >
+        <div className={css.papersSourceTabs} role="tablist" aria-label={t('papers.search')}>
+          {(['arxiv', 'web'] as const).map(tab => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={source === tab}
+              className={css.paperTab}
+              data-active={source === tab || undefined}
+              onClick={() => { setSource(tab) }}
+            >
+              {t(tab === 'arxiv' ? 'papers.sourceArxiv' : 'papers.sourceWeb')}
+            </button>
+          ))}
+        </div>
         <input
           className={css.input}
           value={query}
-          placeholder={t('papers.searchPlaceholder')}
+          placeholder={t(source === 'web' ? 'papers.webSearchPlaceholder' : 'papers.searchPlaceholder')}
           onChange={event => { setQuery(event.target.value) }}
         />
         <button
           type="submit"
           className={css.btnPrimary}
-          disabled={query.trim() === '' || arxivSearch?.status === 'loading'}
+          disabled={query.trim() === '' || arxivSearch?.status === 'loading' || webSearch?.status === 'loading'}
         >
-          {arxivSearch?.status === 'loading' ? t('papers.searching') : t('papers.search')}
+          {(source === 'arxiv' ? arxivSearch?.status : webSearch?.status) === 'loading' ? t('papers.searching') : t('papers.search')}
         </button>
       </form>
       {actionError !== null && (
@@ -579,7 +706,17 @@ export function PapersView({
         onError={setActionError}
         t={t}
       />
-      {arxivSearch !== null && (
+      {source === 'web' ? (
+        <WebSearchPanel
+          webSearch={webSearch}
+          importedIds={importedIds}
+          importing={importing}
+          importEntry={importEntry}
+          searchWeb={searchWeb}
+          t={t}
+        />
+      ) : (
+        arxivSearch !== null && (
         <section className={css.papersSearchPanel}>
           <h3 className={css.sectionTitle}>
             {t('papers.searchResults')}：{arxivSearch.query}
@@ -630,6 +767,7 @@ export function PapersView({
             </div>
           )}
         </section>
+        )
       )}
       {papers.status === 'cold' || papers.status === 'loading' ? (
         <p className={css.hint}>{t('papers.loading')}</p>

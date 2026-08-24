@@ -82,6 +82,7 @@ import type {
   ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -97,6 +98,7 @@ import type {
   ServerRecord,
   ServerStatusView,
   SubsectionMove,
+  WebSearchEntry,
   ZoteroCollectionView,
   ZoteroItemView,
 } from 'dsh-mimir/types'
@@ -119,6 +121,12 @@ export interface ResearchRemote {
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
   listPapers: () => Promise<RemoteResult<ResearchPapersResult>>
   searchArxiv: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchSearchArxivResult>>
+  searchWeb: (request: {
+    query: string
+    maxResults?: number
+    categories?: string | undefined
+    lang?: string | undefined
+  }) => Promise<RemoteResult<ResearchSearchWebResult>>
   importPaper: (request: { entry: ArxivEntry; projectId?: string | undefined }) => Promise<RemoteResult<ResearchImportPaperResult>>
   removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
   updatePaper: (request: {
@@ -318,6 +326,14 @@ export interface ResearchArxivSearchView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The web search panel: the last query's outcome (null before any search). */
+export interface ResearchWebSearchView {
+  readonly query: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly list: readonly WebSearchEntry[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** The papers view's Zotero section: connection status plus the collection list. */
 export interface ResearchZoteroView {
   readonly status: ResearchLoadStatus
@@ -424,6 +440,8 @@ export interface ResearchView {
   readonly papers: ResearchPapersView
   /** The papers view's arXiv search outcome; null before the first search. */
   readonly arxivSearch: ResearchArxivSearchView | null
+  /** The papers view's web search outcome; null before the first search. */
+  readonly webSearch: ResearchWebSearchView | null
   /** The papers view's arXiv subscription bar. */
   readonly arxivSubscriptions: ResearchSubscriptionsView
   /** The papers view's Zotero section (connection status plus collections). */
@@ -465,6 +483,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   source: null,
   papers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   arxivSearch: null,
+  webSearch: null,
   arxivSubscriptions: Object.freeze({
     status: 'cold', list: Object.freeze([]), checking: false, failure: null, checkErrors: Object.freeze({}),
   }),
@@ -523,6 +542,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private artifactGeneration = 0
   private figuresGeneration = 0
   private arxivGeneration = 0
+  private webGeneration = 0
   private bibGeneration = 0
   private snapshotsGeneration = 0
   private snapshotDetailGeneration = 0
@@ -1590,6 +1610,44 @@ export class ResearchController implements HostObservable<ResearchView> {
       }
       try {
         const carried = await this.remote.searchArxiv({ query: trimmed })
+        if (!carried.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSearch({ query: trimmed, status: 'ready', list: result.value.results, failure: null })
+      } catch (error) {
+        publishSearch({ query: trimmed, status: 'error', list: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Search the web (SearXNG through the sxng CLI) for one query and publish
+   * the outcome to the papers view. Mirrors {@link searchArxiv}'s supersede
+   * semantics: a newer search discards an in-flight one's late reply, and an
+   * empty query never leaves the client.
+   * @param query - the free-text query.
+   */
+  searchWeb(query: string): void {
+    const trimmed = query.trim()
+    if (trimmed === '') return
+    this.webGeneration += 1
+    const generation = this.webGeneration
+    this.publish({
+      webSearch: Object.freeze({ query: trimmed, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSearch = (view: ResearchWebSearchView): void => {
+        if (this.disposed || generation !== this.webGeneration) return
+        this.publish({ webSearch: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.searchWeb({ query: trimmed })
         if (!carried.ok) {
           publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
           return

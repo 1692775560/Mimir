@@ -154,6 +154,12 @@ export interface ResearchPanelInjected {
    */
   searchArxiv: (query: string) => void
   /**
+   * Search the web from the papers view; the outcome lands in the view's
+   * `webSearch` slice.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchWeb: (query: string) => void
+  /**
    * Import one arXiv entry into the wiki, then refresh the literature list.
    * @param entry - the parsed arXiv entry of one search result card.
    * @param projectId - the selected project to link, when any.

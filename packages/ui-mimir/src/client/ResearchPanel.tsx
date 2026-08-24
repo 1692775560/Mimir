@@ -140,7 +140,7 @@ export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
   requestRelatedWork, requestPaperScore, requestFigureOrganize,
-  ensurePapers, refreshPapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensurePapers, refreshPapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   renameFigure, updateFigure,
   ensureSubscriptions, saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   ensureZotero, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
@@ -167,6 +167,7 @@ export function ResearchPanel({
   const source = useResearch(view => view.source)
   const papers = useResearch(view => view.papers)
   const arxivSearch = useResearch(view => view.arxivSearch)
+  const webSearch = useResearch(view => view.webSearch)
   const arxivSubscriptions = useResearch(view => view.arxivSubscriptions)
   const zotero = useResearch(view => view.zotero)
   const zoteroSearch = useResearch(view => view.zoteroSearch)
@@ -497,6 +498,7 @@ export function ResearchPanel({
           <PapersView
             papers={papers}
             arxivSearch={arxivSearch}
+            webSearch={webSearch}
             arxivSubscriptions={arxivSubscriptions}
             projects={projects}
             selectedProjectId={selectedProjectId}
@@ -505,6 +507,7 @@ export function ResearchPanel({
             deleteArxivSubscription={deleteArxivSubscription}
             checkArxivSubscriptions={checkArxivSubscriptions}
             searchArxiv={searchArxiv}
+            searchWeb={searchWeb}
             importPaper={importPaper}
             updatePaper={updatePaper}
             removePaper={removePaper}
