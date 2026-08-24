@@ -177,6 +177,8 @@ Install the Web workbench package with npm:
 npm install dsh-client-ui-mimir@latest
 ```
 
+The two packages version in lockstep: `dsh-client-ui-mimir` declares `dsh-mimir` as a peer dependency with a floor at the current release (npm installs it automatically when missing), because each workbench release may call Remote methods that only that host release serves. When upgrading, upgrade both together (`npm install dsh-mimir@latest dsh-client-ui-mimir@latest`); a newer UI against an older host silently lacks the newest panel features.
+
 One important limitation: the currently published dsh Web composition does not automatically discover standalone client plugins or mount the `research` Remote namespace. Installing `dsh-client-ui-mimir` alone therefore does not add the Mimir sidebar button. The complete six-view UI currently requires registering the client package in a dsh source checkout and applying the Remote assembly described in [Known limitations](#known-limitations). The host-side research commands, tools, wiki, automatic artifact saving, and `/research/*` APIs work without that UI integration.
 
 ### 6. Develop from source (optional)
