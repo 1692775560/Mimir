@@ -132,15 +132,13 @@ npm install dsh-mimir@latest
 
 ### 2. 启动 Mimir
 
-仓库已经提供可直接使用的 dsh patch。克隆仓库后无需构建，即可用已安装的 npm 插件启动：
+`dsh-mimir` 是自激活 bundle（声明了 `dsh.bundle`），上一条安装命令已经把它挂载进 `web` profile——直接启动即可：
 
 ```sh
-git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
-cd Mimir
-dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
+dsh web
 ```
 
-然后打开 <http://127.0.0.1:3080>。wiki 默认保存在 `~/.dsh/storages/research_wiki.json`；文献、生成图、论文和实验等科研工件保存在启动目录下的 `./.research`。
+然后打开 <http://127.0.0.1:3080>。想覆盖默认配置（工作目录、LaTeX 引擎、评审轮数）就编辑 profile 自己的 `cordis.patch.yml`（bundle 层先应用）。从源码运行也仍然支持：克隆仓库后 `dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"`。wiki 默认保存在 `~/.dsh/storages/research_wiki.json`；文献、生成图、论文和实验等科研工件保存在启动目录下的 `./.research`。
 
 ### 3. 开始使用
 
