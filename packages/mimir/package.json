@@ -23,6 +23,7 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
+    "./client": "./lib/client.js",
     "./types": {
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
@@ -46,10 +47,13 @@
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "lib/client.js",
+    "lib/client.js.map"
   ],
   "scripts": {
-    "bundle": "tsdown"
+    "bundle": "tsdown",
+    "bundle:client": "tsdown -c tsdown.client.config.ts"
   },
   "license": "MIT",
   "peerDependencies": {
@@ -91,5 +95,18 @@
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.8",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.8",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.8"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ],
+      "platform": "web"
+    }
   }
 }
