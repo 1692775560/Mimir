@@ -377,6 +377,11 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 
 ## Changelog
 
+### 0.11.0
+
+- **Single-package install**: the six-view Web workbench now ships inside `dsh-mimir` itself (a `dsh.client` declaration plus the bundled `lib/client.js`). `dsh plugin --profile web add dsh-mimir@latest` alone yields the full UI — the separate `dsh-client-ui-mimir` install and the source-integration requirement are gone. The legacy package stays published in lockstep; remove its roster row when upgrading to avoid a double mount.
+- `dsh-client-ui-mimir`'s `dsh-mimir` peer floor now tracks the current release (>= 0.11.0), so a new workbench cannot pair with an older host that lacks its Remote methods.
+
 ### 0.10.0
 
 - **Venue templates**: pick a target venue in the paper header — 11 built-in formats (CVPR/ICCV/ECCV, NeurIPS/ICML/ICLR/AAAI, ACL, IEEE conference/journal, ACM acmart) with official kit URLs and formatting checklists. Applying writes `template/TEMPLATE.md` (the re-layout brief) into the paper directory and records the venue on the project; "Format to venue" hands the re-layout task to the agent (content untouched, compile-verified).
