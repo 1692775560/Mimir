@@ -1,7 +1,7 @@
 {
   "name": "dsh-mimir",
   "description": "Research-assistant plugin suite (literature search, research wiki, LaTeX compile, independent subagent review) for the DeepSeek Harness",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "publishConfig": {
     "access": "public"
   },
@@ -11,7 +11,9 @@
     "directory": "packages/mimir"
   },
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
