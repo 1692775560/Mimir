@@ -159,6 +159,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 26px;
   height: 26px;
   padding: 0;
@@ -282,6 +283,8 @@
 .figureLightbox:focus-visible,
 .railToggle:focus-visible,
 .paperTab:focus-visible,
+.sideProjectsToggle:focus-visible,
+.subscriptionNewToggle:focus-visible,
 .toastClose:focus-visible,
 .serverSelect:focus-visible,
 .serverMessage:focus-visible,
@@ -454,6 +457,63 @@
   overflow-y: auto;
   padding: 12px;
   border-top: 1px solid var(--mimir-hairline);
+}
+
+/* The fold keeps the rail usable when many projects accumulate: collapsed
+   shows only the header row (chevron + title + the selected project's name). */
+.sideProjects[data-collapsed] {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.sideProjectsToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sideProjects[data-collapsed] .sideProjectsToggle {
+  margin-bottom: 0;
+}
+
+.sideProjectsToggle .sectionTitle {
+  margin: 0;
+}
+
+.sideProjectsToggle:hover .sectionTitle {
+  color: var(--dsw-alias-label-secondary, #3c4557);
+}
+
+.sideProjectsCurrent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mimir-accent-strong);
+  font-size: 12px;
+}
+
+.collapseChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  transition: transform 0.15s ease;
+}
+
+.collapseChevron[data-up] {
+  transform: rotate(-90deg);
 }
 
 /* The rail's bottom line: the keyboard-shortcut hint. */
@@ -781,6 +841,7 @@
 .paperProject {
   margin: 0;
   align-self: center;
+  flex: 1;
   font-size: 12px;
   font-weight: normal;
   color: var(--dsw-alias-label-secondary, #5b6472);
@@ -1024,26 +1085,33 @@ li.dropIndicator {
 .paneHeadActions {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 8px;
 }
 
 .editorHead {
   display: flex;
   align-items: center;
+  min-width: 0;
+  gap: 8px;
   justify-content: space-between;
 }
 
 .editorHead .sectionTitle {
   margin: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .savePill {
+  flex-shrink: 0;
   padding: 2px 10px;
   border: 1px solid var(--mimir-hairline);
   border-radius: 999px;
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .savePill[data-state='saved'] {
@@ -1204,9 +1272,11 @@ li.dropIndicator {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .compileButton {
+  flex-shrink: 0;
   height: 28px;
   padding: 0 14px;
   border: none;
@@ -1215,6 +1285,7 @@ li.dropIndicator {
   color: var(--dsw-alias-label-primary-foreground, #fff);
   font-size: 12.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 1px 2px rgb(15 23 42 / 10%);
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
@@ -1231,6 +1302,11 @@ li.dropIndicator {
 }
 
 .compileStatus {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 13px;
 }
@@ -2669,6 +2745,7 @@ li.dropIndicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   height: 28px;
   margin-left: auto;
   padding: 0 12px;
@@ -2678,6 +2755,7 @@ li.dropIndicator {
   color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -2706,6 +2784,7 @@ li.dropIndicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--mimir-hairline);
@@ -2714,6 +2793,7 @@ li.dropIndicator {
   color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -3479,6 +3559,21 @@ li.dropIndicator {
 
 .subscriptionNewHead .sectionTitle {
   margin: 0;
+}
+
+.subscriptionNewToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.subscriptionNewToggle:hover .sectionTitle {
+  color: var(--dsw-alias-label-secondary, #3c4557);
 }
 
 .subscriptionNewGroup {

@@ -643,6 +643,41 @@ describe('ResearchService.deleteExperiment', () => {
   })
 })
 
+describe('ResearchService.listProjects', () => {
+  it('omits paperDir from a project view when the record never set one', async () => {
+    const { domain, service } = await harness()
+    // A project created by research-idea has no paperDir yet. The view must
+    // OMIT the key: an explicit `undefined` trips the gateway's JSON
+    // boundary validation and fails the whole list call (observed as
+    // "项目列表加载失败" in the panel).
+    await domain.table('projects').put('p-no-dir', {
+      id: 'p-no-dir',
+      title: 'Idea-stage project',
+      stage: 'idea',
+      artifacts: ['IDEA_REPORT.md'],
+      reviewRounds: 0,
+      updatedAt: '2026-08-24T00:00:00.000Z',
+    })
+    await domain.table('projects').put('p-with-dir', {
+      id: 'p-with-dir',
+      title: 'Writing-stage project',
+      stage: 'writing',
+      paperDir: 'paper',
+      artifacts: ['paper/main.tex'],
+      reviewRounds: 1,
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    })
+    const listed = await service.listProjects()
+    if (!listed.ok) throw new Error('list failed')
+    expect(listed.value.projects.length).toBe(2)
+    const idea = listed.value.projects.find(project => project.id === 'p-no-dir')
+    expect(idea).toBeDefined()
+    expect('paperDir' in idea!).toBe(false)
+    const writing = listed.value.projects.find(project => project.id === 'p-with-dir')
+    expect(writing?.paperDir).toBe('paper')
+  })
+})
+
 describe('ResearchService.updateExperiment', () => {
   /** Seed one experiment and one server. */
   async function seed(h: Awaited<ReturnType<typeof harness>>) {
