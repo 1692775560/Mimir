@@ -3414,6 +3414,116 @@ li.dropIndicator {
   background: var(--dsw-specific-menu, #fff);
 }
 
+/* Fullscreen PDF reading: the viewport-sized overlay lifting one card's
+   reader (iframe + notes panel) out of the grid. */
+.paperPdfOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-body, #f5f6f7);
+}
+
+.paperPdfOverlayHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--mimir-hairline);
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.paperPdfOverlayTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paperPdfOverlayBody {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  min-height: 0;
+  padding: 10px 16px 14px;
+}
+
+.paperPdfOverlayFrame {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--mimir-hairline);
+  border-radius: var(--mimir-radius-inner);
+  background: var(--dsw-specific-menu, #fff);
+}
+
+.paperPdfOverlayBody .paperNotesPanel {
+  width: 320px;
+  flex-shrink: 0;
+  max-height: none;
+}
+
+/* The AI relevance chip on a literature card; the band colors the score. */
+.relevanceChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.relevanceChip[data-band='high'] {
+  background: var(--dsw-alias-state-success-light, #e6f4ea);
+  color: var(--dsw-alias-state-success, #1a7f37);
+}
+
+.relevanceChip[data-band='mid'] {
+  background: var(--dsw-alias-state-warning-light, #fff4e0);
+  color: var(--dsw-alias-state-warning, #9a6700);
+}
+
+.relevanceChip[data-band='low'] {
+  background: var(--dsw-alias-state-danger-light, #fdebec);
+  color: var(--dsw-alias-state-danger, #cf222e);
+}
+
+/* Figures view: the format badges of one grouped card and the inline
+   rename/caption editor. */
+.figureFormats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.figureFormatBadge {
+  padding: 0 6px;
+  border: 1px solid var(--mimir-hairline);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.figureEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.figureEditorFoot {
+  display: flex;
+  gap: 8px;
+}
+
 /* --- arXiv subscriptions (feat/arxiv-subscriptions): keep this block at the end of the file to avoid merge conflicts --- */
 /* The papers view's subscription bar: add form, removable pills with the
    unimported-new badge, and the inline new-entry list with import buttons. */

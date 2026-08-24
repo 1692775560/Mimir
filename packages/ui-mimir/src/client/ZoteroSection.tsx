@@ -37,7 +37,7 @@ export function ZoteroSection({
   readonly selectedProjectId: string | null
   readonly recheckZotero: () => void
   readonly searchZotero: (query: string) => void
-  readonly importZoteroItem: (key: string) => Promise<ResearchFailureView | null>
+  readonly importZoteroItem: (key: string, projectId?: string) => Promise<ResearchFailureView | null>
   readonly exportZoteroCollectionToBib: (
     projectId: string,
     collectionKey: string,
@@ -60,7 +60,7 @@ export function ZoteroSection({
     if (importing !== null) return
     setImporting(item.key)
     onError(null)
-    void importZoteroItem(item.key)
+    void importZoteroItem(item.key, selectedProjectId ?? undefined)
       .then((failure) => {
         if (failure !== null) onError(`${t('papers.importFailed')}：${failure.message}`)
       })

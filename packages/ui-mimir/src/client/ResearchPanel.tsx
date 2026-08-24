@@ -129,8 +129,9 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
-  requestRelatedWork,
-  ensurePapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  requestRelatedWork, requestPaperScore, requestFigureOrganize,
+  ensurePapers, refreshPapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  renameFigure, updateFigure,
   ensureSubscriptions, saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   ensureZotero, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
   insertFigure, consumePaperJump, generateMetricFigure,
@@ -494,7 +495,9 @@ export function ResearchPanel({
             searchZotero={searchZotero}
             importZoteroItem={importZoteroItem}
             exportZoteroCollectionToBib={exportZoteroCollectionToBib}
+            refreshPapers={refreshPapers}
             requestRelatedWork={requestRelatedWork}
+            requestPaperScore={requestPaperScore}
             t={t}
           />
         )}
@@ -522,10 +525,14 @@ export function ResearchPanel({
             figures={figures}
             experiments={experiments}
             projectId={selectedProjectId}
+            projectTitle={selectedProject?.title ?? ''}
             dir={selectedProject?.paperDir}
             loadFigures={loadFigures}
             uploadFigures={uploadFigures}
             deleteFigure={deleteFigure}
+            renameFigure={renameFigure}
+            updateFigure={updateFigure}
+            requestFigureOrganize={requestFigureOrganize}
             insertFigure={(entry) => selectedProjectId === null ? Promise.resolve() : insertFigure(selectedProjectId, entry)}
             t={t}
           />

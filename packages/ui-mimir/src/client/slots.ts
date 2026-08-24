@@ -75,6 +75,26 @@ export interface ResearchPanelInjected {
   reloadSource: () => void
   /** Load the literature list once, on the papers view's first open. */
   ensurePapers: () => void
+  /**
+   * Re-fetch the literature list without a loading flash (the papers view's
+   * poll after handing a scoring request to the agent).
+   */
+  refreshPapers: () => void
+  /**
+   * Hand one assembled relevance-scoring prompt to the current session's
+   * agent (the papers view's "score with AI" buttons); the outcome lands in
+   * toasts, and the agent's `wiki_note` writes land in the next refresh.
+   * @param prompt - the assembled scoring request (papers, project direction).
+   */
+  requestPaperScore: (prompt: string) => Promise<void>
+  /**
+   * Hand one assembled figure-organization prompt to the current session's
+   * agent (the figures view's "organize with AI" button); the outcome lands
+   * in toasts, and the agent's `figure_organize` writes land in the next
+   * rescan.
+   * @param prompt - the assembled organize request (figure, project, caption).
+   */
+  requestFigureOrganize: (prompt: string) => Promise<void>
   /** Load the arXiv subscription list once (a stale list triggers one open-time check). */
   ensureSubscriptions: () => void
   /**
@@ -103,9 +123,10 @@ export interface ResearchPanelInjected {
   /**
    * Import one arXiv entry into the wiki, then refresh the literature list.
    * @param entry - the parsed arXiv entry of one search result card.
+   * @param projectId - the selected project to link, when any.
    * @returns null on success, the settled failure otherwise.
    */
-  importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
+  importPaper: (entry: ArxivEntry, projectId?: string) => Promise<ResearchFailureView | null>
   /**
    * Remove one remembered paper, then refresh the literature list.
    * @param arxivId - the bare arXiv id.
@@ -122,8 +143,10 @@ export interface ResearchPanelInjected {
    * Scan one project's paper directory for figures.
    * @param projectId - wiki project id.
    * @param force - bypass the fresh-view skip (the refresh button).
+   * @param quiet - keep a ready list on screen while rescanning (the poll
+   * after handing an organize request to the agent).
    */
-  loadFigures: (projectId: string, force?: boolean) => void
+  loadFigures: (projectId: string, force?: boolean, quiet?: boolean) => void
   /**
    * Upload image files into one project's paper directory through the
    * `/research/figure-upload` route, one POST per file, then force a rescan.
@@ -146,6 +169,24 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /**
+   * Rename one figure of one project (same extension); the host moves the
+   * metadata row along and rewrites the paper's `.tex` references. The
+   * outcome lands in toasts.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param newName - the new bare file name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  renameFigure: (projectId: string, relPath: string, newName: string) => Promise<ResearchFailureView | null>
+  /**
+   * Replace one figure's wiki-recorded caption, then quietly rescan.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param caption - the replacement caption.
+   * @returns null on success, the settled failure otherwise.
+   */
+  updateFigure: (projectId: string, relPath: string, caption: string) => Promise<ResearchFailureView | null>
   /**
    * Insert one figure's standard LaTeX block into the project's `main.tex` —
    * or, when the draft already references the file, just jump there — then
@@ -215,9 +256,10 @@ export interface ResearchPanelInjected {
   /**
    * Import one Zotero item into the wiki, then refresh the literature list.
    * @param key - the Zotero item key of one search result row.
+   * @param projectId - the selected project to link, when any.
    * @returns null on success, the settled failure otherwise.
    */
-  importZoteroItem: (key: string) => Promise<ResearchFailureView | null>
+  importZoteroItem: (key: string, projectId?: string) => Promise<ResearchFailureView | null>
   /**
    * Export one Zotero collection into one project's `references.bib`.
    * @param projectId - wiki project id.

@@ -50,6 +50,7 @@ import type {
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchRemovePaperResult,
+  ResearchRenameFigureResult,
   ResearchRevertPaperSnapshotResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
@@ -60,6 +61,7 @@ import type {
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
+  ResearchUpdateFigureResult,
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
@@ -180,7 +182,7 @@ export class ResearchService extends TypertRemoteService {
   }
 
   @Remote('importPaper')
-  importPaper(request: { entry: ArxivEntry }): Promise<ResearchImportPaperResult> {
+  importPaper(request: { entry: ArxivEntry; projectId?: string | undefined }): Promise<ResearchImportPaperResult> {
     return library.importPaper(this.deps, request)
   }
 
@@ -195,6 +197,7 @@ export class ResearchService extends TypertRemoteService {
     tags?: string[] | undefined
     projectIds?: string[] | undefined
     notes?: string | undefined
+    relevance?: { projectId: string; score: number; reason: string } | undefined
   }): Promise<ResearchUpdatePaperResult> {
     return library.updatePaper(this.deps, request)
   }
@@ -221,7 +224,7 @@ export class ResearchService extends TypertRemoteService {
   }
 
   @Remote('importZoteroItem')
-  importZoteroItem(request: { key: string }): Promise<ResearchZoteroImportResult> {
+  importZoteroItem(request: { key: string; projectId?: string | undefined }): Promise<ResearchZoteroImportResult> {
     return zotero.importZoteroItem(this.deps, request)
   }
 
@@ -385,6 +388,25 @@ export class ResearchService extends TypertRemoteService {
   @Remote('deleteFigure')
   deleteFigure(request: { projectId: string; relPath: string; dir?: string | undefined }): Promise<ResearchDeleteFigureResult> {
     return experiment.deleteFigure(this.deps, request)
+  }
+
+  @Remote('renameFigure')
+  renameFigure(request: {
+    projectId: string
+    relPath: string
+    newName: string
+    dir?: string | undefined
+  }): Promise<ResearchRenameFigureResult> {
+    return experiment.renameFigure(this.deps, request)
+  }
+
+  @Remote('updateFigure')
+  updateFigure(request: {
+    projectId: string
+    relPath: string
+    caption: string
+  }): Promise<ResearchUpdateFigureResult> {
+    return experiment.updateFigure(this.deps, request)
   }
 
   @Remote('convertFigure')

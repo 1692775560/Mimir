@@ -15,6 +15,7 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { isFigureFile } from '../artifacts.ts'
 import { isNotFound, resolvePaperDir } from '../paper-source.ts'
+import { renameFigure, updateFigure } from '../services/experiment.ts'
 import { convertSvgFigure, svgConverterNames } from '../svg-convert.ts'
 import type { SvgConversionDeps } from '../svg-convert.ts'
 import type { ResearchWikiDomain } from '../store.ts'
@@ -166,5 +167,76 @@ function renderOutcome(value: Record<string, JsonValue | undefined>): string {
   }
   if (typeof value['warning'] === 'string') lines.push(`Warning: ${value['warning']}`)
   lines.push(`LaTeX:\n${String(value['latex'])}`)
+  return lines.join('\n')
+}
+
+interface FigureOrganizeArgs {
+  readonly project_id?: string
+  readonly path?: string
+  readonly new_name?: string
+  readonly caption?: string
+}
+
+/**
+ * Build the `figure_organize` tool over one opened research-wiki domain: the
+ * agent-side counterpart of the workbench's rename/caption edits. One call
+ * renames the file (same directory, same extension — `.tex` references are
+ * rewritten by the underlying service) and/or replaces its wiki-recorded
+ * caption. Business failures of the underlying services throw with their
+ * message.
+ * @param workspaceDir - The resolved research workspace root.
+ * @param domain - The plugin-owned open domain handle.
+ * @returns the registry-ready tool definition.
+ */
+export function createFigureOrganizeTool(workspaceDir: string, domain: ResearchWikiDomain): ToolDefinition {
+  return defineTool({
+    name: 'figure_organize',
+    description: 'Rename a figure file of a research project\'s paper directory and/or set its workbench caption — the organization counterpart of figure_save for files already inside the paper directory (including uploaded ones figure_save never saw). Renaming keeps the directory and the extension, rewrites \\includegraphics references in the paper\'s .tex files, and carries the recorded caption along. Use it to give an opaque upload a descriptive kebab-case name and a one-sentence caption.',
+    parameters: {
+      project_id: { type: 'string', required: true, description: 'Owning wiki project id (see wiki_note action=list, table=projects).' },
+      path: { type: 'string', required: true, description: 'Figure path relative to the project\'s paper directory (e.g. figures/foo.png).' },
+      new_name: { type: 'string', description: 'New bare file name (same extension as the current name); omitted keeps the name.' },
+      caption: { type: 'string', description: 'Replacement caption shown in the workbench and used by future LaTeX blocks; omitted keeps the caption.' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: renderOrganizeOutcome(value as Record<string, JsonValue | undefined>) }],
+    },
+    execute: async (args: FigureOrganizeArgs): Promise<JsonValue> => {
+      const projectId = requireField(args.project_id, 'project_id')
+      const relPath = requireField(args.path, 'path')
+      if (args.new_name === undefined && args.caption === undefined) {
+        throw new Error('figure_organize requires at least one of new_name or caption')
+      }
+      const deps = { workspaceDir, domain }
+      if (args.caption !== undefined) {
+        const outcome = await updateFigure(deps, { projectId, relPath, caption: args.caption })
+        if (!outcome.ok) throw new Error('message' in outcome.error ? outcome.error.message : outcome.error.code)
+      }
+      let renamed: { relPath: string; references: number } | null = null
+      if (args.new_name !== undefined) {
+        const outcome = await renameFigure(deps, { projectId, relPath, newName: args.new_name })
+        if (!outcome.ok) throw new Error('message' in outcome.error ? outcome.error.message : outcome.error.code)
+        renamed = outcome.value
+      }
+      return {
+        ok: true,
+        projectId,
+        relPath: renamed?.relPath ?? relPath,
+        ...(args.caption === undefined ? {} : { caption: args.caption.trim() }),
+        ...(renamed === null ? {} : { renamedFrom: relPath, references: renamed.references }),
+      } as unknown as JsonValue
+    },
+  })
+}
+
+/** Render one organize outcome as model-facing text. */
+function renderOrganizeOutcome(value: Record<string, JsonValue | undefined>): string {
+  if (value['ok'] !== true) return JSON.stringify(value)
+  const lines = [`Figure organized: ${String(value['relPath'])}.`]
+  if (typeof value['renamedFrom'] === 'string') {
+    lines.push(`Renamed from ${value['renamedFrom']} (${String(value['references'] ?? 0)} .tex file(s) updated).`)
+  }
+  if (typeof value['caption'] === 'string') lines.push(`Caption: ${value['caption']}`)
   return lines.join('\n')
 }

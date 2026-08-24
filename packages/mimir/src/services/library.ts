@@ -99,19 +99,26 @@ export async function searchArxiv(
  * Remember one arXiv entry in the wiki's papers table. The write is an
  * idempotent upsert keyed by the bare arXiv id: a re-import refreshes the
  * metadata but preserves the existing record's notes and first-write
- * timestamp.
+ * timestamp. A `projectId` links the paper to that project (unknown id is
+ * `project-not-found`) — the workbench passes the selected project so each
+ * project's literature view fills up on its own.
  * @param deps - open wiki domain.
- * @param request - the parsed entry (an empty id or title is `invalid-input`).
+ * @param request - the parsed entry (an empty id or title is `invalid-input`)
+ * plus the optional project link.
  * @returns whether the paper was newly imported (false on a refresh).
  */
 export async function importPaper(
   deps: LibraryDeps,
-  request: { entry: ArxivEntry },
+  request: { entry: ArxivEntry; projectId?: string | undefined },
 ): Promise<ResearchImportPaperResult> {
   const entry = request.entry
   const arxivId = entry.id.trim()
   if (arxivId === '' || entry.title.trim() === '') {
     return rejected({ code: 'invalid-input', message: 'entry id and title must be non-empty' })
+  }
+  if (request.projectId !== undefined
+    && deps.domain.table('projects').get(request.projectId) === undefined) {
+    return rejected({ code: 'project-not-found', projectId: request.projectId })
   }
   const table = deps.domain.table('papers')
   const existing = table.get(arxivId)
@@ -125,7 +132,11 @@ export async function importPaper(
     // A re-import refreshes the arXiv metadata but never wipes the
     // workbench-curated organization fields.
     tags: [...(existing?.tags ?? [])],
-    projectIds: [...(existing?.projectIds ?? [])],
+    projectIds: [...new Set([
+      ...(existing?.projectIds ?? []),
+      ...(request.projectId === undefined ? [] : [request.projectId]),
+    ])],
+    ...(existing?.relevance === undefined ? {} : { relevance: existing.relevance }),
     addedAt: existing?.addedAt ?? new Date().toISOString(),
   }
   await table.put(arxivId, record)
@@ -152,9 +163,12 @@ export async function removePaper(
 
 /**
  * Partially update one remembered paper's organization fields: only the
- * present fields (`tags`, `projectIds`, `notes`) change. Tags are trimmed,
- * emptied out, and deduped; every linked project id must exist in the wiki
- * (`invalid-input` otherwise). An unknown arXiv id is `paper-not-found`.
+ * present fields (`tags`, `projectIds`, `notes`, `relevance`) change. Tags
+ * are trimmed, emptied out, and deduped; every linked project id must exist
+ * in the wiki (`invalid-input` otherwise). A `relevance` write scores the
+ * paper against one project (the project must exist; the score is a finite
+ * 0–10 number) and lands under that project's key, leaving other projects'
+ * verdicts untouched. An unknown arXiv id is `paper-not-found`.
  * @param deps - open wiki domain.
  * @param request - the bare arXiv id plus the fields to replace.
  * @returns the stored record after the update.
@@ -166,6 +180,7 @@ export async function updatePaper(
     tags?: string[] | undefined
     projectIds?: string[] | undefined
     notes?: string | undefined
+    relevance?: { projectId: string; score: number; reason: string } | undefined
   },
 ): Promise<ResearchUpdatePaperResult> {
   const table = deps.domain.table('papers')
@@ -178,6 +193,15 @@ export async function updatePaper(
       }
     }
   }
+  if (request.relevance !== undefined) {
+    const { projectId, score } = request.relevance
+    if (deps.domain.table('projects').get(projectId) === undefined) {
+      return rejected({ code: 'project-not-found', projectId })
+    }
+    if (!Number.isFinite(score) || score < 0 || score > 10) {
+      return rejected({ code: 'invalid-input', message: 'relevance score must be a finite number between 0 and 10' })
+    }
+  }
   const next: PaperRecord = {
     ...existing,
     tags: request.tags === undefined
@@ -185,6 +209,16 @@ export async function updatePaper(
       : [...new Set(request.tags.map(tag => tag.trim()).filter(tag => tag !== ''))],
     projectIds: request.projectIds ?? existing.projectIds,
     notes: request.notes ?? existing.notes,
+    ...(request.relevance === undefined ? {} : {
+      relevance: {
+        ...existing.relevance,
+        [request.relevance.projectId]: {
+          score: request.relevance.score,
+          reason: request.relevance.reason,
+          at: new Date().toISOString(),
+        },
+      },
+    }),
   }
   await table.put(request.arxivId, next)
   return success({ paper: next })

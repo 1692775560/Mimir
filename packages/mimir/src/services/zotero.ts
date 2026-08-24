@@ -140,19 +140,25 @@ export async function searchZotero(
  * (keyed by the bare arXiv id); any other item lands under
  * `zotero-<item key>` with its provenance (Zotero key, DOI, URL) recorded in
  * the notes. Re-importing refreshes metadata but preserves the workbench's
- * notes, tags, and project links.
+ * notes, tags, and project links. A `projectId` links the paper to that
+ * project (unknown id is `project-not-found`) — the workbench passes the
+ * selected project so each project's literature view fills up on its own.
  * @param deps - open wiki domain and the resolved Zotero knobs.
- * @param request - the Zotero item key.
+ * @param request - the Zotero item key plus the optional project link.
  * @returns whether the paper was newly imported, plus its papers-table id.
  */
 export async function importZoteroItem(
   deps: ZoteroDeps,
-  request: { key: string },
+  request: { key: string; projectId?: string | undefined },
 ): Promise<ResearchZoteroImportResult> {
   const client = clientOf(deps)
   if (client === undefined) return rejected(UNCONFIGURED)
   const key = request.key.trim()
   if (key === '') return rejected({ code: 'invalid-input', message: 'key must be non-empty' })
+  if (request.projectId !== undefined
+    && deps.domain.table('projects').get(request.projectId) === undefined) {
+    return rejected({ code: 'project-not-found', projectId: request.projectId })
+  }
   let item: ZoteroItem
   try {
     item = await client.getItem(key, AbortSignal.timeout(ZOTERO_FETCH_TIMEOUT_MS))
@@ -172,7 +178,7 @@ export async function importZoteroItem(
       published: item.year === '' ? '' : `${item.year}-01-01T00:00:00Z`,
       url: `https://arxiv.org/abs/${item.arxivId}`,
     }
-    const outcome = await importPaper(deps, { entry })
+    const outcome = await importPaper(deps, { entry, projectId: request.projectId })
     if (!outcome.ok) return outcome
     return success({ imported: outcome.value.imported, paperId: item.arxivId })
   }
@@ -194,7 +200,10 @@ export async function importZoteroItem(
     // A re-import refreshes the Zotero metadata but never wipes the
     // workbench-curated organization fields.
     tags: [...(existing?.tags ?? [])],
-    projectIds: [...(existing?.projectIds ?? [])],
+    projectIds: [...new Set([
+      ...(existing?.projectIds ?? []),
+      ...(request.projectId === undefined ? [] : [request.projectId]),
+    ])],
     addedAt: existing?.addedAt ?? new Date().toISOString(),
   }
   await table.put(paperId, record)
