@@ -894,6 +894,58 @@
   cursor: pointer;
 }
 
+/* The unconfigured hint next to the AI-illustration switch: a quiet accent
+   link that opens the config fold below. */
+.meetingCheckHint {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--mimir-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The image-gen API config fold: same light card as the generate form. */
+.imageGenPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--mimir-hairline, rgba(23, 35, 61, 0.12));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-secondary, rgba(23, 35, 61, 0.03));
+  margin-bottom: 16px;
+}
+
+.imageGenToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+  cursor: pointer;
+}
+
+.imageGenToggle:hover {
+  color: var(--mimir-accent);
+}
+
+.imageGenBadge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--mimir-accent-soft);
+  color: var(--mimir-accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .meetingPickList {
   list-style: none;
   margin: 0 0 16px;

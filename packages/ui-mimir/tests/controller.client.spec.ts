@@ -105,6 +105,8 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     updateExperiment: missing('updateExperiment'),
     saveExperiment: missing('saveExperiment'),
     listBackups: missing('listBackups'),
+    getImageGenConfig: missing('getImageGenConfig'),
+    setImageGenConfig: missing('setImageGenConfig'),
     ...overrides,
   }
 }

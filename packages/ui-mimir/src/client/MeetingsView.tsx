@@ -1,12 +1,15 @@
 /**
  * The meetings view: build a group-meeting (组会) pptx from the selected
  * project's wiki material. The form carries the deck title/presenter/date,
- * the four section switches (progress/experiments/figures/papers), a paper
- * multi-select (empty = top 12 by the project's AI relevance verdicts), and a
- * figure multi-select (empty = every figure with a raster sibling). Generate
- * calls the host's deterministic renderer (no agent round-trip); the produced
- * deck lands in `meetings/<projectId>/` and lists below with download (the
- * `/research/meeting` attachment route) and delete actions.
+ * the four section switches (progress/experiments/figures/papers), an AI
+ * illustration switch (cover + per-paper concept images, host-side when the
+ * image API is configured), a paper multi-select (empty = top 12 by the
+ * project's AI relevance verdicts), and a figure multi-select (empty = every
+ * figure with a raster sibling). Below the form a collapsible section edits
+ * the image-gen API config (baseUrl/model/size/key, key masked host-side).
+ * Generate calls the host's deterministic renderer (no agent round-trip);
+ * the produced deck lands in `meetings/<projectId>/` and lists below with
+ * download (the `/research/meeting` attachment route) and delete actions.
  * @module dsh-client-ui-mimir/client/MeetingsView
  */
 
@@ -14,6 +17,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FigureEntry, MeetingDeckView, MeetingInclude, PaperRecord } from 'dsh-mimir/types'
 import type {
   ResearchFailureView,
+  ResearchImageGenView,
   ResearchPapersView,
   ResearchProjectSlice,
 } from './controller.ts'
@@ -80,19 +84,21 @@ function DeckRow({ projectId, file, sizeBytes, updatedAt, onDelete, busy, t }: {
 }
 
 /**
- * @param props - the selected project, the meetings/papers/figures slices,
- * the load/generate/delete verbs, and copy.
+ * @param props - the selected project, the meetings/papers/figures/image-gen
+ * slices, the load/generate/delete verbs, the image-gen config verbs, and copy.
  * @returns the meetings view.
  */
 export function MeetingsView({
-  projectId, dir, meetings, papers, figures,
-  ensurePapers, loadFigures, loadMeetings, generateMeetingDeck, deleteMeetingDeck, t,
+  projectId, dir, meetings, papers, figures, imageGen,
+  ensurePapers, loadFigures, loadMeetings, generateMeetingDeck, deleteMeetingDeck,
+  getImageGenConfig, saveImageGenConfig, t,
 }: {
   readonly projectId: string | null
   readonly dir: string | undefined
   readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
   readonly papers: ResearchPapersView
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
+  readonly imageGen: ResearchImageGenView
   readonly ensurePapers: () => void
   readonly loadFigures: (projectId: string, force?: boolean, quiet?: boolean) => void
   readonly loadMeetings: (projectId: string, force?: boolean) => void
@@ -103,8 +109,16 @@ export function MeetingsView({
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }) => Promise<ResearchFailureView | null>
   readonly deleteMeetingDeck: (projectId: string, file: string) => Promise<ResearchFailureView | null>
+  readonly getImageGenConfig: () => void
+  readonly saveImageGenConfig: (input: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const [title, setTitle] = useState('')
@@ -115,6 +129,14 @@ export function MeetingsView({
   })
   const [pickedPapers, setPickedPapers] = useState<ReadonlySet<string>>(new Set())
   const [pickedFigures, setPickedFigures] = useState<ReadonlySet<string>>(new Set())
+  const [aiIllustrations, setAiIllustrations] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [cfgBaseUrl, setCfgBaseUrl] = useState('')
+  const [cfgModel, setCfgModel] = useState('')
+  const [cfgSize, setCfgSize] = useState('')
+  const [cfgApiKey, setCfgApiKey] = useState('')
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [configFailure, setConfigFailure] = useState<ResearchFailureView | null>(null)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ResearchFailureView | null>(null)
 
@@ -126,6 +148,11 @@ export function MeetingsView({
     loadFigures(projectId)
     loadMeetings(projectId)
   }, [projectId, ensurePapers, loadFigures, loadMeetings])
+
+  // The image-gen config is global (not per project): warm it on tab entry.
+  useEffect(() => {
+    getImageGenConfig()
+  }, [getImageGenConfig])
 
   const projectPapers = useMemo(() => projectId === null || papers.status !== 'ready'
     ? []
@@ -161,9 +188,44 @@ export function MeetingsView({
       paperIds: pickedPapers.size === 0 ? undefined : [...pickedPapers],
       figureRelPaths: pickedFigures.size === 0 ? undefined : [...pickedFigures],
       include,
+      aiIllustrations,
     }).then((settled) => {
       setBusy(false)
       if (settled !== null) setFailure(settled)
+    })
+  }
+
+  // Expanding the config fold snapshots the store's masked view into the
+  // fields (the apiKey box always starts empty: empty on save = keep the
+  // stored key, whose mask shows as the placeholder).
+  const toggleConfig = (): void => {
+    if (!configOpen) {
+      setCfgBaseUrl(imageGen.baseUrl)
+      setCfgModel(imageGen.model)
+      setCfgSize(imageGen.size)
+      setCfgApiKey('')
+      setConfigFailure(null)
+    }
+    setConfigOpen(!configOpen)
+  }
+
+  const saveConfig = (): void => {
+    if (savingConfig) return
+    setSavingConfig(true)
+    setConfigFailure(null)
+    void saveImageGenConfig({
+      ...(cfgBaseUrl.trim() === '' ? {} : { baseUrl: cfgBaseUrl.trim() }),
+      ...(cfgModel.trim() === '' ? {} : { model: cfgModel.trim() }),
+      ...(cfgSize.trim() === '' ? {} : { size: cfgSize.trim() }),
+      ...(cfgApiKey === '' ? {} : { apiKey: cfgApiKey }),
+    }).then((settled) => {
+      setSavingConfig(false)
+      if (settled !== null) {
+        setConfigFailure(settled)
+        return
+      }
+      setCfgApiKey('')
+      setConfigOpen(false)
     })
   }
 
@@ -233,6 +295,81 @@ export function MeetingsView({
             </label>
           ))}
         </div>
+        <div className={css.meetingFormRow} role="group" aria-label={t('meetings.aiIllustrations')}>
+          <label className={css.meetingCheck}>
+            <input
+              type="checkbox"
+              checked={aiIllustrations}
+              onChange={() => { setAiIllustrations(current => !current) }}
+            />
+            {t('meetings.aiIllustrations')}
+          </label>
+          {!imageGen.configured && (
+            <button type="button" className={css.meetingCheckHint} onClick={toggleConfig}>
+              {t('meetings.aiIllustrationsUnconfigured')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className={css.imageGenPanel}>
+        <button
+          type="button"
+          className={css.imageGenToggle}
+          aria-expanded={configOpen}
+          onClick={toggleConfig}
+        >
+          <span aria-hidden>{configOpen ? '▾' : '▸'}</span>
+          {t('meetings.imageGenConfig')}
+          {imageGen.configured && (
+            <span className={css.imageGenBadge}>{t('meetings.imageGenConfigured')}</span>
+          )}
+        </button>
+        {configOpen && (
+          <>
+            <div className={css.meetingFormRow}>
+              <input
+                className={css.input}
+                value={cfgBaseUrl}
+                placeholder={t('meetings.imageGenBaseUrl')}
+                aria-label={t('meetings.imageGenBaseUrl')}
+                onChange={event => { setCfgBaseUrl(event.target.value) }}
+              />
+              <input
+                className={css.input}
+                value={cfgModel}
+                placeholder={t('meetings.imageGenModel')}
+                aria-label={t('meetings.imageGenModel')}
+                onChange={event => { setCfgModel(event.target.value) }}
+              />
+              <input
+                className={css.input}
+                value={cfgSize}
+                placeholder={t('meetings.imageGenSize')}
+                aria-label={t('meetings.imageGenSize')}
+                onChange={event => { setCfgSize(event.target.value) }}
+              />
+            </div>
+            <div className={css.meetingFormRow}>
+              <input
+                className={css.input}
+                type="password"
+                value={cfgApiKey}
+                placeholder={imageGen.apiKeyPreview === '' ? t('meetings.imageGenApiKeyPlaceholder') : imageGen.apiKeyPreview}
+                aria-label={t('meetings.imageGenApiKeyPlaceholder')}
+                onChange={event => { setCfgApiKey(event.target.value) }}
+              />
+              <button type="button" className={css.btnPrimary} disabled={savingConfig} onClick={saveConfig}>
+                {savingConfig ? t('meetings.imageGenSaving') : t('meetings.imageGenSave')}
+              </button>
+            </div>
+            {configFailure !== null && (
+              <p className={css.failure} role="alert">
+                {t('meetings.imageGenSaveFailed')}：{failureCopy(t, configFailure)}
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       {include.papers && (

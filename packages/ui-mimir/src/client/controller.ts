@@ -62,6 +62,7 @@ import type {
   ResearchClearVenueResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
+  ResearchGetImageGenConfigResult,
   ResearchMeetingDecksResult,
   MeetingDeckView,
   MeetingInclude,
@@ -82,6 +83,7 @@ import type {
   ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSetImageGenConfigResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -188,9 +190,17 @@ export interface ResearchRemote {
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }) => Promise<RemoteResult<ResearchGenerateMeetingResult>>
   listMeetingDecks: (request: { projectId: string }) => Promise<RemoteResult<ResearchMeetingDecksResult>>
   deleteMeetingDeck: (request: { projectId: string; file: string }) => Promise<RemoteResult<ResearchDeleteMeetingDeckResult>>
+  getImageGenConfig: () => Promise<RemoteResult<ResearchGetImageGenConfigResult>>
+  setImageGenConfig: (request: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }) => Promise<RemoteResult<ResearchSetImageGenConfigResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -358,6 +368,19 @@ export interface ResearchProjectSlice<T> {
   readonly failure: ResearchFailureView | null
 }
 
+/** The meetings view's image-generation config (the panel-safe masked view). */
+export interface ResearchImageGenView {
+  readonly status: ResearchLoadStatus
+  /** Whether an API key is stored host-side. */
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly model: string
+  readonly size: string
+  /** The stored key's mask (e.g. `sk-ab…34`); '' when unconfigured. */
+  readonly apiKeyPreview: string
+  readonly failure: ResearchFailureView | null
+}
+
 /** The markdown artifact viewer's load. */
 export interface ResearchArtifactView {
   readonly projectId: string
@@ -435,6 +458,8 @@ export interface ResearchView {
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
   /** The meetings view's generated decks of the selected project; null until first opened. */
   readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
+  /** The meetings view's image-generation config; `cold` until first fetched. */
+  readonly imageGen: ResearchImageGenView
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -476,6 +501,9 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   artifact: null,
   figures: null,
   meetings: null,
+  imageGen: Object.freeze({
+    status: 'cold', configured: false, baseUrl: '', model: '', size: '', apiKeyPreview: '', failure: null,
+  }),
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
   jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
@@ -529,6 +557,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private figuresInFlight = false
   private meetingsGeneration = 0
   private meetingsInFlight = false
+  private imageGenInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
@@ -1087,6 +1116,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       paperIds?: readonly string[] | undefined
       figureRelPaths?: readonly string[] | undefined
       include?: Partial<MeetingInclude> | undefined
+      aiIllustrations?: boolean | undefined
     },
   ): Promise<ResearchFailureView | null> {
     try {
@@ -1097,6 +1127,9 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'meetings.generated', String(result.value.slides))
+      if (result.value.illustrations > 0) {
+        this.notify('success', 'meetings.illustrations', String(result.value.illustrations))
+      }
       return null
     } catch (error) {
       return transportFailure(error)
@@ -1118,6 +1151,67 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Fetch the image-generation config (the masked panel view) once; a ready
+   * slice or an in-flight load is left alone. Saving publishes the fresh view
+   * directly, so this stays a cold-start warm-up.
+   */
+  getImageGenConfig(): void {
+    if (this.imageGenInFlight) return
+    if (this.view.imageGen.status === 'ready') return
+    void this.loadImageGenConfig()
+  }
+
+  /** Fetch the masked image-gen config and publish it. */
+  private async loadImageGenConfig(): Promise<void> {
+    this.imageGenInFlight = true
+    this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.getImageGenConfig()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ imageGen: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.imageGenInFlight = false
+    }
+  }
+
+  /**
+   * Save the image-generation config, then publish the returned fresh masked
+   * view. An omitted `apiKey` keeps the stored key; '' clears it.
+   * @param input - the editable fields (empty strings are dropped host-side).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveImageGenConfig(input: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setImageGenConfig(input)
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.publish({ imageGen: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+      this.notify('success', 'meetings.imageGenSaved')
       return null
     } catch (error) {
       return transportFailure(error)

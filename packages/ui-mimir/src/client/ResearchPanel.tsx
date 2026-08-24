@@ -150,7 +150,7 @@ export function ResearchPanel({
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
-  loadMeetings, generateMeetingDeck, deleteMeetingDeck,
+  loadMeetings, generateMeetingDeck, deleteMeetingDeck, getImageGenConfig, saveImageGenConfig,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -174,6 +174,7 @@ export function ResearchPanel({
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
   const meetings = useResearch(view => view.meetings)
+  const imageGen = useResearch(view => view.imageGen)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
@@ -563,6 +564,7 @@ export function ResearchPanel({
             meetings={meetings}
             papers={papers}
             figures={figures}
+            imageGen={imageGen}
             projectId={selectedProjectId}
             dir={selectedProject?.paperDir}
             ensurePapers={ensurePapers}
@@ -570,6 +572,8 @@ export function ResearchPanel({
             loadMeetings={loadMeetings}
             generateMeetingDeck={generateMeetingDeck}
             deleteMeetingDeck={deleteMeetingDeck}
+            getImageGenConfig={getImageGenConfig}
+            saveImageGenConfig={saveImageGenConfig}
             t={t}
           />
         )}

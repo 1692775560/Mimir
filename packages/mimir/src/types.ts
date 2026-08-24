@@ -522,7 +522,24 @@ export interface MeetingDeckView {
 }
 
 /** `generateMeetingDeck` outcome: the produced file name plus slide count. */
-export type ResearchGenerateMeetingResult = ResearchResult<{ readonly file: string; readonly slides: number }>
+export type ResearchGenerateMeetingResult = ResearchResult<{
+  readonly file: string
+  readonly slides: number
+  /** AI illustrations embedded into the deck (0 when disabled/unconfigured). */
+  readonly illustrations: number
+}>
+
+/** `getImageGenConfig` outcome: the panel-safe config view (key masked). */
+export type ResearchGetImageGenConfigResult = ResearchResult<{
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly model: string
+  readonly size: string
+  readonly apiKeyPreview: string
+}>
+
+/** `setImageGenConfig` outcome: the fresh masked view. */
+export type ResearchSetImageGenConfigResult = ResearchGetImageGenConfigResult
 
 /** `listMeetingDecks` outcome, newest first. */
 export type ResearchMeetingDecksResult = ResearchResult<{ readonly decks: readonly MeetingDeckView[] }>

@@ -68,7 +68,9 @@ import type {
   ResearchClearVenueResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
+  ResearchGetImageGenConfigResult,
   ResearchMeetingDecksResult,
+  ResearchSetImageGenConfigResult,
   MeetingInclude,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
@@ -91,6 +93,8 @@ import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
 import * as venue from './services/venue.ts'
 import * as meeting from './services/meeting.ts'
+import type { MeetingDeps } from './services/meeting.ts'
+import * as imagegen from './services/image-gen.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -134,6 +138,11 @@ export interface ResearchServiceConfig {
     readonly apiKey: string
     readonly userId: string
   }
+  /**
+   * Meeting-deck seams (PDF warm-up override); absent outside tests, where
+   * the real arXiv fetch applies.
+   */
+  readonly meetings?: MeetingDeps
 }
 
 /**
@@ -163,6 +172,7 @@ export class ResearchService extends TypertRemoteService {
       ...(config.backup === undefined ? {} : { backup: config.backup }),
       ...(config.svg === undefined ? {} : { svg: config.svg }),
       ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
+      ...(config.meetings === undefined ? {} : { meetings: config.meetings }),
     }
     this.state = { compileStatus: new Map(), jobSeq: 0 }
   }
@@ -465,8 +475,24 @@ export class ResearchService extends TypertRemoteService {
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }): Promise<ResearchGenerateMeetingResult> {
     return meeting.generateMeetingDeck(this.deps, request)
+  }
+
+  @Remote('getImageGenConfig')
+  getImageGenConfig(): Promise<ResearchGetImageGenConfigResult> {
+    return imagegen.getImageGenConfig(this.deps.workspaceDir)
+  }
+
+  @Remote('setImageGenConfig')
+  setImageGenConfig(request: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }): Promise<ResearchSetImageGenConfigResult> {
+    return imagegen.setImageGenConfig(this.deps.workspaceDir, request)
   }
 
   @Remote('listMeetingDecks')
