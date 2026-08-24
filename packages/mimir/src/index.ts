@@ -6,11 +6,12 @@
  * @module dsh-mimir
  */
 
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { basename, extname, join, resolve, sep } from 'node:path'
+import { createRequire } from 'node:module'
+import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: pulls the ctx.webServer Context merge for the PDF route below.
@@ -213,9 +214,10 @@ export interface Config {
   search?: {
     /**
      * The sxng executable (default `auto`): `'auto'` registers the
-     * `web_search` tool only when the command resolves on PATH; an explicit
-     * binary name or absolute path registers it unconditionally and fails
-     * per call with install guidance when missing.
+     * `web_search` tool when the command resolves on PATH or as the bundled
+     * optional `sxng-cli` dependency; an explicit binary name or absolute
+     * path registers it unconditionally and fails per call with install
+     * guidance when missing.
      */
     command?: string
     /** Search kill timeout in milliseconds (default 30000). */
@@ -490,6 +492,23 @@ const FIGURE_CONTENT_TYPES: Record<string, string> = {
 
 /** The sxng CLI command the auto-detected web search resolves to. */
 const SXNG_COMMAND = 'sxng'
+
+/**
+ * Absolute path of the sxng CLI bundled as an optional dependency, when the
+ * npm install brought it along (`node_modules/sxng-cli/dist/index.js`). The
+ * bin ships a node shebang, so the path runs directly under `execFile`.
+ * @returns the absolute binary path, or undefined when the optional
+ * dependency is absent.
+ */
+function bundledSxngCommand(): string | undefined {
+  try {
+    const packageJson = createRequire(import.meta.url).resolve('sxng-cli/package.json')
+    const binary = join(dirname(packageJson), 'dist/index.js')
+    return existsSync(binary) ? binary : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Whether one bare command name resolves to a runnable executable (a PATH
@@ -790,12 +809,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createMeetingDeckTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
 
-  // Web search is optional: `auto` registers the tool only when the sxng CLI
-  // resolves on PATH (probed once); an explicit command always registers and
-  // reports install guidance per call when missing. The panel's searchWeb
-  // Remote follows the same availability.
+  // Web search is optional: `auto` registers the tool when the sxng CLI
+  // resolves on PATH (probed once) or as the bundled optional dependency; an
+  // explicit command always registers and reports install guidance per call
+  // when missing. The panel's searchWeb Remote follows the same availability.
   const searchCommand = resolved.search.command === 'auto'
-    ? (await commandOnPath(SXNG_COMMAND)) ? SXNG_COMMAND : undefined
+    ? (await commandOnPath(SXNG_COMMAND)) ? SXNG_COMMAND : bundledSxngCommand()
     : resolved.search.command
   const searchConfig = searchCommand === undefined
     ? undefined

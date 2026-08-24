@@ -45,7 +45,7 @@ arXiv literature · persistent research wiki · experiments &amp; remote GPUs ·
 | Tool | Purpose |
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv search; selected-paper fetch automatically archives and links it |
-| `web_search` | Optional SearXNG web search through the `sxng` CLI (auto-registered when the CLI is on PATH); complements arXiv with non-arXiv sources |
+| `web_search` | Optional SearXNG web search through the `sxng` CLI (shipped as an optional dependency — just give it a SearXNG server; see `scripts/setup-web-search.sh`); complements arXiv with non-arXiv sources |
 | `wiki_note` | Read/write surface over the research wiki domain (papers, ideas, claims, experiments, projects) |
 | `figure_save` | Copies a generated figure (any path) into the project's paper `figures/`, records caption/linked-experiment metadata in the wiki, and returns a ready-to-paste LaTeX figure block (SVG sources are auto-converted to PDF — PNG as the raster fallback — when a converter is available) |
 | `latex_compile` | Compiles `main.tex` with parsed file/line diagnostics; multi-engine: `latexmk` or `tectonic` (auto-detected, or an explicit binary path) |
@@ -68,7 +68,7 @@ When the host composition mounts a skill registry (the shipped web profile does)
 
 Disable them with `skills.enabled: false` (see the configuration reference).
 
-### Web workbench — seven views, one overlay
+### Web workbench — eight views, one overlay
 
 A sidebar toggle opens a 96vw×95vh workbench:
 
@@ -76,13 +76,14 @@ A sidebar toggle opens a 96vw×95vh workbench:
 | --- | --- |
 | 📊 **Overview** | Five-stage pipeline progress, stat chips, artifact list, recent activity (latest remote jobs + experiment runs), and one-file wiki export/import with guarded replace |
 | 📝 **Paper** | Overleaf-style three-pane studio: drag-to-reorder outline, autosaving editor with windowed syntax highlighting (smooth on thousand-line files), one-click compile, click-to-jump issues with a per-issue **Let AI fix** button, inline PDF preview, `references.bib` panel, project name always in view |
-| 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv **and SearXNG web** search (a tab switch over one search box; web hits whose URL is an arXiv link import in one click), add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
+| 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv **and SearXNG web** search (a tab switch over one search box; web hits whose URL is an arXiv link import in one click), AI relevance scoring, fullscreen PDF reader, add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
 | 🧪 **Experiments** | Run records with metric-comparison charts, inline create/edit form, server relink dropdowns, automatic **last-job writeback** when a remote run settles, one-click **paper figure** from any comparison chart, and a rendered `EXPERIMENT_LOG.md` |
-| 🖼️ **Figures** | Paper-directory image grid: preview, drag-and-drop upload, copy-LaTeX-reference, insert-into-paper (SVG auto-converts to PDF/PNG on the host); `figure_save` figures show caption + linked-experiment badges |
-| 🎞️ **Meetings** | One-click group-meeting deck: pick papers (default = top 12 by AI relevance) and figures, toggle sections, and the host renders a 16:9 pptx deterministically (no agent round-trip) into `meetings/<project>/`; decks list with download/delete |
+| 🖼️ **Figures** | Paper-directory image grid: preview, drag-and-drop upload, copy-LaTeX-reference, insert-into-paper (SVG auto-converts to PDF/PNG on the host), AI batch rename/caption; `figure_save` figures show caption + linked-experiment badges |
+| 🎞️ **Meetings** | One-click group-meeting deck: pick papers (default = top 12 by AI relevance) and figures, toggle sections, optional **AI-generated illustrations** (your own image-gen API) mixed with real paper figures, and the host renders a 16:9 pptx deterministically (no agent round-trip) into `meetings/<project>/`; decks list with download/delete |
 | 🖥️ **Servers** | GPU fleet cards with TCP probe and SSH `nvidia-smi` readouts (utilization/memory bars, tag filters); submit remote commands as live-polled jobs with expandable output tails and optional experiment linkage |
+| 📓 **Ledger (记录)** | A transparent growth record of the whole research cycle: every decision-level event (idea registered, paper imported, experiment settled, compile fixed, deck generated…) on one timeline, filterable by time window (7/30/90 days or all) and project scope, plus a one-click **progress report** rendered as Markdown — copy it, download the `.md`, ready for your advisor or lab meeting |
 
-Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1–7` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; the dialog traps focus and every control shows a focus ring. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
+Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1–8` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; the dialog traps focus and every control shows a focus ring. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
 
 | Dark mode: overview | Dark mode: paper | Paper: narrow-width tab layout |
 | --- | --- | --- |
@@ -90,7 +91,7 @@ Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1
 
 ## Quickstart
 
-Mimir is a single npm package: `dsh-mimir` carries the research commands, tools, wiki, reviewer loop, server APIs, **and** the seven-view Web workbench (shipped as the package's `dsh.client` bundle — installing the host plugin is all it takes; the Web roster row doubles as the browser row). The legacy `dsh-client-ui-mimir` package remains published for existing source integrations, but new installs do not need it.
+Mimir is a single npm package: `dsh-mimir` carries the research commands, tools, wiki, reviewer loop, server APIs, **and** the eight-view Web workbench (shipped as the package's `dsh.client` bundle — installing the host plugin is all it takes; the Web roster row doubles as the browser row). The legacy `dsh-client-ui-mimir` package remains published for existing source integrations, but new installs do not need it.
 
 Check the currently published version at any time:
 
@@ -113,7 +114,11 @@ npm view dsh-mimir version
   brew install tectonic        # macOS; see https://tectonic-typesetting.github.io for others
   ```
 - **arXiv access** — literature search calls `export.arxiv.org`; behind a proxy, export `HTTPS_PROXY` before starting dsh.
-- **A SearXNG deployment + sxng CLI** — only for the optional web search. This is the most involved prerequisite: it means self-hosting SearXNG (docker compose with Valkey, a `settings.yml` enabling JSON output, WSL keep-alive on Windows…) and installing the [sxng-cli](https://github.com/hkwuks/sxng-cli) wrapper. **Follow the full step-by-step setup in the [sxng-cli README](https://github.com/hkwuks/sxng-cli#readme)** — it covers the container stack, the `settings.yml` template (30+ engines), `sxng init`, and health checks. Once `sxng --health` reports healthy, Mimir picks it up automatically: with the default `search.command: auto`, the `web_search` tool and the Library web search register themselves when `sxng` is on PATH.
+- **A SearXNG instance** — only for the optional web search. The [sxng CLI](https://github.com/hkwuks/sxng-cli) already ships with `dsh-mimir` as an optional dependency (no separate `npm install -g` needed); what remains is a SearXNG server for it to talk to. The fastest path is the bundled one-command setup — a local, Docker-free SearXNG in a Python venv:
+  ```sh
+  bash scripts/setup-web-search.sh    # from a repo checkout; stop it with --stop
+  ```
+  Prefer Docker or a remote deployment? Follow the full step-by-step setup in the [sxng-cli README](https://github.com/hkwuks/sxng-cli#readme) (container stack, `settings.yml` with 30+ engines, `sxng init`, health checks). Once `sxng --health` reports healthy, Mimir picks it up automatically: with the default `search.command: auto`, the `web_search` tool and the Library web search register themselves when `sxng` resolves on PATH or as the bundled dependency.
 
 ### 1. Install Mimir
 
@@ -293,7 +298,7 @@ Registers a project in the wiki, scaffolds `IDEA_REPORT.md` in the workspace, su
 The agent reaches the same capabilities mid-conversation:
 
 - `arxiv_search` — "search arXiv for recent whole-body mesh recovery papers" (default cap `arxiv.maxResults`); search results alone do not pollute the library.
-- `web_search` — "search the web for the project's official docs and code repositories" (optional; requires the [sxng CLI](https://github.com/hkwuks/sxng-cli) against a self-hosted SearXNG instance). Supports `limit`, `categories`, `lang`, and `time_range`; results are transient and never written to the wiki, though hits whose URL points at an arXiv paper can be imported from the workbench.
+- `web_search` — "search the web for the project's official docs and code repositories" (optional; the [sxng CLI](https://github.com/hkwuks/sxng-cli) ships with the package — it just needs a SearXNG instance, e.g. from `scripts/setup-web-search.sh`). Supports `limit`, `categories`, `lang`, and `time_range`; results are transient and never written to the wiki, though hits whose URL points at an arXiv paper can be imported from the workbench.
 - `paper_fetch` — fetch a useful paper by arXiv id and automatically archive its metadata, usefulness notes, and tags. It links to an explicit `project_id`, or the latest active project when omitted. Re-fetching refreshes arXiv metadata without losing existing notes, tags, links, or a downloaded PDF.
 - `wiki_note` — the wiki's read/write surface, one flat parameter set keyed by `action`: `add_paper`, `add_idea`, `fail_idea`, `add_claim`, `set_claim`, `set_project` (points a project at its paper directory), `add_experiment`, `set_experiment` (status `running`/`success`/`failed`), plus `list` and `get` over the five tables.
 - `latex_compile` — "compile the paper in `paper/`" (`project_dir` parameter); returns parsed file/line diagnostics.
@@ -314,7 +319,7 @@ All keys are optional; these are the defaults from `packages/mimir/src/index.ts`
 | `latex.engine` | `auto` | `auto` (probe `latexmk` then `tectonic` on PATH), an engine name, or an absolute binary path (basename picks the dialect) |
 | `latex.timeoutMs` | `120000` | Compile kill timeout (ms); raise it for tectonic's first network fetch |
 | `arxiv.maxResults` | `10` | Default `arxiv_search` result cap |
-| `search.command` | `auto` | Web search CLI: `auto` registers the `web_search` tool and panel search only when `sxng` resolves on PATH; an explicit name/path always registers it |
+| `search.command` | `auto` | Web search CLI: `auto` registers the `web_search` tool and panel search when `sxng` resolves on PATH **or as the bundled optional dependency**; an explicit name/path always registers it |
 | `search.timeoutMs` | `30000` | Web search kill timeout (ms) |
 | `backup.enabled` | `true` | Scheduled wiki backup timer; `false` disables it entirely |
 | `backup.intervalMinutes` | `60` | Backup cadence in minutes (positive integer); the first pass runs one minute after plugin start |
@@ -331,7 +336,7 @@ Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-age
 - **LaTeX engine not found** — install tectonic (single binary): `brew install tectonic` on macOS, or see <https://tectonic-typesetting.github.io>. Alternatively point `latex.engine` at an absolute binary path. `engine: auto` probes `latexmk` first, then `tectonic`.
 - **Compile errors** — `/paper-compile` prints parsed file/line diagnostics; in the workbench's Paper view, clicking an error jumps the editor to that source line. First tectonic runs download packages over the network — raise `latex.timeoutMs` if the initial compile times out.
 - **arXiv search fails** — the tools call `export.arxiv.org`; check connectivity, and export `HTTPS_PROXY`/`HTTP_PROXY` before starting dsh when you are behind a proxy.
-- **`web_search` unavailable / panel web search errors** — install the sxng CLI (`npm install -g sxng-cli`), run `sxng init` against a self-hosted SearXNG instance, and restart dsh. With `search.command: auto` the tool appears only when `sxng` is on PATH; the Library view's Web tab reports setup guidance when the host has none configured.
+- **`web_search` unavailable / panel web search errors** — the sxng CLI ships with `dsh-mimir` as an optional dependency, so what is missing is almost always the SearXNG server: run `bash scripts/setup-web-search.sh` for a Docker-free local instance, or point the CLI at your own deployment (`sxng init`). With `search.command: auto` the tool appears when `sxng` is on PATH or bundled; the Library view's Web tab reports setup guidance when the host has none configured.
 - **Where is my data / how do I back it up** — the wiki lives at `~/.dsh/storages/research_wiki.json`, research artifacts under `workspaceDir` (default `./.research`). Two backup tracks: the host writes a full snapshot to `<workspaceDir>/backups/mimir-wiki-<UTC timestamp>.json` every `backup.intervalMinutes` (keeps the newest `backup.keep`, atomic writes, failures only warn and retry next cycle), and the Overview view's data card exports the same snapshot manually on demand. Both files import back through the data card (merge is non-destructive) — to restore from an auto-backup, pick the file under `backups/` in the import flow.
 
 ## Known limitations
@@ -381,6 +386,14 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 - `build/client-preset/` vendors the dsh client-bundle tsdown preset (closure-factory browser artifact + lightningcss pipeline), slimmed to what this repository builds.
 
 ## Changelog
+
+### Unreleased (on `dev`)
+
+- **Ledger view (记录)** — the workbench's eighth tab: a transparent growth record of the research cycle. Decision-level events (ideas, imports, experiments, compiles, decks) land on one timeline with time-window (7/30/90 days / all) and project-scope filters, plus a one-click Markdown **progress report** (copy or `.md` download). Contributed by [@EriXPsy](https://github.com/EriXPsy) ([#115](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/115)).
+- **SearXNG web search** — the Library view's search box gains a **Web** source tab (arXiv | Web), and the agent gets a matching `web_search` tool; arXiv-linked web hits import in one click. Contributed by [@hkwuks](https://github.com/hkwuks) ([#114](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/114)).
+- **Near-out-of-box web search** — the [sxng CLI](https://github.com/hkwuks/sxng-cli) now ships as an optional dependency of `dsh-mimir` and `search.command: auto` falls back to the bundled copy, so `npm install` alone brings the CLI; new `scripts/setup-web-search.sh` spins up a local Docker-free SearXNG (Python venv, JSON output, no Valkey) and points the CLI at it in one command.
+- **Meetings: AI illustrations** — deck generation can call your own image-generation API (configurable endpoint/key in the tab) and mixes generated illustrations with real paper figures; auto-extracted per-figure slides from cached arXiv PDFs.
+- **Self-activating bundle** — `dsh-mimir` declares `dsh.bundle`, so `dsh plugin --profile web add dsh-mimir@latest` mounts everything without editing the profile's roster.
 
 ### 0.13.0
 
@@ -467,6 +480,15 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 
 - Workflow inspiration: [ARIS / Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)
 - Built on the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin platform (Cordis, Typert, the client module system).
+
+## Contributors
+
+Thanks to everyone who has contributed code, ideas, and feedback:
+
+- [@EriXPsy](https://github.com/EriXPsy) — the Ledger (记录) view: growth-record timeline + one-click progress reports
+- [@hkwuks](https://github.com/hkwuks) — SearXNG web search (panel Web tab + `web_search` tool) and the [sxng CLI](https://github.com/hkwuks/sxng-cli)
+
+Want your name here? See [CONTRIBUTING.md](CONTRIBUTING.md) and open a PR — branch off `main`, keep `pnpm run build && pnpm test && pnpm run typecheck` green.
 
 ## License
 
