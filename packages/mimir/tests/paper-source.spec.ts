@@ -4,7 +4,7 @@
  * and the atomic commit preserving content and permission bits.
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -83,9 +83,15 @@ describe('paper-source', () => {
     it('reports a conflict and leaves the file untouched when the mtime moved', async () => {
       await writeFile(texPath, 'v1\n', 'utf8')
       const base = (await stat(texPath)).mtimeMs
-      // A third party (the agent's file tools) lands a change the draft never saw.
+      // A third party (the agent's file tools) lands a change the draft never
+      // saw. The mtime is moved EXPLICITLY: on filesystems with coarse mtime
+      // granularity (or pinned timestamps, as in some sandboxes) two quick
+      // writes can share one mtime and the conflict would be unobservable.
       await writeFile(texPath, 'v2\n', 'utf8')
+      const displacedAt = new Date(base + 10_000)
+      await utimes(texPath, displacedAt, displacedAt)
       const displaced = (await stat(texPath)).mtimeMs
+      expect(displaced).not.toBe(base)
       const outcome = await savePaperSourceFile(texPath, 'stale draft\n', base)
       expect(outcome).toEqual({ kind: 'conflict', currentMtimeMs: displaced })
       expect(await readFile(texPath, 'utf8')).toBe('v2\n')

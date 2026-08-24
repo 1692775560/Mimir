@@ -21,6 +21,7 @@ import type {
   ArxivEntry,
   ArxivSubscriptionView,
   BibEntry,
+  EventRecord,
   ExperimentRecord,
   ExperimentInput,
   FigureEntry,
@@ -44,6 +45,7 @@ import type {
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
+  ResearchEventFilter,
   ResearchExperimentsResult,
   ResearchExportWikiResult,
   ResearchFailure,
@@ -54,6 +56,7 @@ import type {
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
+  ResearchListEventsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -72,6 +75,8 @@ import type {
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
+  ResearchProgressReportOptions,
+  ResearchProgressReportResult,
   ResearchRemovePaperResult,
   ResearchRenameFigureResult,
   ResearchRevertPaperSnapshotResult,
@@ -102,8 +107,10 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The Remote calls this controller needs, exactly as the
- * generated `research` namespace types them.
+ * The fifty-eight Remote calls this controller needs, exactly as the
+ * generated `research` namespace types them. The ledger remotes keep
+ * `actorKind`/`order` as widened `string` (the generated face elides the
+ * literal unions across the boundary).
  */
 export interface ResearchRemote {
   listProjects: () => Promise<RemoteResult<ResearchListProjectsResult>>
@@ -240,6 +247,20 @@ export interface ResearchRemote {
     confirmReplace?: boolean
   }) => Promise<RemoteResult<ResearchImportWikiResult>>
   listBackups: () => Promise<RemoteResult<ResearchListBackupsResult>>
+  listEvents: (request: {
+    projectId?: string | undefined
+    actorKind?: string | undefined
+    actionPrefix?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+    limit?: number | undefined
+    order?: string | undefined
+  }) => Promise<RemoteResult<ResearchListEventsResult>>
+  generateProgressReport: (request: {
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }) => Promise<RemoteResult<ResearchProgressReportResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -388,6 +409,22 @@ export interface ResearchImportCounts {
   readonly skipped: readonly string[]
 }
 
+/** The ledger (growth record) view: one time window's events, newest first. */
+export interface ResearchLedgerView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly EventRecord[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The last progress report the ledger view generated (null fields while none). */
+export interface ResearchReportView {
+  readonly status: 'idle' | 'loading' | 'ready' | 'error'
+  readonly markdown: string
+  readonly generatedAt: string | null
+  readonly eventCount: number | null
+  readonly failure: ResearchFailureView | null
+}
+
 /** The selected project's `references.bib` view, edited entry-wise through the panel. */
 export interface ResearchBibView {
   readonly projectId: string
@@ -448,6 +485,10 @@ export interface ResearchView {
   readonly venueTemplates: ResearchVenueTemplatesView
   /** The snapshot the snapshots panel expanded for diffing; null when closed. */
   readonly snapshotDetail: ResearchSnapshotDetailView | null
+  /** The ledger (growth record) view's events for its selected window. */
+  readonly ledger: ResearchLedgerView
+  /** The ledger view's progress report; `idle` before the first generation. */
+  readonly report: ResearchReportView
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
@@ -483,6 +524,8 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   snapshots: null,
   snapshotDetail: null,
   venueTemplates: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
+  ledger: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
+  report: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, failure: null }),
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -526,6 +569,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   private bibGeneration = 0
   private snapshotsGeneration = 0
   private snapshotDetailGeneration = 0
+  private ledgerGeneration = 0
+  private reportGeneration = 0
   private figuresInFlight = false
   private meetingsGeneration = 0
   private meetingsInFlight = false
@@ -675,6 +720,89 @@ export class ResearchController implements HostObservable<ResearchView> {
     const artifact = this.view.artifact
     if (artifact !== null) this.loadArtifact(artifact.projectId, artifact.name, true)
     if (this.view.bib !== null) this.reloadBibliography()
+  }
+
+  /**
+   * Load one window of ledger (growth record) events for the ledger view. A
+   * newer window supersedes an in-flight one, whose late reply is discarded by
+   * generation; the previous window's events stay on screen while the refresh
+   * runs (no blank flash on a window switch).
+   * @param filter - the window/scope/order/limit filter the view assembled.
+   */
+  loadLedger(filter: ResearchEventFilter): void {
+    this.ledgerGeneration += 1
+    const generation = this.ledgerGeneration
+    const publishLedger = (view: ResearchLedgerView): void => {
+      if (this.disposed || generation !== this.ledgerGeneration) return
+      this.publish({ ledger: Object.freeze(view) })
+    }
+    const current = this.view.ledger
+    publishLedger({ ...current, status: 'loading', failure: null })
+    void (async (): Promise<void> => {
+      try {
+        const carried = await this.remote.listEvents({ ...filter })
+        if (!carried.ok) {
+          publishLedger({ status: 'error', list: Object.freeze([]), failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishLedger({ status: 'error', list: Object.freeze([]), failure: businessFailure(result.error) })
+          return
+        }
+        publishLedger({ status: 'ready', list: Object.freeze(result.value.events), failure: null })
+      } catch (error) {
+        publishLedger({ status: 'error', list: Object.freeze([]), failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Generate the progress report of one window (the ledger view's button):
+   * publish `loading`, then the rendered Markdown or the settled failure. A
+   * newer generation supersedes an in-flight one; the returned failure (when
+   * any) is what the button surfaces — a success toasts once.
+   * @param options - the window/scope options the view assembled.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async generateReport(options: ResearchProgressReportOptions): Promise<ResearchFailureView | null> {
+    this.reportGeneration += 1
+    const generation = this.reportGeneration
+    this.publish({
+      report: Object.freeze({ status: 'loading', markdown: '', generatedAt: null, eventCount: null, failure: null }),
+    })
+    try {
+      const carried = await this.remote.generateProgressReport({ ...options })
+      if (this.disposed || generation !== this.reportGeneration) return null
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ report: Object.freeze({ ...this.view.report, status: 'error', failure }) })
+        return failure
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({ report: Object.freeze({ ...this.view.report, status: 'error', failure }) })
+        return failure
+      }
+      this.publish({
+        report: Object.freeze({
+          status: 'ready',
+          markdown: result.value.markdown,
+          generatedAt: result.value.generatedAt,
+          eventCount: result.value.eventCount,
+          failure: null,
+        }),
+      })
+      this.notify('success', 'ledger.report.ready')
+      return null
+    } catch (error) {
+      const failure = transportFailure(error)
+      if (!this.disposed && generation === this.reportGeneration) {
+        this.publish({ report: Object.freeze({ ...this.view.report, status: 'error', failure }) })
+      }
+      return failure
+    }
   }
 
   /** Load the literature list once, on the papers view's first open. */

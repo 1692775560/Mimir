@@ -6,3 +6,7 @@ dist/
 .DS_Store
 playwright-report/
 test-results/
+
+# 内部战略/生态文档：仅本地保留，不进公共仓库（定位、竞品分析、路线图）
+MIMIR-POSITIONING.zh.md
+MIMIR-ECOSYSTEM.zh.md

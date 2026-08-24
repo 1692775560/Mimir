@@ -18,7 +18,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
+import type {
+  ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchEventFilter,
+  ResearchImportWikiMode, ResearchProgressReportOptions, ResearchWikiSnapshot, SectionMove,
+  SectionOutlineTitles, ServerInput, SubsectionMove,
+} from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { MetricChartRow } from './view-common.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
@@ -455,6 +459,18 @@ export interface ResearchPanelInjected {
     moves: readonly SubsectionMove[],
     baseOutline: readonly SectionOutlineTitles[],
   ) => Promise<ResearchFailureView | null>
+  /**
+   * Load one window of ledger (growth record) events for the ledger view
+   * (first open, window/scope switch, refresh).
+   * @param filter - the window/scope/order/limit filter the view assembled.
+   */
+  loadLedger: (filter: ResearchEventFilter) => void
+  /**
+   * Generate the progress report of one window (the ledger view's button).
+   * @param options - the window/scope options the view assembled.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  generateReport: (options: ResearchProgressReportOptions) => Promise<ResearchFailureView | null>
   /**
    * Export the whole wiki as one snapshot (the download button).
    * @returns the snapshot, or the settled failure view.

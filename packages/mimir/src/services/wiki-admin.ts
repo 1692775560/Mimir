@@ -15,6 +15,7 @@ import {
   WIKI_TABLE_KEY,
   WIKI_TABLE_NAMES,
 } from '../wiki-snapshot.ts'
+import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   ResearchExportWikiResult,
@@ -87,8 +88,16 @@ export function listProjects(deps: WikiAdminDeps): Promise<ResearchListProjectsR
  * @returns the snapshot; the table arrays carry each record with its
  * primary-key field (`arxivId`/`id`).
  */
-export function exportWiki(deps: WikiAdminDeps): Promise<ResearchExportWikiResult> {
-  return Promise.resolve(success({ snapshot: buildWikiSnapshot(deps.domain) }))
+export async function exportWiki(deps: WikiAdminDeps): Promise<ResearchExportWikiResult> {
+  const snapshot = buildWikiSnapshot(deps.domain)
+  const tables = Object.fromEntries(WIKI_TABLE_NAMES.map(name => [name, snapshot.tables[name].length]))
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'data.wiki.exported',
+    refs: {},
+    payload: { tables },
+  })
+  return success({ snapshot })
 }
 
 /**
@@ -153,6 +162,12 @@ export async function importWiki(
       imported[name] += 1
     }
   }
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'data.wiki.imported',
+    refs: {},
+    payload: { mode: request.mode, imported, skipped, destructive: request.mode === 'replace' },
+  })
   return success({ imported, skipped })
 }
 

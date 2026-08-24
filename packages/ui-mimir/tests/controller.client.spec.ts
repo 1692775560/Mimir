@@ -25,12 +25,14 @@ import type {
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchListEventsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
+  ResearchProgressReportResult,
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
@@ -105,6 +107,8 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     updateExperiment: missing('updateExperiment'),
     saveExperiment: missing('saveExperiment'),
     listBackups: missing('listBackups'),
+    listEvents: missing('listEvents'),
+    generateProgressReport: missing('generateProgressReport'),
     ...overrides,
   }
 }
@@ -1661,4 +1665,107 @@ describe('ResearchController figure insert', () => {
     expect(controller.getSnapshot().toasts).toEqual([])
   })
 })
+})
+
+describe('ResearchController ledger (growth record)', () => {
+  const EVENT = {
+    id: 'ev-1',
+    ts: '2026-08-24T10:00:00.000Z',
+    actor: { kind: 'system' as const, id: 'service' },
+    action: 'compute.job.settled',
+    refs: { projectId: 'p1' },
+    payload: { status: 'succeeded' },
+  }
+
+  it('loadLedger forwards the window filter and publishes the events', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      listEvents: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchListEventsResult>({ ok: true, value: { events: [EVENT] } }))
+      },
+    }))
+    controller.loadLedger({ until: '2026-08-24T12:00:00.000Z', order: 'desc', limit: 200 })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(seen).toEqual([{ until: '2026-08-24T12:00:00.000Z', order: 'desc', limit: 200 }])
+    expect(controller.getSnapshot().ledger).toEqual({
+      status: 'ready', list: [EVENT], failure: null,
+    })
+  })
+
+  it('loadLedger surfaces a business failure in the slice', async () => {
+    const controller = new ResearchController(stubRemote({
+      listEvents: () => Promise.resolve(carried<ResearchListEventsResult>({
+        ok: false,
+        error: { code: 'invalid-input', message: 'bad since' },
+      })),
+    }))
+    controller.loadLedger({ since: 'not-a-date' })
+    await Promise.resolve()
+    await Promise.resolve()
+    const ledger = controller.getSnapshot().ledger
+    expect(ledger.status).toBe('error')
+    expect(ledger.failure).toEqual({ code: 'invalid-input', message: 'bad since' })
+  })
+
+  it('loadLedger keeps the previous window on screen while a switch is in flight', async () => {
+    const gate = deferred<RemoteResult<ResearchListEventsResult>>()
+    let listCalls = 0
+    const controller = new ResearchController(stubRemote({
+      listEvents: () => {
+        listCalls += 1
+        return listCalls === 1
+          ? Promise.resolve(carried<ResearchListEventsResult>({ ok: true, value: { events: [EVENT] } }))
+          : gate.promise
+      },
+    }))
+    controller.loadLedger({ order: 'desc' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(controller.getSnapshot().ledger.status).toBe('ready')
+    // The second window starts loading without blanking the first one.
+    controller.loadLedger({ order: 'asc' })
+    const switching = controller.getSnapshot().ledger
+    expect(switching.status).toBe('loading')
+    expect(switching.list).toEqual([EVENT])
+    gate.resolve(carried<ResearchListEventsResult>({ ok: true, value: { events: [] } }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(controller.getSnapshot().ledger).toEqual({ status: 'ready', list: [], failure: null })
+  })
+
+  it('generateReport publishes the Markdown and toasts the success', async () => {
+    const controller = new ResearchController(stubRemote({
+      generateProgressReport: () => Promise.resolve(carried<ResearchProgressReportResult>({
+        ok: true,
+        value: { markdown: '# Mimir Research Progress Report', generatedAt: '2026-08-24T12:00:00.000Z', eventCount: 3 },
+      })),
+    }))
+    const failure = await controller.generateReport({ since: '2026-08-17T00:00:00.000Z' })
+    expect(failure).toBeNull()
+    expect(controller.getSnapshot().report).toEqual({
+      status: 'ready',
+      markdown: '# Mimir Research Progress Report',
+      generatedAt: '2026-08-24T12:00:00.000Z',
+      eventCount: 3,
+      failure: null,
+    })
+    expect(controller.getSnapshot().toasts).toHaveLength(1)
+    expect(controller.getSnapshot().toasts[0]?.copy).toBe('ledger.report.ready')
+  })
+
+  it('generateReport returns the failure view and freezes the slice on error', async () => {
+    const controller = new ResearchController(stubRemote({
+      generateProgressReport: () => Promise.resolve(carried<ResearchProgressReportResult>({
+        ok: false,
+        error: { code: 'project-not-found', message: 'no such project' },
+      })),
+    }))
+    const failure = await controller.generateReport({ projectId: 'missing' })
+    expect(failure).toEqual({ code: 'project-not-found', message: 'no such project' })
+    const report = controller.getSnapshot().report
+    expect(report.status).toBe('error')
+    expect(report.failure?.code).toBe('project-not-found')
+  })
 })

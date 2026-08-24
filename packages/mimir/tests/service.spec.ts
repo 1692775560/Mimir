@@ -9,7 +9,7 @@
  * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
-import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
@@ -861,8 +861,16 @@ describe('ResearchService bibliography remotes', () => {
     expect(saved.ok).toBe(true)
     if (!saved.ok) return
     expect(await readFile(bibPath, 'utf8')).toBe('')
+    // A third party writes after the base: the mtime is moved EXPLICITLY,
+    // because on coarse-granularity filesystems (and some sandboxes with
+    // pinned timestamps) two quick commits share one mtime, which would make
+    // the stale base indistinguishable from a fresh one.
+    const displacedAt = new Date(created.value.mtimeMs + 20_000)
+    await utimes(bibPath, displacedAt, displacedAt)
+    const displaced = (await stat(bibPath)).mtimeMs
+    expect(displaced).not.toBe(created.value.mtimeMs)
     await expect(service.saveBibliography({ projectId: 'p1', entries: [], baseMtimeMs: created.value.mtimeMs }))
-      .resolves.toMatchObject({ ok: false, error: { code: 'conflict', currentMtimeMs: saved.value.mtimeMs } })
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict', currentMtimeMs: displaced } })
   })
 
   it('saveBibliography reports bib-not-found when a based-on file is gone', async () => {
