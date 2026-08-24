@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 58 `@Remote` signatures intact, and forwards every method body to a
+ * all 63 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -61,6 +61,7 @@ import type {
   ResearchSaveArxivSubscriptionResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -70,7 +71,9 @@ import type {
   ResearchClearVenueResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
+  ResearchGetImageGenConfigResult,
   ResearchMeetingDecksResult,
+  ResearchSetImageGenConfigResult,
   MeetingInclude,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
@@ -94,6 +97,8 @@ import * as wikiAdmin from './services/wiki-admin.ts'
 import * as venue from './services/venue.ts'
 import * as meeting from './services/meeting.ts'
 import * as ledger from './services/ledger.ts'
+import type { MeetingDeps } from './services/meeting.ts'
+import * as imagegen from './services/image-gen.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -122,6 +127,16 @@ export interface ResearchServiceConfig {
     readonly dir: string
   }
   /**
+   * Resolved web-search knobs (the sxng CLI command and timeout); absent
+   * when no command is configured — `searchWeb` then reports unavailable.
+   */
+  readonly search?: {
+    readonly command: string
+    readonly timeoutMs: number
+    /** Test hook replacing the real child process. */
+    readonly run?: (command: string, args: readonly string[], timeoutMs: number) => Promise<string>
+  }
+  /**
    * Probe/run overrides for the SVG conversion behind `convertFigure` /
    * `saveFigure`; absent outside tests, where the real PATH probe and
    * process runner apply.
@@ -137,11 +152,16 @@ export interface ResearchServiceConfig {
     readonly apiKey: string
     readonly userId: string
   }
+  /**
+   * Meeting-deck seams (PDF warm-up override); absent outside tests, where
+   * the real arXiv fetch applies.
+   */
+  readonly meetings?: MeetingDeps
 }
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 58 `@Remote` signatures; every method
+ * `research` Remote namespace and all 63 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -164,8 +184,10 @@ export class ResearchService extends TypertRemoteService {
       domain: config.domain,
       latex: config.latex,
       ...(config.backup === undefined ? {} : { backup: config.backup }),
+      ...(config.search === undefined ? {} : { search: config.search }),
       ...(config.svg === undefined ? {} : { svg: config.svg }),
       ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
+      ...(config.meetings === undefined ? {} : { meetings: config.meetings }),
     }
     this.state = { compileStatus: new Map(), jobSeq: 0 }
   }
@@ -191,6 +213,16 @@ export class ResearchService extends TypertRemoteService {
   @Remote('searchArxiv')
   searchArxiv(request: { query: string; maxResults?: number }): Promise<ResearchSearchArxivResult> {
     return library.searchArxiv(this.deps, request)
+  }
+
+  @Remote('searchWeb')
+  searchWeb(request: {
+    query: string
+    maxResults?: number
+    categories?: string | undefined
+    lang?: string | undefined
+  }): Promise<ResearchSearchWebResult> {
+    return library.searchWeb(this.deps, request)
   }
 
   @Remote('importPaper')
@@ -468,8 +500,24 @@ export class ResearchService extends TypertRemoteService {
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }): Promise<ResearchGenerateMeetingResult> {
     return meeting.generateMeetingDeck(this.deps, request)
+  }
+
+  @Remote('getImageGenConfig')
+  getImageGenConfig(): Promise<ResearchGetImageGenConfigResult> {
+    return imagegen.getImageGenConfig(this.deps.workspaceDir)
+  }
+
+  @Remote('setImageGenConfig')
+  setImageGenConfig(request: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }): Promise<ResearchSetImageGenConfigResult> {
+    return imagegen.setImageGenConfig(this.deps.workspaceDir, request)
   }
 
   @Remote('listMeetingDecks')

@@ -158,6 +158,12 @@ export interface ResearchPanelInjected {
    */
   searchArxiv: (query: string) => void
   /**
+   * Search the web from the papers view; the outcome lands in the view's
+   * `webSearch` slice.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchWeb: (query: string) => void
+  /**
    * Import one arXiv entry into the wiki, then refresh the literature list.
    * @param entry - the parsed arXiv entry of one search result card.
    * @param projectId - the selected project to link, when any.
@@ -228,6 +234,7 @@ export interface ResearchPanelInjected {
       paperIds?: readonly string[] | undefined
       figureRelPaths?: readonly string[] | undefined
       include?: Partial<MeetingInclude> | undefined
+      aiIllustrations?: boolean | undefined
     },
   ) => Promise<ResearchFailureView | null>
   /**
@@ -237,6 +244,23 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteMeetingDeck: (projectId: string, file: string) => Promise<ResearchFailureView | null>
+  /**
+   * Fetch the image-generation config (the masked panel view) once, on the
+   * meetings view's first open; a ready slice or in-flight load is left alone.
+   */
+  getImageGenConfig: () => void
+  /**
+   * Save the image-generation config; the store's masked view refreshes from
+   * the response. An omitted `apiKey` keeps the stored key, '' clears it.
+   * @param input - the editable fields (baseUrl/model/size/apiKey).
+   * @returns null on success, the settled failure otherwise.
+   */
+  saveImageGenConfig: (input: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }) => Promise<ResearchFailureView | null>
   /**
    * Rename one figure of one project (same extension); the host moves the
    * metadata row along and rewrites the paper's `.tex` references. The

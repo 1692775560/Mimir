@@ -364,6 +364,25 @@ export type ResearchPapersResult = ResearchResult<{ readonly papers: readonly Pa
 /** `searchArxiv` result: the parsed arXiv entries matching the query. */
 export type ResearchSearchArxivResult = ResearchResult<{ readonly results: readonly ArxivEntry[] }>
 
+/** `searchWeb` result: one SearXNG web result row. */
+export interface WebSearchEntry {
+  /** Result page title. */
+  readonly title: string
+  /** Result URL, verbatim from the engine. */
+  readonly url: string
+  /** Snippet text the engine returned (may be empty). */
+  readonly content: string
+  /** Engine that produced this result (e.g. `arxiv`, `brave`). */
+  readonly engine: string
+  /** SearXNG category of the result (e.g. `science`, `general`). */
+  readonly category: string
+  /** ISO-8601 published date when the engine supplied one, else empty. */
+  readonly publishedDate: string
+}
+
+/** `searchWeb` result: the parsed SearXNG results matching the query. */
+export type ResearchSearchWebResult = ResearchResult<{ readonly results: readonly WebSearchEntry[] }>
+
 /** `importPaper` result: false when the paper was already remembered. */
 export type ResearchImportPaperResult = ResearchResult<{ readonly imported: boolean }>
 
@@ -522,7 +541,24 @@ export interface MeetingDeckView {
 }
 
 /** `generateMeetingDeck` outcome: the produced file name plus slide count. */
-export type ResearchGenerateMeetingResult = ResearchResult<{ readonly file: string; readonly slides: number }>
+export type ResearchGenerateMeetingResult = ResearchResult<{
+  readonly file: string
+  readonly slides: number
+  /** AI illustrations embedded into the deck (0 when disabled/unconfigured). */
+  readonly illustrations: number
+}>
+
+/** `getImageGenConfig` outcome: the panel-safe config view (key masked). */
+export type ResearchGetImageGenConfigResult = ResearchResult<{
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly model: string
+  readonly size: string
+  readonly apiKeyPreview: string
+}>
+
+/** `setImageGenConfig` outcome: the fresh masked view. */
+export type ResearchSetImageGenConfigResult = ResearchGetImageGenConfigResult
 
 /** `listMeetingDecks` outcome, newest first. */
 export type ResearchMeetingDecksResult = ResearchResult<{ readonly decks: readonly MeetingDeckView[] }>

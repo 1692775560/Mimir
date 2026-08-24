@@ -40,6 +40,7 @@ import type {
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
@@ -78,6 +79,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     savePaperSource: missing('savePaperSource'),
     listPapers: missing('listPapers'),
     searchArxiv: missing('searchArxiv'),
+    searchWeb: missing('searchWeb'),
     importPaper: missing('importPaper'),
     removePaper: missing('removePaper'),
     updatePaper: missing('updatePaper'),
@@ -109,6 +111,8 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     listBackups: missing('listBackups'),
     listEvents: missing('listEvents'),
     generateProgressReport: missing('generateProgressReport'),
+    getImageGenConfig: missing('getImageGenConfig'),
+    setImageGenConfig: missing('setImageGenConfig'),
     ...overrides,
   }
 }
@@ -1002,6 +1006,45 @@ describe('ResearchController arXiv search and paper import', () => {
     slow.resolve(carried<ResearchSearchArxivResult>({ ok: true, value: { results: [ENTRY] } }))
     await settle()
     expect(controller.getSnapshot().arxivSearch).toMatchObject({ query: 'fast', status: 'error' })
+  })
+
+  it('publishes the web search outcome; an empty query never leaves the client', async () => {
+    const seen: string[] = []
+    const controller = new ResearchController(stubRemote({
+      searchWeb: ({ query }) => {
+        seen.push(query)
+        return Promise.resolve(carried<ResearchSearchWebResult>({
+          ok: true,
+          value: { results: [{ title: 'A page', url: 'https://example.com/', content: 'Snippet.', engine: 'brave', category: 'general', publishedDate: '' }] },
+        }))
+      },
+    }))
+    expect(controller.getSnapshot().webSearch).toBeNull()
+    controller.searchWeb('  ')
+    expect(seen).toEqual([])
+    controller.searchWeb(' mesh ')
+    expect(controller.getSnapshot().webSearch).toMatchObject({ query: 'mesh', status: 'loading' })
+    await settle()
+    expect(controller.getSnapshot().webSearch).toMatchObject({ query: 'mesh', status: 'ready' })
+    expect(controller.getSnapshot().webSearch?.list[0]?.engine).toBe('brave')
+  })
+
+  it('folds web search business failures into the error slice and supersedes in-flight ones', async () => {
+    const slow = deferred<RemoteResult<ResearchSearchWebResult>>()
+    const controller = new ResearchController(stubRemote({
+      searchWeb: ({ query }) => query === 'slow'
+        ? slow.promise
+        : Promise.resolve(carried<ResearchSearchWebResult>({
+            ok: false, error: { code: 'operation-failed', message: 'not configured' },
+          })),
+    }))
+    controller.searchWeb('slow')
+    controller.searchWeb('fast')
+    await settle()
+    expect(controller.getSnapshot().webSearch).toMatchObject({ query: 'fast', status: 'error' })
+    slow.resolve(carried<ResearchSearchWebResult>({ ok: true, value: { results: [] } }))
+    await settle()
+    expect(controller.getSnapshot().webSearch).toMatchObject({ query: 'fast', status: 'error' })
   })
 
   it('refreshes the literature list after a successful import and returns failures otherwise', async () => {

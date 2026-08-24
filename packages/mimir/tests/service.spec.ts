@@ -45,6 +45,20 @@ async function harness(svg?: ResearchServiceConfig['svg']) {
   return { ctx, domain, workspaceDir, service }
 }
 
+/** Boot the same stack without pre-building the service (a second service on a fresh context). */
+async function harnessFresh(): Promise<{ ctx: Context; domain: Awaited<ReturnType<DomainFacility['open']>>; workspaceDir: string }> {
+  const ctx = new Context()
+  await ctx.plugin(Storage)
+  const backend = new MemoryStorageBackend(new MemoryMediaPool())
+  ctx.storage.backend.register('memory', backend)
+  ctx.provide(storageBackendServiceKey('memory'), backend)
+  const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', facility)
+  const domain = await facility.open(researchWikiDomainSpec)
+  const workspaceDir = await mkdtemp(join(tmpdir(), 'mimir-service-'))
+  return { ctx, domain, workspaceDir }
+}
+
 const PROJECT: ProjectRecord = {
   id: 'p1',
   title: 'Project',
@@ -463,6 +477,72 @@ describe('ResearchService.searchArxiv', () => {
     vi.stubGlobal('fetch', async () => { throw new Error('socket hangup') })
     await expect(service.searchArxiv({ query: 'mesh' }))
       .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: 'socket hangup' } })
+  })
+})
+
+describe('ResearchService.searchWeb', () => {
+  const SXNG_OK = JSON.stringify({
+    status: 'ok',
+    data: {
+      query: 'q',
+      totalResults: 1,
+      results: [{
+        title: 'A page', url: 'https://example.com/', content: 'Snippet.',
+        engine: 'brave', category: 'general', publishedDate: '', thumbnail: '', score: 1,
+      }],
+    },
+  })
+
+  /** A service whose web search runs through an injected fake CLI, on a fresh context. */
+  async function serviceWithSearch(stdout: string, calls: string[][] = []) {
+    const built = await harnessFresh()
+    return new ResearchService(built.ctx, {
+      workspaceDir: built.workspaceDir,
+      domain: built.domain,
+      latex: { engine: 'auto', timeoutMs: 1000 },
+      search: {
+        command: 'sxng',
+        timeoutMs: 5_000,
+        run: (_command, args) => { calls.push([...args]); return Promise.resolve(stdout) },
+      },
+    })
+  }
+
+  it('is unavailable when no search command is configured', async () => {
+    const { service } = await harness()
+    await expect(service.searchWeb({ query: 'mesh' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('not configured') } })
+  })
+
+  it('rejects an empty query and a bad maxResults as invalid-input', async () => {
+    const service = await serviceWithSearch(SXNG_OK)
+    await expect(service.searchWeb({ query: '   ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.searchWeb({ query: 'mesh', maxResults: 0 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.searchWeb({ query: 'mesh', maxResults: 51 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+
+  it('runs the configured CLI and returns parsed rows', async () => {
+    const calls: string[][] = []
+    const service = await serviceWithSearch(SXNG_OK, calls)
+    const outcome = await service.searchWeb({ query: 'mesh recovery', maxResults: 3 })
+    expect(outcome).toEqual({
+      ok: true,
+      value: { results: [{ title: 'A page', url: 'https://example.com/', content: 'Snippet.', engine: 'brave', category: 'general', publishedDate: '' }] },
+    })
+    expect(calls[0]).toContain('mesh recovery')
+  })
+
+  it('settles CLI failures as operation-failed', async () => {
+    const failureBody = JSON.stringify({
+      status: 'error', data: null,
+      error: { code: 'SEARCH_FAILED', message: 'connect ECONNREFUSED 127.0.0.1:3668' },
+    })
+    const service = await serviceWithSearch(failureBody)
+    await expect(service.searchWeb({ query: 'mesh' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'operation-failed', message: expect.stringContaining('ECONNREFUSED') } })
   })
 })
 

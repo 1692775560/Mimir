@@ -45,6 +45,7 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 | 工具 | 用途 |
 | --- | --- |
 | `arxiv_search` / `paper_fetch` | arXiv 检索；单篇抓取自动归档到文献库并关联项目 |
+| `web_search` | 可选的 SearXNG 网页搜索，经 `sxng` CLI（CLI 在 PATH 上时自动注册）；为 arXiv 之外的来源补充检索 |
 | `wiki_note` | 研究 wiki domain 的读写面（文献、想法、主张、实验、项目） |
 | `figure_save` | 把生成的图（任意路径）复制进项目论文 `figures/` 目录，wiki 记录 caption/关联实验元数据，返回可直接粘贴的 LaTeX 图片块（机器上有可用转换器时 SVG 会自动转换为 PDF，兜底为 PNG） |
 | `latex_compile` | 编译 `main.tex` 并给出解析后的文件/行号诊断；多引擎：`latexmk` 或 `tectonic`（自动探测，或显式二进制路径） |
@@ -75,7 +76,7 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 | --- | --- |
 | 📊 **总览** | 五阶段流水线进度、统计芯片、工件清单、最近动态（最近远程任务 + 实验运行）、整库 wiki 导出/导入（替换有红字二次确认） |
 | 📝 **论文** | Overleaf 式三栏工作室：大纲拖拽重排、自动保存编辑器（窗口化语法高亮，几千行也流畅）、一键编译、点击跳源码行的错误列表（每条带**「让 AI 修」**按钮）、内嵌 PDF 预览、`references.bib` 面板、头部常显项目名 |
-| 📚 **文献** | 收录论文的标签/笔记/项目关联、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`、一键**「生成 related work 草稿」**把筛选结果连同写作要求发给 agent |
+| 📚 **文献** | 收录论文的标签/笔记/项目关联、面板内 arXiv **与 SearXNG Web** 搜索（一个搜索框上的 tab 切换；URL 指向 arXiv 的 Web 结果可一键导入）、逐卡片加入 `references.bib`、一键**「生成 related work 草稿」**把筛选结果连同写作要求发给 agent |
 | 🧪 **实验** | 运行记录与指标对比图、内联新增/编辑表单、服务器内联换绑、远程任务 settle 自动**回写最近任务徽标**、任意对比图一键**生成论文图**、`EXPERIMENT_LOG.md` 渲染 |
 | 🖼️ **图表** | 论文目录图片网格：预览、拖拽上传、复制 LaTeX 引用、插入论文（SVG 宿主侧自动转 PDF/PNG）；`figure_save` 入库的图带 caption + 关联实验徽标 |
 | 🎞️ **组会** | 一键组会 PPT：勾选文献（默认按 AI 相关度取前 12）与图表、开关四个板块，宿主侧确定性渲染 16:9 pptx（无需 agent 会话）落盘 `meetings/<project>/`；已生成的汇报可下载/删除 |
@@ -113,6 +114,7 @@ npm view dsh-client-ui-mimir version
   brew install tectonic        # macOS；其他平台见 https://tectonic-typesetting.github.io
   ```
 - **arXiv 访问**——文献检索请求 `export.arxiv.org`；在代理环境下，启动 dsh 前导出 `HTTPS_PROXY`。
+- **SearXNG 部署 + sxng CLI**——仅可选的 Web 搜索需要。这是最复杂的一项前置：要自托管 SearXNG（docker compose + Valkey、开启 JSON 输出的 `settings.yml`、Windows 下 WSL 保活……），并安装 [sxng-cli](https://github.com/hkwuks/sxng-cli) 封装。**请按 [sxng-cli README](https://github.com/hkwuks/sxng-cli#readme) 的完整分步教程搭建**——覆盖容器栈、`settings.yml` 模板（30+ 引擎）、`sxng init` 和健康检查。当 `sxng --health` 报告 healthy 后，Mimir 自动识别：默认 `search.command: auto` 下，只要 `sxng` 在 PATH 上，`web_search` 工具与文献视图的 Web 搜索就会自动注册。
 
 ### 1. 安装 Mimir
 
@@ -292,6 +294,7 @@ dsh 会话里的典型循环：
 agent 在对话中途可以触达同一组能力：
 
 - `arxiv_search`——“搜一下最近的 whole-body mesh recovery 论文”（默认上限 `arxiv.maxResults`）；搜索结果不会直接污染文献库。
+- `web_search`——“搜一下这个方向官方文档和代码仓库”（可选；需要 [sxng CLI](https://github.com/hkwuks/sxng-cli) 对接自托管 SearXNG 实例）。支持 `limit`、`categories`、`lang`、`time_range`；结果即时返回、不写入 wiki，但 URL 指向 arXiv 论文的结果可以在工作台里一键导入。
 - `paper_fetch`——按 arXiv id 抓取有价值的单篇文献，同时自动保存完整元数据、用途笔记与标签，并关联显式 `project_id`（未传时关联最近活跃项目）。重复抓取会刷新 arXiv 元数据，但保留已有笔记、标签、项目关联和本地 PDF。
 - `wiki_note`——wiki 的读写面，以 `action` 为键的一套扁平参数：`add_paper`、`add_idea`、`fail_idea`、`add_claim`、`set_claim`、`set_project`（把项目指向它的论文目录）、`add_experiment`、`set_experiment`（状态 `running`/`success`/`failed`），以及对五张表的 `list` 和 `get`。
 - `latex_compile`——“编译 `paper/` 里的论文”（`project_dir` 参数）；返回解析后的文件/行号诊断。
@@ -312,6 +315,8 @@ agent 在对话中途可以触达同一组能力：
 | `latex.engine` | `auto` | `auto`（依次探测 PATH 上的 `latexmk`、`tectonic`）、引擎名，或绝对二进制路径（按 basename 选择方言） |
 | `latex.timeoutMs` | `120000` | 编译杀进程超时（毫秒）；tectonic 首次联网拉包时可调大 |
 | `arxiv.maxResults` | `10` | `arxiv_search` 的默认结果上限 |
+| `search.command` | `auto` | Web 搜索 CLI：`auto` 仅在 `sxng` 可在 PATH 上解析时注册 `web_search` 工具与面板搜索；显式名字/路径则总是注册 |
+| `search.timeoutMs` | `30000` | Web 搜索杀进程超时（毫秒） |
 | `backup.enabled` | `true` | wiki 定时自动备份开关；`false` 完全关闭 |
 | `backup.intervalMinutes` | `60` | 备份周期（分钟，正整数）；插件启动 1 分钟后做首次备份 |
 | `backup.keep` | `24` | 保留最近 N 份，超出裁剪（正整数） |
@@ -327,6 +332,7 @@ agent 在对话中途可以触达同一组能力：
 - **找不到 LaTeX 引擎**——装 tectonic（单二进制）：macOS 用 `brew install tectonic`，其他平台见 <https://tectonic-typesetting.github.io>。也可以把 `latex.engine` 指到绝对二进制路径。`engine: auto` 先探测 `latexmk`，再探测 `tectonic`。
 - **编译报错**——`/paper-compile` 打印解析后的文件/行号诊断；在工作台论文视图里点击错误会跳到对应源码行。tectonic 首次运行要联网下载宏包——初次编译超时就把 `latex.timeoutMs` 调大。
 - **arXiv 搜索失败**——工具请求 `export.arxiv.org`；检查连通性，代理环境下在启动 dsh 前导出 `HTTPS_PROXY`/`HTTP_PROXY`。
+- **`web_search` 不可用 / 面板 Web 搜索报错**——安装 sxng CLI（`npm install -g sxng-cli`），用 `sxng init` 对接自托管 SearXNG 实例后重启 dsh。`search.command: auto` 时只有 `sxng` 在 PATH 上才会出现该工具；宿主未配置时，文献视图的 Web 标签页会给出搭建指引。
 - **数据在哪 / 怎么备份**——wiki 在 `~/.dsh/storages/research_wiki.json`，科研工件在 `workspaceDir`（默认 `./.research`）下。双轨备份：host 每 `backup.intervalMinutes` 自动写一份全量快照到 `<workspaceDir>/backups/mimir-wiki-<UTC 时间戳>.json`（保留最近 `backup.keep` 份，原子写，失败只告警、下个周期重试），总览视图的数据卡片也可以随时手动导出同格式快照。两种文件都能从数据卡片导入回放（合并是非破坏性的）——从自动备份恢复时，在导入流程里直接选 `backups/` 下的文件即可。
 
 ## 已知限制

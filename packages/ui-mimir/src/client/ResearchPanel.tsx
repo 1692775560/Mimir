@@ -149,7 +149,7 @@ export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
   ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
   requestRelatedWork, requestPaperScore, requestFigureOrganize,
-  ensurePapers, refreshPapers, searchArxiv, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  ensurePapers, refreshPapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   renameFigure, updateFigure,
   ensureSubscriptions, saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   ensureZotero, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
@@ -159,7 +159,7 @@ export function ResearchPanel({
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
-  loadMeetings, generateMeetingDeck, deleteMeetingDeck,
+  loadMeetings, generateMeetingDeck, deleteMeetingDeck, getImageGenConfig, saveImageGenConfig,
   loadLedger, generateReport,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
@@ -177,6 +177,7 @@ export function ResearchPanel({
   const source = useResearch(view => view.source)
   const papers = useResearch(view => view.papers)
   const arxivSearch = useResearch(view => view.arxivSearch)
+  const webSearch = useResearch(view => view.webSearch)
   const arxivSubscriptions = useResearch(view => view.arxivSubscriptions)
   const zotero = useResearch(view => view.zotero)
   const zoteroSearch = useResearch(view => view.zoteroSearch)
@@ -184,6 +185,7 @@ export function ResearchPanel({
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
   const meetings = useResearch(view => view.meetings)
+  const imageGen = useResearch(view => view.imageGen)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
@@ -509,6 +511,7 @@ export function ResearchPanel({
           <PapersView
             papers={papers}
             arxivSearch={arxivSearch}
+            webSearch={webSearch}
             arxivSubscriptions={arxivSubscriptions}
             projects={projects}
             selectedProjectId={selectedProjectId}
@@ -517,6 +520,7 @@ export function ResearchPanel({
             deleteArxivSubscription={deleteArxivSubscription}
             checkArxivSubscriptions={checkArxivSubscriptions}
             searchArxiv={searchArxiv}
+            searchWeb={searchWeb}
             importPaper={importPaper}
             updatePaper={updatePaper}
             removePaper={removePaper}
@@ -575,6 +579,7 @@ export function ResearchPanel({
             meetings={meetings}
             papers={papers}
             figures={figures}
+            imageGen={imageGen}
             projectId={selectedProjectId}
             dir={selectedProject?.paperDir}
             ensurePapers={ensurePapers}
@@ -582,6 +587,8 @@ export function ResearchPanel({
             loadMeetings={loadMeetings}
             generateMeetingDeck={generateMeetingDeck}
             deleteMeetingDeck={deleteMeetingDeck}
+            getImageGenConfig={getImageGenConfig}
+            saveImageGenConfig={saveImageGenConfig}
             t={t}
           />
         )}

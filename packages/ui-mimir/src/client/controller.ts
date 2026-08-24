@@ -65,6 +65,7 @@ import type {
   ResearchClearVenueResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
+  ResearchGetImageGenConfigResult,
   ResearchMeetingDecksResult,
   MeetingDeckView,
   MeetingInclude,
@@ -87,6 +88,8 @@ import type {
   ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
+  ResearchSetImageGenConfigResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -102,6 +105,7 @@ import type {
   ServerRecord,
   ServerStatusView,
   SubsectionMove,
+  WebSearchEntry,
   ZoteroCollectionView,
   ZoteroItemView,
 } from 'dsh-mimir/types'
@@ -126,6 +130,12 @@ export interface ResearchRemote {
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
   listPapers: () => Promise<RemoteResult<ResearchPapersResult>>
   searchArxiv: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchSearchArxivResult>>
+  searchWeb: (request: {
+    query: string
+    maxResults?: number
+    categories?: string | undefined
+    lang?: string | undefined
+  }) => Promise<RemoteResult<ResearchSearchWebResult>>
   importPaper: (request: { entry: ArxivEntry; projectId?: string | undefined }) => Promise<RemoteResult<ResearchImportPaperResult>>
   removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
   updatePaper: (request: {
@@ -195,9 +205,17 @@ export interface ResearchRemote {
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }) => Promise<RemoteResult<ResearchGenerateMeetingResult>>
   listMeetingDecks: (request: { projectId: string }) => Promise<RemoteResult<ResearchMeetingDecksResult>>
   deleteMeetingDeck: (request: { projectId: string; file: string }) => Promise<RemoteResult<ResearchDeleteMeetingDeckResult>>
+  getImageGenConfig: () => Promise<RemoteResult<ResearchGetImageGenConfigResult>>
+  setImageGenConfig: (request: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }) => Promise<RemoteResult<ResearchSetImageGenConfigResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -339,6 +357,14 @@ export interface ResearchArxivSearchView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The web search panel: the last query's outcome (null before any search). */
+export interface ResearchWebSearchView {
+  readonly query: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly list: readonly WebSearchEntry[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** The papers view's Zotero section: connection status plus the collection list. */
 export interface ResearchZoteroView {
   readonly status: ResearchLoadStatus
@@ -376,6 +402,19 @@ export interface ResearchProjectSlice<T> {
   readonly projectId: string
   readonly status: 'loading' | 'ready' | 'error'
   readonly list: T
+  readonly failure: ResearchFailureView | null
+}
+
+/** The meetings view's image-generation config (the panel-safe masked view). */
+export interface ResearchImageGenView {
+  readonly status: ResearchLoadStatus
+  /** Whether an API key is stored host-side. */
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly model: string
+  readonly size: string
+  /** The stored key's mask (e.g. `sk-ab…34`); '' when unconfigured. */
+  readonly apiKeyPreview: string
   readonly failure: ResearchFailureView | null
 }
 
@@ -461,6 +500,8 @@ export interface ResearchView {
   readonly papers: ResearchPapersView
   /** The papers view's arXiv search outcome; null before the first search. */
   readonly arxivSearch: ResearchArxivSearchView | null
+  /** The papers view's web search outcome; null before the first search. */
+  readonly webSearch: ResearchWebSearchView | null
   /** The papers view's arXiv subscription bar. */
   readonly arxivSubscriptions: ResearchSubscriptionsView
   /** The papers view's Zotero section (connection status plus collections). */
@@ -472,6 +513,8 @@ export interface ResearchView {
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
   /** The meetings view's generated decks of the selected project; null until first opened. */
   readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
+  /** The meetings view's image-generation config; `cold` until first fetched. */
+  readonly imageGen: ResearchImageGenView
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -506,6 +549,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   source: null,
   papers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   arxivSearch: null,
+  webSearch: null,
   arxivSubscriptions: Object.freeze({
     status: 'cold', list: Object.freeze([]), checking: false, failure: null, checkErrors: Object.freeze({}),
   }),
@@ -517,6 +561,9 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   artifact: null,
   figures: null,
   meetings: null,
+  imageGen: Object.freeze({
+    status: 'cold', configured: false, baseUrl: '', model: '', size: '', apiKeyPreview: '', failure: null,
+  }),
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
   jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
@@ -566,6 +613,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private artifactGeneration = 0
   private figuresGeneration = 0
   private arxivGeneration = 0
+  private webGeneration = 0
   private bibGeneration = 0
   private snapshotsGeneration = 0
   private snapshotDetailGeneration = 0
@@ -574,6 +622,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private figuresInFlight = false
   private meetingsGeneration = 0
   private meetingsInFlight = false
+  private imageGenInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
@@ -1215,6 +1264,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       paperIds?: readonly string[] | undefined
       figureRelPaths?: readonly string[] | undefined
       include?: Partial<MeetingInclude> | undefined
+      aiIllustrations?: boolean | undefined
     },
   ): Promise<ResearchFailureView | null> {
     try {
@@ -1225,6 +1275,9 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'meetings.generated', String(result.value.slides))
+      if (result.value.illustrations > 0) {
+        this.notify('success', 'meetings.illustrations', String(result.value.illustrations))
+      }
       return null
     } catch (error) {
       return transportFailure(error)
@@ -1246,6 +1299,67 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Fetch the image-generation config (the masked panel view) once; a ready
+   * slice or an in-flight load is left alone. Saving publishes the fresh view
+   * directly, so this stays a cold-start warm-up.
+   */
+  getImageGenConfig(): void {
+    if (this.imageGenInFlight) return
+    if (this.view.imageGen.status === 'ready') return
+    void this.loadImageGenConfig()
+  }
+
+  /** Fetch the masked image-gen config and publish it. */
+  private async loadImageGenConfig(): Promise<void> {
+    this.imageGenInFlight = true
+    this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.getImageGenConfig()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ imageGen: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({ imageGen: Object.freeze({ ...this.view.imageGen, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.imageGenInFlight = false
+    }
+  }
+
+  /**
+   * Save the image-generation config, then publish the returned fresh masked
+   * view. An omitted `apiKey` keeps the stored key; '' clears it.
+   * @param input - the editable fields (empty strings are dropped host-side).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveImageGenConfig(input: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setImageGenConfig(input)
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.publish({ imageGen: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+      this.notify('success', 'meetings.imageGenSaved')
       return null
     } catch (error) {
       return transportFailure(error)
@@ -1718,6 +1832,44 @@ export class ResearchController implements HostObservable<ResearchView> {
       }
       try {
         const carried = await this.remote.searchArxiv({ query: trimmed })
+        if (!carried.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSearch({ query: trimmed, status: 'ready', list: result.value.results, failure: null })
+      } catch (error) {
+        publishSearch({ query: trimmed, status: 'error', list: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Search the web (SearXNG through the sxng CLI) for one query and publish
+   * the outcome to the papers view. Mirrors {@link searchArxiv}'s supersede
+   * semantics: a newer search discards an in-flight one's late reply, and an
+   * empty query never leaves the client.
+   * @param query - the free-text query.
+   */
+  searchWeb(query: string): void {
+    const trimmed = query.trim()
+    if (trimmed === '') return
+    this.webGeneration += 1
+    const generation = this.webGeneration
+    this.publish({
+      webSearch: Object.freeze({ query: trimmed, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSearch = (view: ResearchWebSearchView): void => {
+        if (this.disposed || generation !== this.webGeneration) return
+        this.publish({ webSearch: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.searchWeb({ query: trimmed })
         if (!carried.ok) {
           publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
           return

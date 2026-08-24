@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from '../tools/arxiv.ts'
+import { fetchWebSearch } from '../tools/web-search.ts'
+import type { WebSearchRunner } from '../tools/web-search.ts'
 import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
@@ -19,6 +21,7 @@ import type {
   ResearchPapersResult,
   ResearchRemovePaperResult,
   ResearchSearchArxivResult,
+  ResearchSearchWebResult,
   ResearchUpdatePaperResult,
 } from '../types.ts'
 import { rejected, success } from './common.ts'
@@ -27,6 +30,13 @@ import { rejected, success } from './common.ts'
 export interface LibraryDeps {
   readonly workspaceDir: string
   readonly domain: ResearchWikiDomain
+  /** Resolved web-search knobs; absent disables `searchWeb` (reports unavailable). */
+  readonly search?: {
+    readonly command: string
+    readonly timeoutMs: number
+    /** Test hook replacing the real child process. */
+    readonly run?: WebSearchRunner
+  }
 }
 
 /** Timeout of one arXiv API request made on the panel's behalf. */
@@ -92,6 +102,58 @@ export async function searchArxiv(
     return rejected({
       code: 'operation-failed',
       message: error instanceof Error ? error.message : 'arXiv search failed',
+    })
+  }
+}
+
+/**
+ * Search the web through the configured sxng CLI on the panel's behalf.
+ * The query must be non-empty (`invalid-input` otherwise); the request
+ * carries the configured timeout and CLI/transport failures settle as
+ * `operation-failed` with the underlying message. When no search command
+ * is configured the call reports unavailable through `operation-failed`
+ * with setup guidance.
+ * @param deps - the resolved web-search knobs (absent = unavailable).
+ * @param request - the free-text query and an optional result cap
+ * (default 10, hard cap 50), plus optional category/language modifiers.
+ * @returns the parsed rows, engine order preserved.
+ */
+export async function searchWeb(
+  deps: LibraryDeps,
+  request: {
+    query: string
+    maxResults?: number
+    categories?: string | undefined
+    lang?: string | undefined
+  },
+): Promise<ResearchSearchWebResult> {
+  const search = deps.search
+  if (search === undefined) {
+    return rejected({
+      code: 'operation-failed',
+      message: 'Web search is not configured: set the plugin\'s search.command to the sxng CLI (npm install -g sxng-cli; sxng init against a self-hosted SearXNG).',
+    })
+  }
+  const query = request.query.trim()
+  if (query === '') return rejected({ code: 'invalid-input', message: 'query must be non-empty' })
+  const maxResults = request.maxResults ?? ARXIV_SEARCH_DEFAULT_MAX_RESULTS
+  if (!Number.isSafeInteger(maxResults) || maxResults < 1 || maxResults > ARXIV_SEARCH_MAX_RESULTS) {
+    return rejected({ code: 'invalid-input', message: `maxResults must be an integer between 1 and ${ARXIV_SEARCH_MAX_RESULTS}` })
+  }
+  try {
+    const results = await fetchWebSearch(query, {
+      command: search.command,
+      timeoutMs: search.timeoutMs,
+      maxResults,
+      ...(request.categories === undefined ? {} : { categories: request.categories }),
+      ...(request.lang === undefined ? {} : { lang: request.lang }),
+      ...(search.run === undefined ? {} : { run: search.run }),
+    })
+    return success({ results: Object.freeze(results) })
+  } catch (error) {
+    return rejected({
+      code: 'operation-failed',
+      message: error instanceof Error ? error.message : 'web search failed',
     })
   }
 }
