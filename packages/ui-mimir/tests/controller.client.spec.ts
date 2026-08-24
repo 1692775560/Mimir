@@ -111,6 +111,8 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     listBackups: missing('listBackups'),
     listEvents: missing('listEvents'),
     generateProgressReport: missing('generateProgressReport'),
+    getImageGenConfig: missing('getImageGenConfig'),
+    setImageGenConfig: missing('setImageGenConfig'),
     ...overrides,
   }
 }
