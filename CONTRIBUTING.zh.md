@@ -7,7 +7,7 @@
 ## 环境搭建
 
 ```bash
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build   # 有序构建：mimir tsc+bundle，然后 ui-mimir tsc+bundle

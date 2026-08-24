@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 55 `@Remote` signatures intact, and forwards every method body to a
+ * all 58 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -66,6 +66,10 @@ import type {
   ResearchVenueTemplatesResult,
   ResearchApplyVenueResult,
   ResearchClearVenueResult,
+  ResearchDeleteMeetingDeckResult,
+  ResearchGenerateMeetingResult,
+  ResearchMeetingDecksResult,
+  MeetingInclude,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
   ResearchZoteroCollectionsResult,
@@ -86,6 +90,7 @@ import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
 import * as venue from './services/venue.ts'
+import * as meeting from './services/meeting.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -133,7 +138,7 @@ export interface ResearchServiceConfig {
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 55 `@Remote` signatures; every method
+ * `research` Remote namespace and all 58 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -448,6 +453,30 @@ export class ResearchService extends TypertRemoteService {
   @Remote('clearVenueTemplate')
   clearVenueTemplate(request: { projectId: string }): Promise<ResearchClearVenueResult> {
     return venue.clearVenueTemplate(this.deps, request)
+  }
+
+  // meeting domain: group-meeting pptx decks
+  @Remote('generateMeetingDeck')
+  generateMeetingDeck(request: {
+    projectId: string
+    title?: string | undefined
+    presenter?: string | undefined
+    date?: string | undefined
+    paperIds?: readonly string[] | undefined
+    figureRelPaths?: readonly string[] | undefined
+    include?: Partial<MeetingInclude> | undefined
+  }): Promise<ResearchGenerateMeetingResult> {
+    return meeting.generateMeetingDeck(this.deps, request)
+  }
+
+  @Remote('listMeetingDecks')
+  listMeetingDecks(request: { projectId: string }): Promise<ResearchMeetingDecksResult> {
+    return meeting.listMeetingDecks(this.deps, request)
+  }
+
+  @Remote('deleteMeetingDeck')
+  deleteMeetingDeck(request: { projectId: string; file: string }): Promise<ResearchDeleteMeetingDeckResult> {
+    return meeting.deleteMeetingDeck(this.deps, request)
   }
 
   // server domain

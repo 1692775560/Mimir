@@ -8,7 +8,7 @@
 arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX 写作 → 编译 → 预览——一个工作台，由你的 agent 驱动。</p>
 
 <p>
-<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
 <a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
@@ -22,9 +22,9 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 
 ## 视频演示
 
-[![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+[![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)
 
-▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)**（22 MB）——涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，平滑缩放突出各个工作流程。
+▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)**（22 MB）——涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，平滑缩放突出各个工作流程。
 
 ![论文工作台：大纲、源码编辑器、编译产物 PDF 预览](docs/screenshots/tab-paper-compiled.png)
 
@@ -135,7 +135,7 @@ npm install dsh-mimir@latest
 仓库已经提供可直接使用的 dsh patch。克隆仓库后无需构建，即可用已安装的 npm 插件启动：
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
@@ -184,7 +184,7 @@ npm install dsh-client-ui-mimir@latest
 只有参与 Mimir 开发或集成完整 Web 工作台时才需要构建源码：
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build

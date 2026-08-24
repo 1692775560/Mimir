@@ -7,7 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1692775560/Mimir.git",
+    "url": "git+https://github.com/1692775560/dsh-Mimir-Academic-research.git",
     "directory": "packages/mimir"
   },
   "type": "module",
@@ -56,6 +56,11 @@
     "bundle:client": "tsdown -c tsdown.client.config.ts"
   },
   "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "pptxgenjs": "^4.0.1",
+    "zod": "^4.4.3"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1",
     "@deepseek-ai/dsh-agent": ">=0.1.0-rc.8",
@@ -75,10 +80,6 @@
     "@deepseek-ai/dsh-skill": {
       "optional": true
     }
-  },
-  "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1",
-    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

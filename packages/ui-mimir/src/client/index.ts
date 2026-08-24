@@ -239,6 +239,9 @@ export function apply(ctx: ClientContext): void {
         if (done > 0) controller.notify('success', 'toast.figuresUploaded', `× ${done}`)
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
+      loadMeetings: (projectId, force) => { controller.loadMeetings(projectId, force) },
+      generateMeetingDeck: (projectId, request) => controller.generateMeetingDeck(projectId, request),
+      deleteMeetingDeck: (projectId, file) => controller.deleteMeetingDeck(projectId, file),
       renameFigure: (projectId, relPath, newName) => controller.renameFigure(projectId, relPath, newName),
       updateFigure: (projectId, relPath, caption) => controller.updateFigure(projectId, relPath, caption),
       // A successful insert (or the duplicate's jump) lands in the paper view.

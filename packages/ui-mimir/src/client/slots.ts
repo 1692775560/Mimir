@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
+import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { MetricChartRow } from './view-common.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
@@ -202,6 +202,37 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
+  /**
+   * List one project's generated meeting decks (the meetings view).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip (post-generate/delete reloads).
+   */
+  loadMeetings: (projectId: string, force?: boolean) => void
+  /**
+   * Generate one project's meeting deck from the selected (or default)
+   * papers/figures and section switches. The outcome lands in toasts.
+   * @param projectId - wiki project id.
+   * @param request - the deck options (title/presenter/date/selections).
+   * @returns null on success, the settled failure otherwise.
+   */
+  generateMeetingDeck: (
+    projectId: string,
+    request: {
+      title?: string | undefined
+      presenter?: string | undefined
+      date?: string | undefined
+      paperIds?: readonly string[] | undefined
+      figureRelPaths?: readonly string[] | undefined
+      include?: Partial<MeetingInclude> | undefined
+    },
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one generated meeting deck.
+   * @param projectId - wiki project id.
+   * @param file - the deck file name within the project's meetings directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteMeetingDeck: (projectId: string, file: string) => Promise<ResearchFailureView | null>
   /**
    * Rename one figure of one project (same extension); the host moves the
    * metadata row along and rewrites the paper's `.tex` references. The

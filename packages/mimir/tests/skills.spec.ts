@@ -23,7 +23,7 @@ describe('bundled research skills', () => {
     const names = BUNDLED_SKILLS.map(skill => skill.name)
     expect(new Set(names).size).toBe(names.length)
     expect(names).toContain('research-pipeline')
-    expect(names.length).toBe(9)
+    expect(names.length).toBe(10)
     for (const skill of BUNDLED_SKILLS) {
       expect(skill.name).toMatch(/^research-[a-z-]+$/)
       expect(skill.description.length).toBeGreaterThan(40)

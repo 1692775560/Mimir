@@ -1,9 +1,10 @@
 /**
- * The research workbench: a wide fixed overlay with a left rail (the six
+ * The research workbench: a wide fixed overlay with a left rail (the seven
  * view tabs plus the project picker at the bottom) and a content area that
  * renders the active view — the project overview card, the Overleaf-style
  * paper editor, the literature library, the experiment records with the
- * experiment log, the paper-figure grid, and the compute-server board. All
+ * experiment log, the paper-figure grid, the group-meeting deck builder, and
+ * the compute-server board. All
  * data arrives through the four props shares — the shared store carries
  * open/selection/active-tab, the `useResearch` hook carries the remote view,
  * and the inject face carries the verbs. The component owns no subscription
@@ -22,6 +23,7 @@ import { PaperView } from './PaperView.tsx'
 import { PapersView } from './PapersView.tsx'
 import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
+import { MeetingsView } from './MeetingsView.tsx'
 import { ServersView } from './ServersView.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import css from './ResearchPanel.module.css'
@@ -33,6 +35,7 @@ const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
   papers: 'tab.papers',
   experiments: 'tab.experiments',
   figures: 'tab.figures',
+  meetings: 'tab.meetings',
   servers: 'tab.servers',
 }
 
@@ -77,6 +80,13 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
       <rect x="2.5" y="2.5" width="11" height="4.5" rx="1" />
       <rect x="2.5" y="9" width="11" height="4.5" rx="1" />
       <path d="M5 4.75h.01M5 11.25h.01" />
+    </svg>
+  ),
+  meetings: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="13" height="9" rx="1.5" />
+      <path d="M8 11v2.5M5.5 14.5h5" />
+      <path d="M4.5 8.5l2-2 2 1.5 3-3" />
     </svg>
   ),
 }
@@ -140,6 +150,7 @@ export function ResearchPanel({
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
+  loadMeetings, generateMeetingDeck, deleteMeetingDeck,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -162,6 +173,7 @@ export function ResearchPanel({
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
+  const meetings = useResearch(view => view.meetings)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
@@ -351,7 +363,7 @@ export function ResearchPanel({
             </button>
           </div>
         </div>
-        {/* The six views as a tablist: 1–6 and ArrowUp/Down/Left/Right all
+        {/* The seven views as a tablist: 1–7 and ArrowUp/Down/Left/Right all
             switch, aria-selected carries the active tab to AT. */}
         <nav
           className={css.nav}
@@ -543,6 +555,21 @@ export function ResearchPanel({
             updateFigure={updateFigure}
             requestFigureOrganize={requestFigureOrganize}
             insertFigure={(entry) => selectedProjectId === null ? Promise.resolve() : insertFigure(selectedProjectId, entry)}
+            t={t}
+          />
+        )}
+        {activeTab === 'meetings' && (
+          <MeetingsView
+            meetings={meetings}
+            papers={papers}
+            figures={figures}
+            projectId={selectedProjectId}
+            dir={selectedProject?.paperDir}
+            ensurePapers={ensurePapers}
+            loadFigures={loadFigures}
+            loadMeetings={loadMeetings}
+            generateMeetingDeck={generateMeetingDeck}
+            deleteMeetingDeck={deleteMeetingDeck}
             t={t}
           />
         )}

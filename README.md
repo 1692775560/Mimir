@@ -8,7 +8,7 @@
 arXiv literature · persistent research wiki · experiments &amp; remote GPUs · figures · LaTeX writing → compile → preview — one workbench, driven by your agent.</p>
 
 <p>
-<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
 <a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
@@ -22,9 +22,9 @@ arXiv literature · persistent research wiki · experiments &amp; remote GPUs ·
 
 ## Video demo
 
-[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)
 
-▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB) — AI-assisted research, literature management, experiments, figure archiving, and paper writing, with smooth zooms that highlight each workflow.
+▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)** (22 MB) — AI-assisted research, literature management, experiments, figure archiving, and paper writing, with smooth zooms that highlight each workflow.
 
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
@@ -131,7 +131,7 @@ npm install dsh-mimir@latest
 The repository includes a ready-to-use dsh patch. Clone it and start with the installed npm plugin; no source build is required:
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
@@ -176,7 +176,7 @@ If you previously integrated the standalone `dsh-client-ui-mimir` package into a
 Build from source only when contributing to Mimir or integrating the complete Web workbench:
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build
