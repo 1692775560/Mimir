@@ -1,8 +1,8 @@
 /**
  * Research-assistant plugin suite: an arXiv literature surface, a persistent
  * research wiki (papers / ideas / claims / projects), a LaTeX compile tool,
- * and an independent fresh-reviewer loop — the ARIS workflow mechanisms as
- * one dsh-native plugin.
+ * nine bundled research-workflow skills, and an independent fresh-reviewer
+ * loop — the ARIS workflow mechanisms as one dsh-native plugin.
  * @module dsh-mimir
  */
 
@@ -19,7 +19,8 @@ import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
 import { createWebSearchTool } from './tools/web-search.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
-import { createFigureSaveTool } from './tools/figure.ts'
+import { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
+import { createMeetingDeckTool } from './tools/meeting.ts'
 import { createLatexCompileTool } from './tools/latex.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
@@ -29,20 +30,30 @@ import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
 import type { ResearchServiceConfig } from './service.ts'
 import { isFigureFile } from './artifacts.ts'
+import { TEMPLATE_DIR_NAME } from './services/venue.ts'
+import { meetingDeckPath } from './services/meeting.ts'
 import { ResearchService } from './service.ts'
+import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
+import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
-export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
+export type { Verdict, PaperRecord, PaperRelevance, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
 export type {
+  ArxivSubscriptionCheckView,
+  ArxivSubscriptionView,
   FigureEntry,
   OutlineNode,
   ResearchArtifactResult,
+  ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
+  ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileState,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchConvertFigureResult,
+  ResearchDeleteArxivSubscriptionResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
   ResearchDeleteServerResult,
@@ -61,8 +72,10 @@ export type {
   ResearchProjectView,
   ResearchRejected,
   ResearchRemovePaperResult,
+  ResearchRenameFigureResult,
   ResearchResult,
   ResearchSaveExperimentResult,
+  ResearchSaveArxivSubscriptionResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -70,10 +83,19 @@ export type {
   WebSearchEntry,
   ResearchSubmitJobResult,
   ResearchSuccess,
+  ResearchUpdateFigureResult,
+  ResearchCheckZoteroResult,
+  ResearchZoteroCollectionsResult,
+  ResearchZoteroExportResult,
+  ResearchZoteroImportResult,
+  ResearchZoteroSearchResult,
   ServerGpuView,
   ServerInput,
   ServerRecord,
   ServerStatusView,
+  ZoteroCollectionView,
+  ZoteroItemView,
+  ZoteroStatusView,
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
@@ -85,18 +107,45 @@ export type { PaperSourceSnapshot, SavePaperOutcome } from './paper-source.ts'
 export { DEFAULT_PAPER_DIR } from './paper-source.ts'
 export { isArtifactName, isFigureFile, listPaperFigures, readWorkspaceArtifact, ARTIFACT_NAMES } from './artifacts.ts'
 export type { ArtifactName, FigureFile } from './artifacts.ts'
+export { convertSvgFigure, svgConverterNames, svgProductName, whichOnPath, SVG_CONVERTERS } from './svg-convert.ts'
+export type { SvgConversion, SvgConversionDeps, SvgConverterKind, SvgConverterSpec, SvgRunner } from './svg-convert.ts'
 export { ResearchService } from './service.ts'
 export type { ResearchServiceConfig } from './service.ts'
+export { BUNDLED_SKILLS, registerResearchSkills } from './skills.ts'
+export {
+  ARXIV_SUBSCRIPTIONS_FILE,
+  ARXIV_SUBSCRIPTION_CHECK_RESULTS,
+  ARXIV_SUBSCRIPTION_FIRST_DELAY_MS,
+  ARXIV_SUBSCRIPTION_FETCH_TIMEOUT_MS,
+  ARXIV_SUBSCRIPTION_GAP_MS,
+  ARXIV_SUBSCRIPTION_NEW_LIMIT,
+  ARXIV_SUBSCRIPTION_QUERY_MAX,
+  ARXIV_SUBSCRIPTION_SEEN_LIMIT,
+  foldArxivSubscriptionCheck,
+  loadArxivSubscriptions,
+  runArxivSubscriptionCheck,
+  saveArxivSubscriptions,
+  startArxivSubscriptionLoop,
+} from './arxiv-subscriptions.ts'
+export type {
+  ArxivSubscriptionCheckOptions,
+  ArxivSubscriptionCheckOutcome,
+  ArxivSubscriptionLoopOptions,
+  ArxivSubscriptionRecord,
+} from './arxiv-subscriptions.ts'
 export { runReview, renderReviewRound } from './reviewer.ts'
 export type { ReviewerOptions, ReviewRequest } from './reviewer.ts'
 export { compileLatex, renderLatexResult, createLatexCompileTool, resolveLatexEngine, parseTectonicErrors } from './tools/latex.ts'
 export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLatexEngine, LatexEngineProbe } from './tools/latex.ts'
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
-export type { ArxivEntry } from './tools/arxiv.ts'
+export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
 export { createWebSearchTool, fetchWebSearch } from './tools/web-search.ts'
 export type { WebSearchOptions, WebSearchRunner } from './tools/web-search.ts'
+export { createZoteroClient } from './tools/zotero.ts'
+export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
-export { createFigureSaveTool } from './tools/figure.ts'
+export { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
+export { createMeetingDeckTool } from './tools/meeting.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
 export type { WikiSnapshotSource } from './wiki-snapshot.ts'
 export {
@@ -156,6 +205,24 @@ export interface Config {
     /** Search kill timeout in milliseconds (default 30000). */
     timeoutMs?: number
   }
+  /**
+   * Zotero Web API credentials (read-only integration; both absent disables
+   * it). The key is a secret: it is read from this config only, sent to the
+   * API as a header, and never written to the wiki, a log, or the panel.
+   */
+  zotero?: {
+    /** Web API key from zotero.org/settings/keys; '' counts as unconfigured. */
+    apiKey?: string
+    /** Numeric user id shown on the settings page; '' counts as unconfigured. */
+    userId?: string
+  }
+  /** arXiv subscription new-paper check knobs. */
+  subscriptions?: {
+    /** Master switch of the scheduled check (default true); false disables the timer entirely. */
+    enabled?: boolean
+    /** Check cadence in minutes (default 1440 — once a day, >= 1). */
+    intervalMinutes?: number
+  }
   /** Scheduled wiki backup knobs. */
   backup?: {
     /** Master switch (default true); false disables the timer entirely. */
@@ -169,6 +236,15 @@ export interface Config {
      * (default `'backups'`).
      */
     dir?: string
+  }
+  /** Bundled research-skill registration knobs. */
+  skills?: {
+    /**
+     * Master switch (default true); false skips registering the nine bundled
+     * research skills into the composition's skill registry. Registrations
+     * only happen when a `skills` service is mounted at all.
+     */
+    enabled?: boolean
   }
 }
 
@@ -190,12 +266,23 @@ export const Config: z<Config> = z.object({
     command: z.string().default('auto'),
     timeoutMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(30_000),
   }).default({ command: 'auto', timeoutMs: 30_000 }),
+  zotero: z.object({
+    apiKey: z.string().default(''),
+    userId: z.string().default(''),
+  }).default({ apiKey: '', userId: '' }),
+  subscriptions: z.object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(1440),
+  }).default({ enabled: true, intervalMinutes: 1440 }),
   backup: z.object({
     enabled: z.boolean().default(true),
     intervalMinutes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(60),
     keep: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(24),
     dir: z.string().default('backups'),
   }).default({ enabled: true, intervalMinutes: 60, keep: 24, dir: 'backups' }),
+  skills: z.object({
+    enabled: z.boolean().default(true),
+  }).default({ enabled: true }),
 })
 
 /** Fully defaulted config view used by tools and commands. */
@@ -205,12 +292,18 @@ interface ResolvedConfig {
   readonly latex: { readonly engine: string; readonly timeoutMs: number }
   readonly arxiv: { readonly maxResults: number }
   readonly search: { readonly command: string; readonly timeoutMs: number }
+  readonly zotero: { readonly apiKey: string; readonly userId: string }
+  readonly subscriptions: {
+    readonly enabled: boolean
+    readonly intervalMinutes: number
+  }
   readonly backup: {
     readonly enabled: boolean
     readonly intervalMinutes: number
     readonly keep: number
     readonly dir: string
   }
+  readonly skills: { readonly enabled: boolean }
 }
 
 /** Validate defaults even when a caller invokes apply() without Loader normalization. */
@@ -220,12 +313,18 @@ function resolveConfig(config: Config): ResolvedConfig {
   const latex = { engine: config.latex?.engine ?? 'auto', timeoutMs: config.latex?.timeoutMs ?? 120_000 }
   const arxiv = { maxResults: config.arxiv?.maxResults ?? 10 }
   const search = { command: config.search?.command ?? 'auto', timeoutMs: config.search?.timeoutMs ?? 30_000 }
+  const zotero = { apiKey: config.zotero?.apiKey ?? '', userId: config.zotero?.userId ?? '' }
+  const subscriptions = {
+    enabled: config.subscriptions?.enabled ?? true,
+    intervalMinutes: config.subscriptions?.intervalMinutes ?? 1440,
+  }
   const backup = {
     enabled: config.backup?.enabled ?? true,
     intervalMinutes: config.backup?.intervalMinutes ?? 60,
     keep: config.backup?.keep ?? 24,
     dir: config.backup?.dir ?? 'backups',
   }
+  const skills = { enabled: config.skills?.enabled ?? true }
   if (workspaceDir.trim().length === 0) throw new TypeError('workspaceDir must be a non-empty path')
   if (reviewer.provider.trim().length === 0) throw new TypeError('reviewer.provider must be a non-empty provider name')
   if (!Number.isSafeInteger(reviewer.maxRounds) || reviewer.maxRounds < 1) throw new TypeError('reviewer.maxRounds must be a positive safe integer')
@@ -234,10 +333,11 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(arxiv.maxResults) || arxiv.maxResults < 1) throw new TypeError('arxiv.maxResults must be a positive safe integer')
   if (search.command.trim().length === 0) throw new TypeError('search.command must be a non-empty command name')
   if (!Number.isSafeInteger(search.timeoutMs) || search.timeoutMs < 1) throw new TypeError('search.timeoutMs must be a positive safe integer')
+  if (!Number.isSafeInteger(subscriptions.intervalMinutes) || subscriptions.intervalMinutes < 1) throw new TypeError('subscriptions.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, search, backup }
+  return { workspaceDir, reviewer, latex, arxiv, search, zotero, subscriptions, backup, skills }
 }
 
 /**
@@ -517,12 +617,132 @@ function createFigureUploadHandler(
   }
 }
 
+/** Raw-body cap of the template upload route (a security invariant, not a tunable). */
+const TEMPLATE_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024
+
+/** Extensions a venue-kit upload accepts (plain LaTeX kit files; no archives). */
+const TEMPLATE_UPLOAD_EXTENSIONS = new Set(['.cls', '.sty', '.tex', '.bst', '.bbx', '.cbx', '.clo', '.def', '.cfg', '.md', '.txt', '.pdf'])
+
+/**
+ * Receive one uploaded venue-kit file for a wiki project's paper directory.
+ * The query carries `?project=` (an unknown id is a 404) and `?name=`
+ * (reduced to its basename; an extension outside
+ * {@link TEMPLATE_UPLOAD_EXTENSIONS} is a 400), plus an optional `?dir=`
+ * override resolved like the figure route. The raw body lands at
+ * `template/<name>` under the paper directory (created on demand, same-name
+ * overwrite); a body over {@link TEMPLATE_UPLOAD_LIMIT_BYTES} is a 413, any
+ * method but POST a 405.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createTemplateUploadHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'POST') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const projectId = url.searchParams.get('project')
+    if (projectId === null || projectId.length === 0) {
+      res.writeHead(400).end('expected ?project=<project id>')
+      return
+    }
+    const record = deps.domain.table('projects').get(projectId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const name = basename(url.searchParams.get('name') ?? '')
+    if (name === '' || !TEMPLATE_UPLOAD_EXTENSIONS.has(extname(name).toLowerCase())) {
+      res.writeHead(400).end('name must name a LaTeX kit file (.cls/.sty/.tex/.bst/...)')
+      return
+    }
+    const dir = resolvePaperDir(root, url.searchParams.get('dir') ?? undefined, record.paperDir)
+    if (dir === undefined) {
+      res.writeHead(400).end('dir must be a relative path inside the research workspace')
+      return
+    }
+    const chunks: Buffer[] = []
+    let sizeBytes = 0
+    for await (const chunk of req) {
+      sizeBytes += (chunk as Buffer).length
+      if (sizeBytes > TEMPLATE_UPLOAD_LIMIT_BYTES) {
+        res.writeHead(413).end('template file exceeds the 50MB limit')
+        req.destroy()
+        return
+      }
+      chunks.push(chunk as Buffer)
+    }
+    const templateDir = join(dir, TEMPLATE_DIR_NAME)
+    await mkdir(templateDir, { recursive: true })
+    await writeFile(join(templateDir, name), Buffer.concat(chunks))
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ relPath: `${TEMPLATE_DIR_NAME}/${name}` }))
+  }
+}
+
+/**
+ * Download one generated group-meeting deck. The query carries `?project=`
+ * (an unknown id is a 404) and `?file=` (reduced to its basename and confined
+ * to `meetings/<projectId>/` by {@link meetingDeckPath}, so no traversal is
+ * expressible; a non-.pptx name is a 400). Streams the pptx as an attachment,
+ * so the panel's `<a href>` forces a download.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createMeetingDeckHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const projectId = url.searchParams.get('project')
+    const file = url.searchParams.get('file')
+    if (projectId === null || file === null) {
+      res.writeHead(400).end('expected ?project=<project id>&file=<deck file>')
+      return
+    }
+    if (deps.domain.table('projects').get(projectId) === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const deckPath = meetingDeckPath(root, projectId, file)
+    if (deckPath === undefined) {
+      res.writeHead(400).end('file must name a .pptx deck')
+      return
+    }
+    const stats = await stat(deckPath).catch(() => undefined)
+    if (stats === undefined || !stats.isFile()) {
+      res.writeHead(404).end('meeting deck not found')
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'Content-Length': stats.size,
+      'Content-Disposition': `attachment; filename="${basename(deckPath)}"`,
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') {
+      res.end()
+      return
+    }
+    createReadStream(deckPath).pipe(res)
+  }
+}
+
 
 /**
  * Mount the research suite: open the wiki domain, register the four tools and
  * the five commands, mount the research panel's Remote service and its HTTP
- * routes (compiled-paper PDF, paper PDF, figure, figure upload), and tie the
- * domain's close to the plugin lifecycle.
+ * routes (compiled-paper PDF, paper PDF, figure, figure upload, template
+ * upload, meeting-deck download), and tie the domain's close to the plugin lifecycle.
  * @param ctx - Plugin context.
  * @param config - Validated plugin config.
  * @returns resolution after the domain is open and every surface is registered.
@@ -550,6 +770,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
   ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
+  ctx.tools.register(createFigureOrganizeTool(deps.workspaceDir, domain))
+  ctx.tools.register(createMeetingDeckTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
 
   // Web search is optional: `auto` registers the tool only when the sxng CLI
@@ -575,12 +797,20 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     latex: resolved.latex,
     backup: { ...resolved.backup, dir: backupDir },
     ...(searchConfig === undefined ? {} : { search: searchConfig }),
+    zotero: resolved.zotero,
   }
 
   registerIdeaCommand(ctx, deps)
   registerPlanCommand(ctx, deps)
   registerReviewCommand(ctx, deps)
   registerPaperCommands(ctx, deps)
+
+  // Bundled research skills: runtime contributions to the composition's
+  // skill registry when one is mounted (ctx.inject makes the dependency
+  // optional — bare compositions load the suite without it).
+  if (resolved.skills.enabled) {
+    registerResearchSkills(ctx)
+  }
 
   ctx.plugin(ResearchService, serviceConfig)
   if (resolved.backup.enabled) {
@@ -593,6 +823,20 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         onError: (error) => { console.warn('[mimir] wiki backup failed:', error) },
       }),
       'mimir.wikiBackup',
+    )
+  }
+  // Scheduled arXiv subscription check (same timer pattern as the wiki
+  // backup): first pass two minutes after start, then every intervalMinutes
+  // (default once a day). Per-subscription fetch failures are captured in the
+  // run's outcomes and never reach onError; the panel also surfaces them.
+  if (resolved.subscriptions.enabled) {
+    ctx.effect(
+      () => startArxivSubscriptionLoop({
+        workspaceDir: deps.workspaceDir,
+        intervalMs: resolved.subscriptions.intervalMinutes * 60_000,
+        onError: (error) => { console.warn('[mimir] arXiv subscription check failed:', error) },
+      }),
+      'mimir.arxivSubscriptions',
     )
   }
   ctx.effect(
@@ -626,5 +870,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       handler: createFigureUploadHandler(deps),
     }),
     'mimir.figureUploadRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/template-upload',
+      handler: createTemplateUploadHandler(deps),
+    }),
+    'mimir.templateUploadRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/meeting',
+      handler: createMeetingDeckHandler(deps),
+    }),
+    'mimir.meetingDeckRoute',
   )
 }

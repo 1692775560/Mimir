@@ -1,17 +1,19 @@
 {
   "name": "dsh-client-ui-mimir",
   "description": "Mimir research workbench for the web surface: a sidebar-footer toggle plus a frame-level overlay listing wiki projects, the paper outline, and the latexmk/tectonic compile/PDF preview, backed by the research Host Remote",
-  "version": "0.2.1",
+  "version": "0.13.0",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1692775560/Mimir.git",
+    "url": "git+https://github.com/1692775560/dsh-Mimir-Academic-research.git",
     "directory": "packages/ui-mimir"
   },
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -57,7 +59,7 @@
     "@deepseek-ai/dsh-client-ui-theme": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.8",
     "@deepseek-ai/dsh-typert-protocol": ">=0.1.0-rc.8",
-    "dsh-mimir": ">=0.1.0"
+    "dsh-mimir": ">=0.13.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

@@ -1,14 +1,22 @@
 /**
  * The papers view: an arXiv search bar on top (results import into the wiki
- * with one click), then the literature library as a card grid — title (linked
- * to the arXiv page), authors, added date, a three-line-clamped summary the
- * reader can expand, tag pills and linked-project badges, the agent's working
- * notes, a PDF section (fetch the arXiv PDF into the workspace, then read it
- * in the embedded iframe on the `/research/paper-pdf/<id>` route), and
- * edit/delete actions. The edit action opens an inline editor
- * (tags, project links, notes); a filter bar above the grid narrows the
- * library by one tag and/or the currently selected project; each card can be
- * appended to the selected project's `references.bib` in one click.
+ * with one click, auto-linked to the selected project), then the literature
+ * library as a card grid — title (linked to the arXiv page), authors, added
+ * date, the AI relevance chip of the selected project's verdict, a
+ * three-line-clamped summary the reader can expand, tag pills and
+ * linked-project badges, the agent's working notes, a PDF section (fetch the
+ * arXiv PDF into the workspace, then read it inline or fullscreen on the
+ * `/research/paper-pdf/<id>` route, with a reading-notes side panel appending
+ * timestamped entries into the record's notes), and edit/delete actions. The
+ * edit action opens an inline editor (tags, project links, notes); a filter
+ * bar above the grid narrows the library by one tag and/or the currently
+ * selected project (the project filter defaults ON while a project is
+ * selected, so each project's literature view shows its own papers); each
+ * card can be appended to the selected project's `references.bib` in one
+ * click. Toolbar buttons hand the currently filtered selection to the current
+ * session's agent: "draft the related work section" and "score relevance"
+ * (the agent's `wiki_note set_paper` verdicts land in the cards' relevance
+ * chips, picked up by a quiet poll while a scoring request is in flight).
  * @module dsh-client-ui-mimir/client/PapersView
  */
 
@@ -16,10 +24,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { ArxivEntry, PaperRecord, ResearchProjectView, WebSearchEntry } from 'dsh-mimir/types'
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView, ResearchWebSearchView,
+  ResearchSubscriptionsView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 import { arxivIdFromUrl, collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
+import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
+import { buildPaperScorePrompt } from './paper-score.ts'
+import { buildRelatedWorkPrompt } from './related-work.ts'
 import { EmptyState } from './EmptyState.tsx'
+import { SubscriptionsBar } from './SubscriptionsBar.tsx'
 import { ViewHead } from './ViewHead.tsx'
+import { ZoteroSection } from './ZoteroSection.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Fields the inline editor saves back through `updatePaper`. */
@@ -39,17 +53,21 @@ const ADD_TO_BIB_RESET_MS = 2000
  * One card's PDF section: a fetch button (downloads the arXiv PDF into the
  * workspace through `fetchPaperPdf`, labeled refetch once linked) and, once
  * the record carries a `pdfPath`, a read toggle opening the embedded iframe
- * reader on the `/research/paper-pdf/<id>` route. A successful fetch bumps
- * the cache-bust version and opens the reader.
+ * reader on the `/research/paper-pdf/<id>` route next to the reading-notes
+ * side panel, plus a fullscreen button lifting the same reader into a
+ * viewport-sized overlay (Esc or the header button exits). A successful fetch
+ * bumps the cache-bust version and opens the reader.
  */
-function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
+function PaperPdfSection({ paper, fetchPaperPdf, updatePaper, onError, t }: {
   readonly paper: PaperRecord
   readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly onError: (message: string) => void
   readonly t: ResearchT
 }) {
   const [fetching, setFetching] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
   const [version, setVersion] = useState(() => Date.now())
 
   const fetchPdf = (): void => {
@@ -70,11 +88,14 @@ function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
   return (
     <div className={css.paperPdf}>
       {paper.pdfPath !== undefined && readerOpen && (
-        <iframe
-          className={css.paperPdfFrame}
-          title={`${t('papers.readPdf')}：${paper.title}`}
-          src={paperPdfUrl(paper.arxivId, version)}
-        />
+        <div className={css.paperPdfReader}>
+          <iframe
+            className={css.paperPdfFrame}
+            title={`${t('papers.readPdf')}：${paper.title}`}
+            src={paperPdfUrl(paper.arxivId, version)}
+          />
+          <PaperNotesPanel paper={paper} updatePaper={updatePaper} onError={onError} t={t} />
+        </div>
       )}
       <div className={css.paperPdfActions}>
         <button
@@ -98,8 +119,118 @@ function PaperPdfSection({ paper, fetchPaperPdf, onError, t }: {
             {readerOpen ? t('papers.closePdf') : t('papers.readPdf')}
           </button>
         )}
+        {paper.pdfPath !== undefined && (
+          <button
+            type="button"
+            className={css.btn}
+            onClick={() => { setFullscreen(true) }}
+          >
+            {t('papers.fullscreenPdf')}
+          </button>
+        )}
       </div>
+      {paper.pdfPath !== undefined && fullscreen && (
+        <div
+          className={css.paperPdfOverlay}
+          role="dialog"
+          aria-label={`${t('papers.readPdf')}：${paper.title}`}
+          tabIndex={-1}
+          // Focus the overlay on open so Esc reaches it; Esc closes only the
+          // overlay (stopPropagation keeps the panel's Esc-to-close).
+          ref={(element) => { element?.focus() }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.stopPropagation()
+            event.preventDefault()
+            setFullscreen(false)
+          }}
+        >
+          <div className={css.paperPdfOverlayHead}>
+            <span className={css.paperPdfOverlayTitle} title={paper.title}>{paper.title}</span>
+            <button
+              type="button"
+              className={css.btn}
+              onClick={() => { setFullscreen(false) }}
+            >
+              {t('papers.exitFullscreen')}
+            </button>
+          </div>
+          <div className={css.paperPdfOverlayBody}>
+            <iframe
+              className={css.paperPdfOverlayFrame}
+              title={`${t('papers.readPdf')}：${paper.title}`}
+              src={paperPdfUrl(paper.arxivId, version)}
+            />
+            <PaperNotesPanel paper={paper} updatePaper={updatePaper} onError={onError} t={t} />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * The reading-notes side panel next to the open PDF reader: the record's
+ * timestamped entries (parsed out of `notes`) as a list, then a quick-add
+ * box appending a new `[YYYY-MM-DD HH:mm]` entry through the existing
+ * `updatePaper` verb. The entry list re-derives from the refreshed record
+ * after every save.
+ */
+function PaperNotesPanel({ paper, updatePaper, onError, t }: {
+  readonly paper: PaperRecord
+  readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
+  readonly onError: (message: string) => void
+  readonly t: ResearchT
+}) {
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const entries = parseReadingNotes(paper.notes)
+
+  const addNote = (): void => {
+    if (saving || draft.trim() === '') return
+    setSaving(true)
+    void updatePaper(paper.arxivId, { notes: appendReadingNote(paper.notes, draft, new Date()) })
+      .then((failure) => {
+        if (failure === null) {
+          setDraft('')
+        } else {
+          onError(`${t('papers.addNoteFailed')}：${failure.message}`)
+        }
+      })
+      .finally(() => { setSaving(false) })
+  }
+
+  return (
+    <aside className={css.paperNotesPanel}>
+      <h4 className={css.paperNotesTitle}>{t('papers.readingNotes')}</h4>
+      {entries.length === 0 ? (
+        <p className={css.hint}>{t('papers.readingNotesEmpty')}</p>
+      ) : (
+        <div className={css.paperNoteList}>
+          {entries.map((entry, index) => (
+            <div key={`${entry.at}-${index}`} className={css.paperNoteItem}>
+              <span className={css.paperNoteAt}>{entry.at}</span>
+              <p className={css.paperNoteText}>{entry.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        className={css.input}
+        rows={3}
+        value={draft}
+        placeholder={t('papers.noteInputPlaceholder')}
+        onChange={event => { setDraft(event.target.value) }}
+      />
+      <button
+        type="button"
+        className={css.btnPrimary}
+        disabled={saving || draft.trim() === ''}
+        onClick={addNote}
+      >
+        {saving ? t('papers.addingNote') : t('papers.addNote')}
+      </button>
+    </aside>
   )
 }
 
@@ -157,6 +288,39 @@ function AddToBibButton({ paper, projectId, importPapersToBib, onError, t }: {
     >
       {copy}
     </button>
+  )
+}
+
+/** How long an AI-scoring poll runs before its pending marker gives up. */
+const SCORE_TIMEOUT_MS = 120_000
+/** Poll interval while an AI scoring request is in flight. */
+const SCORE_POLL_MS = 5000
+
+/**
+ * One card's relevance chip: the AI verdict recorded for the selected
+ * project (or, with no selection, the most recent verdict across projects).
+ * Colored by score band; the reason rides the tooltip.
+ */
+function RelevanceChip({ paper, projectId, projects, t }: {
+  readonly paper: PaperRecord
+  readonly projectId: string | null
+  readonly projects: readonly ResearchProjectView[]
+  readonly t: ResearchT
+}) {
+  const verdicts = paper.relevance ?? {}
+  const shown = projectId !== null
+    ? verdicts[projectId]
+    : Object.values(verdicts).sort((left, right) => right.at.localeCompare(left.at))[0]
+  if (shown === undefined) return null
+  const band = shown.score >= 7 ? 'high' : shown.score >= 4 ? 'mid' : 'low'
+  const projectTitle = projects.find(project => verdicts[project.id] === shown)?.title
+  const detail = projectId === null && projectTitle !== undefined
+    ? `${projectTitle} · ${shown.reason}`
+    : shown.reason
+  return (
+    <span className={css.relevanceChip} data-band={band} title={detail}>
+      {t('papers.relevance')} {shown.score.toFixed(shown.score % 1 === 0 ? 0 : 1)}/10
+    </span>
   )
 }
 
@@ -276,18 +440,25 @@ function WebResultCard({ entry, imported, importing, importEntry, t }: {
  * @returns the search bar and results over the filterable library grid.
  */
 export function PapersView({
-  papers, arxivSearch, webSearch, projects, selectedProjectId, ensurePapers, searchArxiv, searchWeb,
-  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf, t,
+  papers, arxivSearch, webSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv, searchWeb,
+  saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
+  importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf,
+  zotero, zoteroSearch, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
+  refreshPapers, requestRelatedWork, requestPaperScore, t,
 }: {
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
   readonly webSearch: ResearchWebSearchView | null
+  readonly arxivSubscriptions: ResearchSubscriptionsView
   readonly projects: readonly ResearchProjectView[]
   readonly selectedProjectId: string | null
   readonly ensurePapers: () => void
+  readonly saveArxivSubscription: (query: string) => Promise<ResearchFailureView | null>
+  readonly deleteArxivSubscription: (id: string) => Promise<ResearchFailureView | null>
+  readonly checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   readonly searchArxiv: (query: string) => void
   readonly searchWeb: (query: string) => void
-  readonly importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
+  readonly importPaper: (entry: ArxivEntry, projectId?: string) => Promise<ResearchFailureView | null>
   readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly removePaper: (arxivId: string) => Promise<ResearchFailureView | null>
   readonly importPapersToBib: (
@@ -295,6 +466,20 @@ export function PapersView({
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
   readonly fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  readonly zotero: ResearchZoteroView
+  readonly zoteroSearch: ResearchZoteroSearchView | null
+  readonly recheckZotero: () => void
+  readonly searchZotero: (query: string) => void
+  readonly importZoteroItem: (key: string, projectId?: string) => Promise<ResearchFailureView | null>
+  readonly exportZoteroCollectionToBib: (
+    projectId: string,
+    collectionKey: string,
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
+  readonly requestRelatedWork: (prompt: string) => Promise<void>
+  /** Re-fetch the literature list without a loading flash (the scoring poll). */
+  readonly refreshPapers: () => void
+  /** Hand one assembled relevance-scoring prompt to the current session's agent. */
+  readonly requestPaperScore: (prompt: string) => Promise<void>
   readonly t: ResearchT
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -303,16 +488,96 @@ export function PapersView({
   const [importing, setImporting] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
-  const [currentOnly, setCurrentOnly] = useState(false)
+  // Tri-state project filter: null follows the default (ON while a project is
+  // selected, so each project sees its own literature); an explicit toggle
+  // sticks until the selection changes.
+  const [currentOnlyOverride, setCurrentOnlyOverride] = useState<boolean | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [draftTags, setDraftTags] = useState<string[]>([])
   const [draftProjectIds, setDraftProjectIds] = useState<string[]>([])
   const [draftNotes, setDraftNotes] = useState('')
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
+  // In-flight AI scoring requests, keyed by arXiv id; the value is the
+  // request's start time for the timeout.
+  const [scoring, setScoring] = useState<Readonly<Record<string, number>>>({})
+  // The relevance timestamp each in-flight scoring started from; a newer one
+  // means the agent's verdict landed.
+  const scoringAnchor = useRef<Record<string, string | undefined>>({})
   const importedIds = new Set(papers.list.map(paper => paper.arxivId))
   const allTags = collectTags(papers.list)
+  const currentOnly = currentOnlyOverride ?? selectedProjectId !== null
   const visible = filterPapers(papers.list, activeTag, currentOnly ? selectedProjectId : null)
+  const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
+
+  // Switching projects reverts the filter to its default (on) and drops
+  // scoring markers of the previous project.
+  const previousProject = useRef<string | null>(selectedProjectId)
+  useEffect(() => {
+    if (previousProject.current === selectedProjectId) return
+    previousProject.current = selectedProjectId
+    setCurrentOnlyOverride(null)
+    setScoring({})
+  }, [selectedProjectId])
+
+  // Poll the literature list while any scoring request is in flight.
+  const scoringCount = Object.keys(scoring).length
+  useEffect(() => {
+    if (scoringCount === 0) return
+    const timer = setInterval(() => { refreshPapers() }, SCORE_POLL_MS)
+    return () => { clearInterval(timer) }
+  }, [scoringCount, refreshPapers])
+
+  // Retire the ids whose verdict landed (a timestamp newer than the anchor)
+  // or whose request timed out.
+  useEffect(() => {
+    setScoring((prev) => {
+      const entries = Object.entries(prev).filter(([id, startedAt]) => {
+        if (Date.now() - startedAt > SCORE_TIMEOUT_MS) return false
+        if (selectedProjectId === null) return false
+        const paper = papers.list.find(record => record.arxivId === id)
+        const at = paper?.relevance?.[selectedProjectId]?.at
+        return at === undefined || at === scoringAnchor.current[id]
+      })
+      return entries.length === Object.keys(prev).length ? prev : Object.fromEntries(entries)
+    })
+  }, [papers.list, selectedProjectId])
+
+  /**
+   * Hand one paper (or the whole filtered selection) to the current session's
+   * agent for relevance scoring; the agent's wiki_note writes land in the
+   * poll's refreshes.
+   */
+  const scoreWithAi = (targets: readonly PaperRecord[]): void => {
+    if (selectedProject === null || targets.length === 0) return
+    setActionError(null)
+    const now = Date.now()
+    for (const paper of targets) {
+      scoringAnchor.current[paper.arxivId] = paper.relevance?.[selectedProject.id]?.at
+    }
+    setScoring((prev) => {
+      const next = { ...prev }
+      for (const paper of targets) next[paper.arxivId] = now
+      return next
+    })
+    void requestPaperScore(buildPaperScorePrompt({
+      papers: targets,
+      projectId: selectedProject.id,
+      projectTitle: selectedProject.title,
+    }))
+  }
+
+  // The related-work button covers exactly the papers on screen (the tag /
+  // current-project filter IS the selection), and lands in toasts.
+  const draftRelatedWork = (): void => {
+    if (selectedProject === null || visible.length === 0) return
+    setActionError(null)
+    void requestRelatedWork(buildRelatedWorkPrompt({
+      papers: visible,
+      projectTitle: selectedProject.title,
+      dir: selectedProject.paperDir,
+    }))
+  }
 
   const submitSearch = (): void => {
     if (query.trim() === '') return
@@ -324,7 +589,7 @@ export function PapersView({
     if (importing !== null) return
     setImporting(entry.id)
     setActionError(null)
-    void importPaper(entry)
+    void importPaper(entry, selectedProjectId ?? undefined)
       .then((failure) => {
         setActionError(failure === null ? null : `${t('papers.importFailed')}：${failure.message}`)
       })
@@ -381,6 +646,15 @@ export function PapersView({
   return (
     <div className={css.papers}>
       <ViewHead title={t('tab.papers')} subtitle={t('view.papers.subtitle')} />
+      <SubscriptionsBar
+        subscriptions={arxivSubscriptions}
+        importedIds={importedIds}
+        importPaper={importPaper}
+        saveArxivSubscription={saveArxivSubscription}
+        deleteArxivSubscription={deleteArxivSubscription}
+        checkArxivSubscriptions={checkArxivSubscriptions}
+        t={t}
+      />
       <form
         className={css.papersSearchBar}
         onSubmit={(event) => {
@@ -420,6 +694,18 @@ export function PapersView({
       {actionError !== null && (
         <p className={css.failure} role="alert">{actionError}</p>
       )}
+      <ZoteroSection
+        zotero={zotero}
+        zoteroSearch={zoteroSearch}
+        importedIds={importedIds}
+        selectedProjectId={selectedProjectId}
+        recheckZotero={recheckZotero}
+        searchZotero={searchZotero}
+        importZoteroItem={importZoteroItem}
+        exportZoteroCollectionToBib={exportZoteroCollectionToBib}
+        onError={setActionError}
+        t={t}
+      />
       {source === 'web' ? (
         <WebSearchPanel
           webSearch={webSearch}
@@ -496,6 +782,26 @@ export function PapersView({
         <EmptyState glyph="📚">{t('papers.empty')}</EmptyState>
       ) : (
         <>
+          <div className={css.papersFilters}>
+            <button
+              type="button"
+              className={css.btnPrimary}
+              disabled={selectedProject === null || visible.length === 0}
+              title={selectedProject === null ? t('bib.noProject') : t('papers.relworkScope')}
+              onClick={draftRelatedWork}
+            >
+              {t('papers.relwork')} × {visible.length}
+            </button>
+            <button
+              type="button"
+              className={css.btn}
+              disabled={selectedProject === null || visible.length === 0 || scoringCount > 0}
+              title={selectedProject === null ? t('papers.scoreNeedProject') : t('papers.scoreWithAiScope')}
+              onClick={() => { scoreWithAi(visible) }}
+            >
+              {t('papers.scoreWithAi')} × {visible.length}
+            </button>
+          </div>
           {(allTags.length > 0 || selectedProjectId !== null) && (
             <div className={css.papersFilters}>
               {allTags.map(tag => (
@@ -517,7 +823,7 @@ export function PapersView({
                   data-kind="project"
                   data-active={currentOnly || undefined}
                   aria-pressed={currentOnly}
-                  onClick={() => { setCurrentOnly(prev => !prev) }}
+                  onClick={() => { setCurrentOnlyOverride(!currentOnly) }}
                 >
                   {t('papers.currentProjectOnly')}
                 </button>
@@ -547,6 +853,8 @@ export function PapersView({
                       {t('papers.addedAt')}
                       {' '}
                       {paper.addedAt.slice(0, 10)}
+                      {' '}
+                      <RelevanceChip paper={paper} projectId={selectedProjectId} projects={projects} t={t} />
                     </p>
                     {(paper.tags.length > 0 || badges.length > 0) && (
                       <p className={css.paperTags}>
@@ -656,6 +964,7 @@ export function PapersView({
                     <PaperPdfSection
                       paper={paper}
                       fetchPaperPdf={fetchPaperPdf}
+                      updatePaper={updatePaper}
                       onError={setActionError}
                       t={t}
                     />
@@ -669,6 +978,15 @@ export function PapersView({
                           {t('papers.edit')}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className={css.btn}
+                        disabled={selectedProject === null || scoring[paper.arxivId] !== undefined}
+                        title={selectedProject === null ? t('papers.scoreNeedProject') : t('papers.scoreWithAiScope')}
+                        onClick={() => { scoreWithAi([paper]) }}
+                      >
+                        {scoring[paper.arxivId] === undefined ? t('papers.scoreWithAi') : t('papers.scoring')}
+                      </button>
                       <AddToBibButton
                         paper={paper}
                         projectId={selectedProjectId}

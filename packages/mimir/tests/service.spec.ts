@@ -9,7 +9,7 @@
  * sockets — no mocks (the arXiv API itself is stubbed at `fetch`).
  */
 
-import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
@@ -21,16 +21,12 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
 import { ResearchService } from '../src/service.ts'
+import type { ResearchServiceConfig } from '../src/service.ts'
 import { ARXIV_PDF_MAX_BYTES, paperPdfFileName, parseArxivFeed } from '../src/tools/arxiv.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
-/** Boot a memory-backed domain and a fresh temp workspace (no service yet). */
-async function harness(): Promise<{
-  ctx: Context
-  domain: Awaited<ReturnType<DomainFacility['open']>>
-  workspaceDir: string
-  service: ResearchService
-}> {
+/** Boot a service over a memory-backed domain and a fresh temp workspace. */
+async function harness(svg?: ResearchServiceConfig['svg']) {
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = new MemoryStorageBackend(new MemoryMediaPool())
@@ -44,6 +40,7 @@ async function harness(): Promise<{
     workspaceDir,
     domain,
     latex: { engine: 'auto', timeoutMs: 1000 },
+    ...(svg === undefined ? {} : { svg }),
   })
   return { ctx, domain, workspaceDir, service }
 }
@@ -115,6 +112,73 @@ describe('ResearchService.deleteFigure', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'figure-not-found', relPath: 'figures/missing.png' } })
     await expect(service.deleteFigure({ projectId: 'missing', relPath: 'figures/plot.png' }))
       .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found', projectId: 'missing' } })
+  })
+})
+
+describe('ResearchService.saveFigure', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="110"><title>mpjpe</title></svg>\n'
+
+  /** A fake rsvg-convert that writes a marker PDF at the -o target. */
+  const FAKE_CONVERTER = {
+    probe: (command: string) => Promise.resolve(command === 'rsvg-convert' ? '/fake/bin/rsvg-convert' : null),
+    run: async (_executable: string, args: readonly string[]) => {
+      await writeFile(String(args[args.indexOf('-o') + 1]), '%PDF-fake')
+      return { ok: true as const, message: '' }
+    },
+  }
+
+  it('writes the SVG, registers the caption, lists the artifact, and converts', async () => {
+    const { domain, workspaceDir, service } = await harness(FAKE_CONVERTER)
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    const outcome = await service.saveFigure({
+      projectId: 'p1', name: 'metric-mpjpe.svg', content: SVG,
+      caption: 'Comparison of mpjpe across experiments.',
+    })
+    expect(outcome).toEqual({
+      ok: true,
+      value: {
+        relPath: 'figures/metric-mpjpe.svg',
+        caption: 'Comparison of mpjpe across experiments.',
+        converted: { relPath: 'figures/metric-mpjpe.pdf', converter: 'rsvg-convert' },
+      },
+    })
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'metric-mpjpe.svg'), 'utf8')).toBe(SVG)
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'metric-mpjpe.pdf'), 'utf8')).toBe('%PDF-fake')
+    expect(domain.table('figures').get('p1:figures/metric-mpjpe.svg'))
+      .toMatchObject({ caption: 'Comparison of mpjpe across experiments.' })
+    expect(domain.table('projects').get('p1')?.artifacts).toContain('paper/figures/metric-mpjpe.svg')
+    // The figures view's scan merges the registered caption.
+    const listed = await service.listFigures({ projectId: 'p1' })
+    expect(listed.ok && listed.value.figures.some(
+      entry => entry.relPath === 'figures/metric-mpjpe.svg' && entry.caption === 'Comparison of mpjpe across experiments.',
+    )).toBe(true)
+  })
+
+  it('still saves and registers with a warning when no converter is available', async () => {
+    const { domain, workspaceDir, service } = await harness({ probe: () => Promise.resolve(null) })
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    const outcome = await service.saveFigure({ projectId: 'p1', name: 'm.svg', content: SVG, caption: 'c' })
+    expect(outcome).toMatchObject({ ok: true, value: { relPath: 'figures/m.svg', caption: 'c' } })
+    expect(outcome.ok && outcome.value.warning).toContain('No SVG converter found')
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'm.svg'), 'utf8')).toBe(SVG)
+    expect(domain.table('figures').get('p1:figures/m.svg')).toMatchObject({ caption: 'c' })
+  })
+
+  it('rejects non-SVG names, traversal, and empty content without writing', async () => {
+    const { domain, workspaceDir, service } = await harness(FAKE_CONVERTER)
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    await expect(service.saveFigure({ projectId: 'p1', name: 'plot.png', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+    await expect(service.saveFigure({ projectId: 'p1', name: '../escape.svg', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+    await expect(service.saveFigure({ projectId: 'p1', name: 'm.svg', content: '  \n' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-content' } })
+    await expect(service.saveFigure({ projectId: 'missing', name: 'm.svg', content: SVG }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    expect([...domain.table('figures').entries()]).toEqual([])
   })
 })
 
@@ -199,7 +263,7 @@ describe('ResearchService server CRUD', () => {
 })
 
 describe('ResearchService.checkServer', () => {
-  it('settles an unreachable address as offline with the socket message', async () => {
+  it('settles an unreachable address as offline with the socket message, stopped at the tcp stage', async () => {
     const { service } = await harness()
     const created = await service.saveServer({
       server: { ...SERVER_INPUT, host: '127.0.0.1', port: 19999 },
@@ -211,6 +275,9 @@ describe('ResearchService.checkServer', () => {
     expect(checked.value.latencyMs).toBeNull()
     expect(checked.value.gpus).toEqual([])
     expect(checked.value.message).toBeTruthy()
+    expect(checked.value.stage).toBe('tcp')
+    expect(checked.value.tcpLatencyMs).toBeUndefined()
+    expect(checked.value.gpuLatencyMs).toBeUndefined()
     expect(Date.parse(checked.value.checkedAt)).not.toBeNaN()
   })
 
@@ -236,19 +303,23 @@ describe('ResearchService.checkServer', () => {
       expect(checked.value.latencyMs).toBeGreaterThanOrEqual(0)
       expect(checked.value.gpus).toEqual([])
       expect(checked.value.message).toBeNull()
+      expect(checked.value.stage).toBe('tcp')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeUndefined()
     } finally {
       await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
     }
   })
 
-  it('keeps a reachable server online when the ssh GPU readout fails', async () => {
+  it('keeps a reachable server online when the ssh session itself fails, stopped at the ssh stage', async () => {
     const listener = createServer((socket) => { socket.destroy() })
     await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
     try {
       const port = (listener.address() as AddressInfo).port
       const { service } = await harness()
       // A username is set, so the probe attempts ssh against a socket that is
-      // not an sshd: the readout fails but the server stays online.
+      // not an sshd: the readout fails (ssh exits 255, a session failure) but
+      // the server stays online.
       const created = await service.saveServer({
         server: { ...SERVER_INPUT, host: '127.0.0.1', port },
       })
@@ -258,11 +329,88 @@ describe('ResearchService.checkServer', () => {
       expect(checked.value.state).toBe('online')
       expect(checked.value.gpus).toEqual([])
       expect(checked.value.message).toContain('gpu probe failed')
+      expect(checked.value.stage).toBe('ssh')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
     } finally {
       await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
     }
   }, 20_000)
+
+  it('lands a remote nvidia-smi failure on the gpu stage (non-255 exit)', async () => {
+    const listener = createServer()
+    await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
+    try {
+      const port = (listener.address() as AddressInfo).port
+      await stubFakeSshForGpuProbe()
+      const { service } = await harness()
+      // The fake ssh exits 3 (a remote command failure, not a session
+      // failure) when the login user names the gpu-fail marker.
+      const created = await service.saveServer({
+        server: { ...SERVER_INPUT, host: '127.0.0.1', port, username: 'gpu-fail' },
+      })
+      if (!created.ok) throw new Error('create failed')
+      const checked = await service.checkServer({ id: created.value.server.id })
+      if (!checked.ok) throw new Error('check rejected')
+      expect(checked.value.state).toBe('online')
+      expect(checked.value.gpus).toEqual([])
+      expect(checked.value.message).toContain('gpu probe failed')
+      expect(checked.value.stage).toBe('gpu')
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
+    } finally {
+      await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
+    }
+  })
+
+  it('reaches the gpu stage with the parsed table when the readout succeeds', async () => {
+    const listener = createServer()
+    await new Promise<void>((resolveListen) => { listener.listen(0, '127.0.0.1', resolveListen) })
+    try {
+      const port = (listener.address() as AddressInfo).port
+      await stubFakeSshForGpuProbe()
+      const { service } = await harness()
+      const created = await service.saveServer({
+        server: { ...SERVER_INPUT, host: '127.0.0.1', port },
+      })
+      if (!created.ok) throw new Error('create failed')
+      const checked = await service.checkServer({ id: created.value.server.id })
+      if (!checked.ok) throw new Error('check rejected')
+      expect(checked.value.state).toBe('online')
+      expect(checked.value.message).toBeNull()
+      expect(checked.value.stage).toBe('gpu')
+      expect(checked.value.gpus).toEqual([
+        { name: 'Fake GPU 0', utilizationPct: 37, memoryUsedMb: 2048, memoryTotalMb: 24576 },
+      ])
+      expect(checked.value.tcpLatencyMs).toBeGreaterThanOrEqual(0)
+      expect(checked.value.gpuLatencyMs).toBeGreaterThanOrEqual(0)
+    } finally {
+      await new Promise<void>((resolveClose) => { listener.close(() => { resolveClose() }) })
+    }
+  })
 })
+
+/**
+ * Shim a fake `ssh` onto PATH for the GPU-stage checkServer tests: it prints
+ * one `nvidia-smi` CSV row, or exits 3 (a remote command failure, distinct
+ * from the ssh session's own 255) when the login user names `gpu-fail`.
+ * PATH restores via `vi.unstubAllEnvs`.
+ */
+async function stubFakeSshForGpuProbe(): Promise<void> {
+  const binDir = await mkdtemp(join(tmpdir(), 'mimir-fake-ssh-gpu-'))
+  const script = [
+    '#!/bin/bash',
+    'for arg in "$@"; do',
+    '  case "$arg" in *gpu-fail@*) echo "nvidia-smi exploded" >&2; exit 3 ;; esac',
+    'done',
+    'echo "Fake GPU 0, 37, 2048, 24576"',
+    'exit 0',
+    '',
+  ].join('\n')
+  await writeFile(join(binDir, 'ssh'), script)
+  await chmod(join(binDir, 'ssh'), 0o755)
+  vi.stubEnv('PATH', `${binDir}:${process.env.PATH ?? ''}`)
+}
 
 const ARXIV_FEED = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -286,7 +434,7 @@ const ARXIV_ENTRY = {
   url: 'https://arxiv.org/abs/2103.00020v2',
 }
 
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 describe('parseArxivFeed', () => {
   it('parses entries, unescapes entities, and derives abs urls', () => {
@@ -572,6 +720,41 @@ describe('ResearchService.deleteExperiment', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'experiment-not-found', id: 'missing' } })
     const listed = await service.listExperiments({})
     expect(listed).toMatchObject({ ok: true, value: { experiments: [{ id: 'e1' }] } })
+  })
+})
+
+describe('ResearchService.listProjects', () => {
+  it('omits paperDir from a project view when the record never set one', async () => {
+    const { domain, service } = await harness()
+    // A project created by research-idea has no paperDir yet. The view must
+    // OMIT the key: an explicit `undefined` trips the gateway's JSON
+    // boundary validation and fails the whole list call (observed as
+    // "项目列表加载失败" in the panel).
+    await domain.table('projects').put('p-no-dir', {
+      id: 'p-no-dir',
+      title: 'Idea-stage project',
+      stage: 'idea',
+      artifacts: ['IDEA_REPORT.md'],
+      reviewRounds: 0,
+      updatedAt: '2026-08-24T00:00:00.000Z',
+    })
+    await domain.table('projects').put('p-with-dir', {
+      id: 'p-with-dir',
+      title: 'Writing-stage project',
+      stage: 'writing',
+      paperDir: 'paper',
+      artifacts: ['paper/main.tex'],
+      reviewRounds: 1,
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    })
+    const listed = await service.listProjects()
+    if (!listed.ok) throw new Error('list failed')
+    expect(listed.value.projects.length).toBe(2)
+    const idea = listed.value.projects.find(project => project.id === 'p-no-dir')
+    expect(idea).toBeDefined()
+    expect('paperDir' in idea!).toBe(false)
+    const writing = listed.value.projects.find(project => project.id === 'p-with-dir')
+    expect(writing?.paperDir).toBe('paper')
   })
 })
 
@@ -1125,5 +1308,206 @@ describe('ResearchService.saveExperiment', () => {
     })
     if (!updated.ok) throw new Error('unreachable')
     expect(updated.value.experiment.serverId).toBe(serverId)
+  })
+})
+
+describe('ResearchService arXiv subscriptions (facade)', () => {
+  it('saves, checks (baseline seeding over a stubbed feed), lists, and deletes', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', async (url: string) => {
+      requestedUrl = url
+      return new Response(ARXIV_FEED, { status: 200 })
+    })
+    const { service } = await harness()
+    await expect(service.saveArxivSubscription({ query: '  ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    const saved = await service.saveArxivSubscription({ query: 'egocentric whole body' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // The first check only seeds the baseline: seen, but nothing new.
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks).toHaveLength(1)
+    expect(checked.value.checks[0]).toMatchObject({ added: [], error: null })
+    expect(checked.value.checks[0]?.subscription.lastCheckedAt).not.toBeNull()
+    expect(requestedUrl).toContain('sortBy=submittedDate&sortOrder=descending')
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions).toMatchObject([{ id, query: 'egocentric whole body', newEntries: [] }])
+    await expect(service.checkArxivSubscriptions({ id: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'subscription-not-found' } })
+    await expect(service.deleteArxivSubscription({ id })).resolves.toEqual({ ok: true, value: { id } })
+    const empty = await service.listArxivSubscriptions()
+    expect(empty.ok && empty.value.subscriptions.length).toBe(0)
+  })
+
+  it('surfaces a newly published entry with its details on the second check', async () => {
+    const { service } = await harness()
+    const saved = await service.saveArxivSubscription({ query: 'mesh' })
+    if (!saved.ok) throw new Error('unreachable')
+    const id = saved.value.subscription.id
+    // First check seeds the baseline (empty feed), the second surfaces one.
+    vi.stubGlobal('fetch', async () => new Response(
+      '<feed xmlns="http://www.w3.org/2005/Atom"></feed>', { status: 200 },
+    ))
+    await service.checkArxivSubscriptions({ id })
+    vi.stubGlobal('fetch', async () => new Response(ARXIV_FEED, { status: 200 }))
+    const checked = await service.checkArxivSubscriptions({ id })
+    if (!checked.ok) throw new Error('unreachable')
+    expect(checked.value.checks[0]?.added).toEqual([ARXIV_ENTRY])
+    const listed = await service.listArxivSubscriptions()
+    if (!listed.ok) throw new Error('unreachable')
+    expect(listed.value.subscriptions[0]?.newEntries).toEqual([ARXIV_ENTRY])
+  })
+})
+
+
+describe('ResearchService.importPaper project link', () => {
+  it('links a new import to the given project and keeps the link on re-import', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const first = await service.importPaper({ entry: ARXIV_ENTRY, projectId: 'p1' })
+    expect(first).toEqual({ ok: true, value: { imported: true } })
+    expect(domain.table('papers').get(ARXIV_ENTRY.id)?.projectIds).toEqual(['p1'])
+    // A re-import without the project keeps the existing link and relevance.
+    await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 8, reason: 'central' },
+    })
+    const again = await service.importPaper({ entry: ARXIV_ENTRY })
+    expect(again).toEqual({ ok: true, value: { imported: false } })
+    const stored = domain.table('papers').get(ARXIV_ENTRY.id)
+    expect(stored?.projectIds).toEqual(['p1'])
+    expect(stored?.relevance?.['p1']?.score).toBe(8)
+  })
+
+  it('rejects an unknown project id', async () => {
+    const { service } = await harness()
+    await expect(service.importPaper({ entry: ARXIV_ENTRY, projectId: 'nope' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+  })
+})
+
+describe('ResearchService.updatePaper relevance', () => {
+  it('scores a paper against one project without touching other verdicts', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('projects').put('p2', { ...PROJECT, id: 'p2' })
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    const scored = await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 8.5, reason: 'central to the direction' },
+    })
+    if (!scored.ok) throw new Error('unreachable')
+    expect(scored.value.paper.relevance?.['p1']?.score).toBe(8.5)
+    const rescored = await service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p2', score: 2, reason: 'peripheral there' },
+    })
+    if (!rescored.ok) throw new Error('unreachable')
+    expect(rescored.value.paper.relevance?.['p1']?.score).toBe(8.5)
+    expect(rescored.value.paper.relevance?.['p2']?.score).toBe(2)
+  })
+
+  it('rejects an out-of-range score and an unknown project', async () => {
+    const { service } = await harness()
+    await service.importPaper({ entry: ARXIV_ENTRY })
+    await expect(service.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 11, reason: 'too high' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    const { domain, service: service2 } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await service2.importPaper({ entry: ARXIV_ENTRY })
+    await expect(service2.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: 11, reason: 'too high' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service2.updatePaper({
+      arxivId: ARXIV_ENTRY.id,
+      relevance: { projectId: 'p1', score: Number.NaN, reason: 'not a number' },
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+})
+
+describe('ResearchService.renameFigure', () => {
+  /** Scaffold a paper dir whose main.tex references the seeded figure. */
+  async function scaffoldWithReference(workspaceDir: string): Promise<void> {
+    await scaffoldPaper(workspaceDir)
+    await mkdir(join(workspaceDir, 'paper', 'sections'), { recursive: true })
+    await writeFile(
+      join(workspaceDir, 'paper', 'main.tex'),
+      '\\documentclass{article}\n\\begin{document}\n\\includegraphics[width=\\linewidth]{figures/plot.png}\n\\end{document}\n',
+    )
+    await writeFile(
+      join(workspaceDir, 'paper', 'sections', 'results.tex'),
+      '\\includegraphics{figures/plot}\n',
+    )
+  }
+
+  it('renames the file, moves the metadata row, and rewrites .tex references', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, { ...PROJECT, artifacts: ['paper/figures/plot.png'] })
+    await scaffoldWithReference(workspaceDir)
+    await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'Training loss' })
+    const outcome = await service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'loss-curve.png' })
+    expect(outcome).toEqual({ ok: true, value: { relPath: 'figures/loss-curve.png', references: 2 } })
+    // The file moved, the caption followed, and the references point at the new name.
+    await stat(join(workspaceDir, 'paper', 'figures', 'loss-curve.png'))
+    expect(domain.table('figures').get('p1:figures/plot.png')).toBeUndefined()
+    expect(domain.table('figures').get('p1:figures/loss-curve.png')?.caption).toBe('Training loss')
+    await expect(readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8'))
+      .resolves.toContain('figures/loss-curve.png')
+    await expect(readFile(join(workspaceDir, 'paper', 'sections', 'results.tex'), 'utf8'))
+      .resolves.toContain('{figures/loss-curve}')
+    expect(domain.table('projects').get('p1')?.artifacts).toEqual(['paper/figures/loss-curve.png'])
+  })
+
+  it('rejects an extension change, an existing target, and a missing source', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldWithReference(workspaceDir)
+    await writeFile(join(workspaceDir, 'paper', 'figures', 'taken.png'), Buffer.from([1]))
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'plot.svg' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'taken.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/gone.png', newName: 'x.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'figure-not-found' } })
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'sub/plot.png' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-name' } })
+  })
+
+  it('treats a same-name rename as a no-op', async () => {
+    const { domain, service, workspaceDir } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await scaffoldPaper(workspaceDir)
+    await expect(service.renameFigure({ projectId: 'p1', relPath: 'figures/plot.png', newName: 'plot.png' }))
+      .resolves.toEqual({ ok: true, value: { relPath: 'figures/plot.png', references: 0 } })
+  })
+})
+
+describe('ResearchService.updateFigure', () => {
+  it('upserts the caption and preserves the experiment link', async () => {
+    const { domain, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const created = await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'first' })
+    expect(created).toEqual({ ok: true, value: { relPath: 'figures/plot.png', caption: 'first' } })
+    // Seed an experiment link, then confirm a caption update preserves it.
+    await domain.table('figures').update('p1:figures/plot.png', current => ({ ...current, experimentId: 'exp-1' }))
+    const updated = await service.updateFigure({ projectId: 'p1', relPath: 'figures/plot.png', caption: 'second' })
+    expect(updated).toEqual({ ok: true, value: { relPath: 'figures/plot.png', caption: 'second' } })
+    expect(domain.table('figures').get('p1:figures/plot.png')?.experimentId).toBe('exp-1')
+  })
+
+  it('rejects an unknown project and a non-figure path', async () => {
+    const { domain, service } = await harness()
+    await expect(service.updateFigure({ projectId: 'nope', relPath: 'figures/x.png', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await expect(service.updateFigure({ projectId: 'p1', relPath: '../x.png', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-path' } })
+    await expect(service.updateFigure({ projectId: 'p1', relPath: 'figures/x.txt', caption: '' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-path' } })
   })
 })

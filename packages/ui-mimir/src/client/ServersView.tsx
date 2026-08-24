@@ -12,7 +12,7 @@ import type { ExperimentRecord, ServerInput, ServerRecord } from 'dsh-mimir/type
 import type {
   ResearchFailureView, ResearchJobsView, ResearchProjectSlice, ResearchServersView, ServerCheckState,
 } from './controller.ts'
-import { collectServerTags, failureCopy, filterServers, relativeTime, type ResearchT } from './view-common.ts'
+import { collectServerTags, failureCopy, filterServers, PROBE_FAILURE_KEYS, PROBE_STAGE_KEYS, probeStageOf, relativeTime, type ResearchT } from './view-common.ts'
 import { EmptyState } from './EmptyState.tsx'
 import { ViewHead } from './ViewHead.tsx'
 import { JobsSection } from './JobsSection.tsx'
@@ -51,6 +51,28 @@ function dotStateOf(check: ServerCheckState | undefined): string {
 }
 
 /**
+ * The in-flight probe's staged progress line. The host reports the stage only
+ * once the probe settles, so while it runs the label is inferred from the
+ * elapsed time and the probe's per-stage budgets (TCP 4s → SSH 5s → GPU
+ * readout), with a worst-case ETA hint. The interval only ticks while this
+ * line is mounted (i.e. while the card's probe is in flight).
+ */
+function ProbeProgressLine({ t }: { readonly t: ResearchT }) {
+  const [elapsedMs, setElapsedMs] = useState(0)
+  useEffect(() => {
+    const startedAt = Date.now()
+    const timer = setInterval(() => { setElapsedMs(Date.now() - startedAt) }, 250)
+    return () => { clearInterval(timer) }
+  }, [])
+  return (
+    <>
+      <span className={css.serverProbeStage} role="status">{t(PROBE_STAGE_KEYS[probeStageOf(elapsedMs)])}</span>
+      <span className={css.serverProbeEta}>{t('servers.probe.eta')}</span>
+    </>
+  )
+}
+
+/**
  * @param props - the servers slice, the per-server probe states, the
  * ensure/save/delete/check verbs, the jobs slice with its verbs (the remote
  * jobs section), the selected project's experiments slice (the job form's
@@ -85,6 +107,8 @@ export function ServersView({
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [tagInput, setTagInput] = useState('')
+  /** The card whose probe-failure line is expanded; null collapses them all. */
+  const [openMessageId, setOpenMessageId] = useState<string | null>(null)
 
   // The view mounts only while its tab is active: load the list once, then
   // probe every listed server exactly once (a settled or in-flight probe
@@ -343,7 +367,7 @@ export function ServersView({
                 )}
                 <p className={css.serverProbe}>
                   {settled === null
-                    ? checking ? t('servers.state.checking') : t('servers.neverChecked')
+                    ? checking ? <ProbeProgressLine t={t} /> : t('servers.neverChecked')
                     : (
                       <>
                         {settled.latencyMs !== null && <span>{settled.latencyMs} ms · </span>}
@@ -352,7 +376,24 @@ export function ServersView({
                     )}
                 </p>
                 {settled !== null && settled.message !== null && (
-                  <p className={css.serverMessage} role="status">{settled.message}</p>
+                  /* The probe failure renders as a quiet one-line error row:
+                     truncated by default, the title tooltip shows it on hover
+                     and the click toggles the full text (aria-expanded). */
+                  <button
+                    type="button"
+                    className={css.serverMessage}
+                    data-open={openMessageId === record.id || undefined}
+                    aria-expanded={openMessageId === record.id}
+                    title={settled.message}
+                    onClick={() => { setOpenMessageId(prev => (prev === record.id ? null : record.id)) }}
+                  >
+                    <span className={css.serverMessageText}>
+                      {settled.stage !== undefined && (
+                        <span className={css.serverProbeFailStage}>{t(PROBE_FAILURE_KEYS[settled.stage])}：</span>
+                      )}
+                      {settled.message}
+                    </span>
+                  </button>
                 )}
                 {settled !== null && settled.state === 'online' && (
                   settled.gpus.length === 0 ? (

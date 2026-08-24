@@ -8,7 +8,7 @@
  * @module dsh-client-ui-mimir/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the Client assembly's ctx.remote merge. NOTE: the published
 // @deepseek-ai/dsh-api-remotes does not mount the research namespace; the
 // augmentation below supplies its types (see README "Known limitations").
@@ -26,13 +26,14 @@ import { ResearchToggle } from './ResearchToggle.tsx'
 import type { ResearchPanelInjected } from './slots.ts'
 import { nextColorScheme, nextLocale, type WorkbenchChrome } from './shortcuts.ts'
 import { createResearchPanelStore } from './store.ts'
-import { en, zh } from './locales.ts'
+import { en, zh, type ResearchKey } from './locales.ts'
 
 export type {
   ResearchArtifactView, ResearchBibView, ResearchCompileView, ResearchFailureView,
   ResearchImportCounts, ResearchJobsView, ResearchLoadStatus,
   ResearchOutlineView, ResearchPapersView, ResearchProjectSlice, ResearchRemote,
-  ResearchSaveState, ResearchSourceView, ResearchView,
+  ResearchSaveState, ResearchSnapshotDetailView, ResearchSourceView, ResearchSubscriptionsView,
+  ResearchView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 export type {
   ResearchPanelInjected, ResearchPanelProps, ResearchPanelStore, ResearchToggleProps,
@@ -45,8 +46,8 @@ export type { ResearchKey } from './locales.ts'
 /** Dictionary namespace owned by this plugin. */
 const NS = 'research'
 
-/** Required services: the slot registry, the Remote namespace, the copy, and the theme preference. */
-export const inject = ['slots', 'remote', 'remote.research', 'locale', 'theme']
+/** Required services: the slot registry, the Remote namespace, the sessions domain, the copy, and the theme preference. */
+export const inject = ['slots', 'remote', 'remote.research', 'sessions', 'locale', 'theme']
 
 /**
  * Upload one figure file through the host's upload route. The route answers
@@ -67,12 +68,37 @@ async function uploadOneFigure(projectId: string, dir: string | undefined, file:
 }
 
 /**
+ * Upload one venue-kit file through the host's template upload route. The
+ * route answers JSON on success; anything else throws with the response's
+ * own text.
+ * @param projectId - wiki project id.
+ * @param dir - the project's paper directory override, when any.
+ * @param file - the picked file.
+ * @returns resolution after the file is stored.
+ */
+async function uploadOneTemplateFile(projectId: string, dir: string | undefined, file: File): Promise<void> {
+  const query = `?project=${encodeURIComponent(projectId)}&name=${encodeURIComponent(file.name)}`
+    + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
+  const response = await fetch(`/research/template-upload${query}`, { method: 'POST', body: file })
+  if (!response.ok) {
+    const detail = (await response.text()).trim()
+    throw new Error(detail === '' ? `upload failed (${String(response.status)})` : detail)
+  }
+}
+
+/**
  * Client plugin body: the research toggle, the panel overlay, and the shared
  * object layer.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-mimir: dictionaries')
+
+  // The browser `ctx.sessions` is the client runtime's ISessions, but the
+  // host-side dsh-session package (pulled in by dsh-mimir's types) merges the
+  // same Context key with its own SessionStore, and in this mixed program
+  // that declaration wins — narrow explicitly.
+  const sessions = ctx.sessions as unknown as ISessions
 
   const panel = createResearchPanelStore()
   const controller = new ResearchController(ctx.remote.research)
@@ -118,6 +144,30 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
   }, ResearchToggle))
 
+  // Queue one assembled prompt as one user message in the current session.
+  // Shared by the "fix with AI", "draft related work", "score relevance", and
+  // "organize figure" buttons; the agent's edits land on disk or in the wiki
+  // and the panel's reload/poll flow takes it from there.
+  const sendPromptToCurrentSession = async (
+    prompt: string,
+    sentCopy: ResearchKey,
+    failedCopy: ResearchKey,
+  ): Promise<void> => {
+    const current = sessions.list.getSnapshot().current
+    const binding = current === undefined ? undefined : sessions.binding(current)
+    if (binding === undefined) {
+      controller.notify('error', 'toast.fixNoSession')
+      return
+    }
+    try {
+      const result = await binding.session.prompt([{ type: 'text', text: prompt }], 'queue')
+      if (result.ok) controller.notify('success', sentCopy)
+      else controller.notify('error', failedCopy, result.error.message)
+    } catch (error) {
+      controller.notify('error', failedCopy, error instanceof Error ? error.message : String(error))
+    }
+  }
+
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'research',
@@ -136,17 +186,49 @@ export function apply(ctx: ClientContext): void {
         controller.select(projectId)
       },
       compile: (projectId) => { void controller.compile(projectId) },
+      // The per-issue "fix with AI" button.
+      requestCompileFix: prompt => sendPromptToCurrentSession(prompt, 'toast.fixSent', 'toast.fixSendFailed'),
+      // The papers view's "draft related work" button: same session channel.
+      requestRelatedWork: prompt => sendPromptToCurrentSession(prompt, 'toast.relworkSent', 'toast.relworkSendFailed'),
+      // The papers view's "score relevance with AI" buttons: same channel.
+      requestPaperScore: prompt => sendPromptToCurrentSession(prompt, 'toast.scoreSent', 'toast.scoreSendFailed'),
+      // The figures view's "organize with AI" button: same channel.
+      requestFigureOrganize: prompt => sendPromptToCurrentSession(prompt, 'toast.figureOrganizeSent', 'toast.figureOrganizeSendFailed'),
+      // The paper view's venue picker and "format to venue" button.
+      ensureVenueTemplates: () => { controller.ensureVenueTemplates() },
+      applyVenueTemplate: (projectId, options) => controller.applyVenueTemplate(projectId, options),
+      clearVenueTemplate: projectId => controller.clearVenueTemplate(projectId),
+      uploadTemplateFiles: async (projectId, dir, files) => {
+        let done = 0
+        for (const file of files) {
+          await uploadOneTemplateFile(projectId, dir, file)
+          done += 1
+        }
+        if (done > 0) controller.notify('success', 'toast.templateUploaded', `× ${done}`)
+      },
+      requestVenueFormat: prompt => sendPromptToCurrentSession(prompt, 'toast.venueFormatSent', 'toast.venueFormatSendFailed'),
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },
+      refreshPapers: () => { controller.refreshPapers() },
+      ensureSubscriptions: () => { controller.ensureSubscriptions() },
+      saveArxivSubscription: query => controller.saveArxivSubscription(query),
+      deleteArxivSubscription: id => controller.deleteArxivSubscription(id),
+      checkArxivSubscriptions: () => controller.checkArxivSubscriptions(),
       searchArxiv: (query) => { controller.searchArxiv(query) },
       searchWeb: (query) => { controller.searchWeb(query) },
-      importPaper: (entry) => controller.importPaper(entry),
+      importPaper: (entry, projectId) => controller.importPaper(entry, projectId),
       removePaper: (arxivId) => controller.removePaper(arxivId),
       updatePaper: (arxivId, patch) => controller.updatePaper(arxivId, patch),
       fetchPaperPdf: (arxivId) => controller.fetchPaperPdf(arxivId),
+      ensureZotero: () => { controller.ensureZotero() },
+      recheckZotero: () => { controller.recheckZotero() },
+      searchZotero: (query) => { controller.searchZotero(query) },
+      importZoteroItem: (key, projectId) => controller.importZoteroItem(key, projectId),
+      exportZoteroCollectionToBib: (projectId, collectionKey) =>
+        controller.exportZoteroCollectionToBib(projectId, collectionKey),
       loadArtifact: (projectId, name) => { controller.loadArtifact(projectId, name) },
-      loadFigures: (projectId, force) => { controller.loadFigures(projectId, force) },
+      loadFigures: (projectId, force, quiet) => { controller.loadFigures(projectId, force, quiet) },
       uploadFigures: async (projectId, dir, files, onProgress) => {
         let done = 0
         for (const file of files) {
@@ -158,9 +240,19 @@ export function apply(ctx: ClientContext): void {
         if (done > 0) controller.notify('success', 'toast.figuresUploaded', `× ${done}`)
       },
       deleteFigure: (projectId, relPath) => controller.deleteFigure(projectId, relPath),
+      loadMeetings: (projectId, force) => { controller.loadMeetings(projectId, force) },
+      generateMeetingDeck: (projectId, request) => controller.generateMeetingDeck(projectId, request),
+      deleteMeetingDeck: (projectId, file) => controller.deleteMeetingDeck(projectId, file),
+      renameFigure: (projectId, relPath, newName) => controller.renameFigure(projectId, relPath, newName),
+      updateFigure: (projectId, relPath, caption) => controller.updateFigure(projectId, relPath, caption),
       // A successful insert (or the duplicate's jump) lands in the paper view.
       insertFigure: async (projectId, entry) => {
         const line = await controller.insertFigureIntoPaper(projectId, entry)
+        if (line !== null) actions.setTab('paper')
+      },
+      // The metric chart's paper-figure button rides the same insert path.
+      generateMetricFigure: async (projectId, metricKey, rows) => {
+        const line = await controller.generateMetricFigure(projectId, metricKey, rows)
         if (line !== null) actions.setTab('paper')
       },
       consumePaperJump: () => { controller.consumePaperJump() },
@@ -181,6 +273,10 @@ export function apply(ctx: ClientContext): void {
       deleteBibEntry: key => controller.deleteBibEntry(key),
       updateBibEntry: (originalKey, entry) => controller.updateBibEntry(originalKey, entry),
       importPapersToBib: (projectId, arxivIds) => controller.importPapersToBib(projectId, arxivIds),
+      loadSnapshots: (projectId, force) => { controller.loadSnapshots(projectId, force) },
+      loadSnapshotDetail: (projectId, id) => { controller.loadSnapshotDetail(projectId, id) },
+      closeSnapshotDetail: () => { controller.closeSnapshotDetail() },
+      revertSnapshot: (projectId, id) => controller.revertSnapshot(projectId, id),
       reorderPaperSections: (projectId, moves, baseOutline) =>
         controller.reorderPaperSections(projectId, moves, baseOutline),
       reorderPaperSubsections: (projectId, moves, baseOutline) =>

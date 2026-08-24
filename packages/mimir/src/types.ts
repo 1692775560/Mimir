@@ -17,6 +17,16 @@ import type { BibEntry } from './bibtex.ts'
 /** One independent-review verdict. */
 export type Verdict = 'PASS' | 'WARN' | 'FAIL'
 
+/** One project's AI relevance verdict on one remembered paper. */
+export interface PaperRelevance {
+  /** 0–10 relevance score (10 = central to the project's direction). */
+  readonly score: number
+  /** One-paragraph justification of the score. */
+  readonly reason: string
+  /** ISO-8601 timestamp of the scoring. */
+  readonly at: string
+}
+
 /** One arXiv paper remembered by the research wiki. */
 export interface PaperRecord {
   /** Bare arXiv id (version suffix allowed, e.g. `2103.00020v2`). */
@@ -36,6 +46,11 @@ export interface PaperRecord {
    * workbench fetches the PDF (records predating the field read as absent).
    */
   readonly pdfPath?: string | undefined
+  /**
+   * AI relevance verdicts keyed by project id; absent until a scoring pass
+   * writes one (records predating the field read as absent).
+   */
+  readonly relevance?: Record<string, PaperRelevance> | undefined
   /** ISO-8601 timestamp of the record's first write. */
   readonly addedAt: string
 }
@@ -77,6 +92,8 @@ export interface ProjectRecord {
    * each project point at its own LaTeX tree under the same workspace.
    */
   readonly paperDir?: string | undefined
+  /** Target venue of the paper; absent until one is applied. */
+  readonly venue?: VenueView | undefined
   /** Artifact paths relative to the configured workspace directory. */
   readonly artifacts: string[]
   /** Number of completed independent-review rounds. */
@@ -87,6 +104,24 @@ export interface ProjectRecord {
 
 /** Lifecycle of one experiment run. */
 export type ExperimentStatus = 'running' | 'success' | 'failed'
+
+/**
+ * The settled outcome of the remote job most recently linked to one
+ * experiment, written back when the job reaches `succeeded`/`failed`.
+ */
+export interface ExperimentJobOutcome {
+  /** The settled job record's id. */
+  readonly jobId: string
+  readonly status: 'succeeded' | 'failed'
+  /** Remote exit code; null when the ssh session itself failed. */
+  readonly exitCode: number | null
+  /** Wall-clock run time in ms; null when the job never reached `running`. */
+  readonly durationMs: number | null
+  /** ISO-8601 timestamp of the job's terminal settle. */
+  readonly finishedAt: string
+  /** Trailing log excerpt (the job's last output lines, whitespace-trimmed). */
+  readonly summary: string
+}
 
 /** One experiment tracked against a project. */
 export interface ExperimentRecord {
@@ -101,6 +136,11 @@ export interface ExperimentRecord {
   readonly logPath?: string | undefined
   /** Remembered server the run executed on, when linked. */
   readonly serverId?: string | undefined
+  /**
+   * Outcome of the most recently settled linked remote job; absent until a
+   * linked job settles (records predating the field read as absent).
+   */
+  readonly lastJob?: ExperimentJobOutcome | undefined
   /** ISO-8601 timestamp of the last write. */
   readonly updatedAt: string
 }
@@ -168,6 +208,15 @@ export interface ReviewRound {
 
 /* ── Web research panel wire payloads (the `research` Remote namespace) ───── */
 
+/** The venue format a project targets (built-in registry entry or custom kit). */
+export interface VenueView {
+  /** Built-in registry id, or `custom` for an uploaded kit. */
+  readonly id: string
+  readonly name: string
+  readonly custom: boolean
+  readonly appliedAt: string
+}
+
 /** One project row as the research panel lists it. */
 export interface ResearchProjectView {
   readonly id: string
@@ -175,6 +224,8 @@ export interface ResearchProjectView {
   readonly stage: ProjectStage
   /** Paper directory relative to the workspace root; absent means `paper`. */
   readonly paperDir?: string | undefined
+  /** Target venue of the paper; absent until one is applied. */
+  readonly venue?: VenueView | undefined
   /** Number of completed independent-review rounds. */
   readonly reviewRounds: number
   /** Artifact paths relative to the workspace root (for the overview view). */
@@ -212,7 +263,11 @@ export type ResearchFailure =
   | { readonly code: 'section-not-found'; readonly title: string }
   | { readonly code: 'subsection-not-found'; readonly sectionTitle: string; readonly title: string }
   | { readonly code: 'invalid-input'; readonly message: string }
+  | { readonly code: 'snapshot-not-found'; readonly id: string }
+  | { readonly code: 'invalid-name'; readonly name: string }
+  | { readonly code: 'invalid-content' }
   | { readonly code: 'conflict'; readonly currentMtimeMs: number }
+  | { readonly code: 'subscription-not-found'; readonly id: string }
   | { readonly code: 'operation-failed'; readonly message: string }
 
 /** Success branch of one `research` Remote call. */
@@ -232,6 +287,24 @@ export type ResearchResult<T> = ResearchSuccess<T> | ResearchRejected<ResearchFa
 
 /** `listProjects` result: every wiki project, most recently updated first. */
 export type ResearchListProjectsResult = ResearchResult<{ readonly projects: readonly ResearchProjectView[] }>
+
+/** One built-in venue template entry as the panel lists it. */
+export interface VenueTemplateView {
+  readonly id: string
+  readonly name: string
+  readonly series: string
+  readonly url: string
+  readonly checklist: string
+}
+
+/** `listVenueTemplates` result: the built-in registry for the venue picker. */
+export type ResearchVenueTemplatesResult = ResearchResult<{ readonly templates: readonly VenueTemplateView[] }>
+
+/** `applyVenueTemplate` result: the venue now recorded on the project. */
+export type ResearchApplyVenueResult = ResearchResult<{ readonly venue: VenueView }>
+
+/** `clearVenueTemplate` result: the project whose venue was cleared. */
+export type ResearchClearVenueResult = ResearchResult<{ readonly projectId: string }>
 
 /** `getPaperOutline` result: the section tree of `<workspace>/paper/main.tex`. */
 export type ResearchOutlineResult = ResearchResult<{
@@ -253,6 +326,37 @@ export type ResearchPaperSourceResult = ResearchResult<{
 
 /** `savePaperSource` result: the committed mtime (a conflict rejects with its mtime). */
 export type ResearchSavePaperSourceResult = ResearchResult<{ readonly mtimeMs: number }>
+
+/** One file of one paper snapshot, as the panel lists it. */
+export interface PaperSnapshotFileView {
+  /** Path relative to the project's paper directory (`main.tex`, `sections/intro.tex`). */
+  readonly path: string
+  readonly sizeBytes: number
+}
+
+/** One paper snapshot (captured after a successful compile). */
+export interface PaperSnapshotView {
+  /** Compact UTC timestamp id (`20260823T063755939Z`, `-N` on collisions). */
+  readonly id: string
+  /** ISO-8601 timestamp of the capture. */
+  readonly createdAt: string
+  /** The captured `.tex`/`.bib` files, in sorted path order. */
+  readonly files: readonly PaperSnapshotFileView[]
+  /** Total bytes across the snapshot's files. */
+  readonly sizeBytes: number
+}
+
+/** `listPaperSnapshots` result: the project's snapshots, newest first. */
+export type ResearchPaperSnapshotsResult = ResearchResult<{ readonly snapshots: readonly PaperSnapshotView[] }>
+
+/** `getPaperSnapshot` result: one snapshot's files with their full content. */
+export type ResearchPaperSnapshotResult = ResearchResult<{
+  readonly id: string
+  readonly files: readonly { readonly path: string; readonly content: string }[]
+}>
+
+/** `revertPaperSnapshot` result: the committed `main.tex` mtime (a conflict rejects with its mtime). */
+export type ResearchRevertPaperSnapshotResult = ResearchResult<{ readonly mtimeMs: number }>
 
 /** `listPapers` result: every remembered paper, most recently added first. */
 export type ResearchPapersResult = ResearchResult<{ readonly papers: readonly PaperRecord[] }>
@@ -290,6 +394,49 @@ export type ResearchUpdatePaperResult = ResearchResult<{ readonly paper: PaperRe
 
 /** `fetchPaperPdf` result: the stored record with its `pdfPath` set. */
 export type ResearchFetchPaperPdfResult = ResearchResult<{ readonly paper: PaperRecord }>
+
+/**
+ * One arXiv subscription as the panel lists it: the persisted record minus
+ * its `seenIds` bookkeeping, with the cached details of the entries the
+ * latest checks surfaced as new (`newEntries`, newest first).
+ */
+export interface ArxivSubscriptionView {
+  readonly id: string
+  /** The free-text query matched against all arXiv fields. */
+  readonly query: string
+  /** ISO-8601 timestamp of the subscription's creation. */
+  readonly createdAt: string
+  /** ISO-8601 timestamp of the last check; null until the first one settles. */
+  readonly lastCheckedAt: string | null
+  /** Details of the entries reported as new and not yet superseded. */
+  readonly newEntries: readonly ArxivEntry[]
+}
+
+/** `listArxivSubscriptions` result: every subscription, oldest first. */
+export type ResearchArxivSubscriptionsResult = ResearchResult<{ readonly subscriptions: readonly ArxivSubscriptionView[] }>
+
+/** `saveArxivSubscription` result: the created subscription (a duplicate query is `invalid-input`). */
+export type ResearchSaveArxivSubscriptionResult = ResearchResult<{ readonly subscription: ArxivSubscriptionView }>
+
+/** `deleteArxivSubscription` result: the removed subscription's id. */
+export type ResearchDeleteArxivSubscriptionResult = ResearchResult<{ readonly id: string }>
+
+/**
+ * One subscription's outcome of a `checkArxivSubscriptions` run: the
+ * post-check view (pre-check view when the fetch failed), the entries THIS
+ * run surfaced as new, and the fetch failure when there was one (a failed
+ * subscription leaves its stored record untouched).
+ */
+export interface ArxivSubscriptionCheckView {
+  readonly subscription: ArxivSubscriptionView
+  /** Entries this run found that the subscription had not seen before. */
+  readonly added: readonly ArxivEntry[]
+  /** The fetch failure message, or null when this subscription checked clean. */
+  readonly error: string | null
+}
+
+/** `checkArxivSubscriptions` result: one outcome per checked subscription. */
+export type ResearchCheckArxivSubscriptionsResult = ResearchResult<{ readonly checks: readonly ArxivSubscriptionCheckView[] }>
 
 /** `listExperiments` result: experiment runs, filtered by project when given. */
 export type ResearchExperimentsResult = ResearchResult<{ readonly experiments: readonly ExperimentRecord[] }>
@@ -342,6 +489,74 @@ export type ResearchFiguresResult = ResearchResult<{ readonly figures: readonly 
 /** `deleteFigure` result: the deleted file's paper-directory-relative path. */
 export type ResearchDeleteFigureResult = ResearchResult<{ readonly relPath: string }>
 
+/**
+ * `renameFigure` result: the file's new paper-directory-relative path plus
+ * the number of `.tex` files whose `\includegraphics` references were
+ * rewritten to it.
+ */
+export type ResearchRenameFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly references: number
+}>
+
+/** `updateFigure` result: the figure metadata row after the caption upsert. */
+export type ResearchUpdateFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly caption: string
+}>
+
+/**
+ * `convertFigure` result: the paper-directory-relative path of the converted
+ * product (`figures/foo.svg` → `figures/foo.pdf`, or `foo.png` from the
+ * raster fallback) plus the converter that produced it (`cached` when a
+ * fresh product already existed and was reused).
+ */
+export type ResearchConvertFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly converter: string
+}>
+
+/**
+ * `saveFigure` result: the paper-directory-relative path of the SVG the
+ * client generated (the experiments view's metric-comparison charts), the
+ * caption registered in the wiki's figures table, and — when a converter is
+ * available — the LaTeX-embeddable product written next to the SVG (the same
+ * pipeline `convertFigure` runs). A machine with no usable converter reports
+ * `warning` instead; the save itself still succeeded.
+ */
+export type ResearchSaveFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly caption: string
+  readonly converted?: { readonly relPath: string; readonly converter: string } | undefined
+  readonly warning?: string | undefined
+}>
+
+/** One generated group-meeting deck as listed on disk (meetings/<projectId>/). */
+export interface MeetingDeckView {
+  /** File name within the project's meetings directory. */
+  readonly file: string
+  readonly sizeBytes: number
+  /** ISO-8601 mtime of the pptx file. */
+  readonly updatedAt: string
+}
+
+/** `generateMeetingDeck` outcome: the produced file name plus slide count. */
+export type ResearchGenerateMeetingResult = ResearchResult<{ readonly file: string; readonly slides: number }>
+
+/** `listMeetingDecks` outcome, newest first. */
+export type ResearchMeetingDecksResult = ResearchResult<{ readonly decks: readonly MeetingDeckView[] }>
+
+/** `deleteMeetingDeck` outcome. */
+export type ResearchDeleteMeetingDeckResult = ResearchResult<{ readonly file: string }>
+
+/** Which sections a group-meeting deck carries. */
+export interface MeetingInclude {
+  readonly progress: boolean
+  readonly experiments: boolean
+  readonly figures: boolean
+  readonly papers: boolean
+}
+
 /** One remembered compute server (a GPU box the experiments run on). */
 export interface ServerRecord {
   readonly id: string
@@ -381,6 +596,9 @@ export interface ServerGpuView {
   readonly memoryTotalMb: number
 }
 
+/** One stage of the `checkServer` probe pipeline: TCP connect, ssh session, GPU readout. */
+export type ServerProbeStage = 'tcp' | 'ssh' | 'gpu'
+
 /** The settled outcome of one `checkServer` probe. */
 export interface ServerStatusView {
   /** `online` once the TCP probe connects; the GPU readout is best-effort on top. */
@@ -392,6 +610,16 @@ export interface ServerStatusView {
   readonly checkedAt: string
   /** Failure detail (offline reason or the skipped/failed GPU probe); null when clean. */
   readonly message: string | null
+  /**
+   * Stage where the probe settled: the FAILED stage on failure, the deepest
+   * completed stage on success (`tcp` for a TCP-only record without a login
+   * user). Optional — older hosts omit it.
+   */
+  readonly stage?: ServerProbeStage | undefined
+  /** TCP handshake latency in ms (the stage-wise twin of `latencyMs`); absent when the TCP probe never connected. */
+  readonly tcpLatencyMs?: number | undefined
+  /** Wall-clock ms of the ssh GPU readout; absent when it never ran. */
+  readonly gpuLatencyMs?: number | undefined
 }
 
 /** `listServers` result: every remembered server, most recently updated first. */
@@ -426,6 +654,68 @@ export type ResearchSaveBibliographyResult = ResearchResult<{ readonly mtimeMs: 
 
 /** `importPapersToBib` result: appended and already-present citation keys. */
 export type ResearchImportBibResult = ResearchResult<{
+  readonly added: readonly string[]
+  readonly skipped: readonly string[]
+}>
+
+/** One Zotero collection as the panel lists it. */
+export interface ZoteroCollectionView {
+  readonly key: string
+  readonly name: string
+  readonly itemCount: number
+}
+
+/** One Zotero item reduced to the fields the literature workbench shows. */
+export interface ZoteroItemView {
+  readonly key: string
+  readonly title: string
+  /** Display names of the item's creators, in order. */
+  readonly authors: readonly string[]
+  /** Four-digit publication year, or '' when the date does not carry one. */
+  readonly year: string
+  /** DOI, or '' when the item has none. */
+  readonly doi: string
+  /** Bare arXiv id recovered from `extra`/`url`, or null when absent. */
+  readonly arxivId: string | null
+  /** Journal/proceedings title, or '' for item types without one. */
+  readonly publicationTitle: string
+  /** Best external link: the item URL, else the DOI resolver link, else ''. */
+  readonly url: string
+}
+
+/** The settled outcome of one `checkZotero` probe. */
+export interface ZoteroStatusView {
+  /**
+   * `unconfigured` when the plugin config carries no API key/user id,
+   * `ok` when the API accepted the credentials, `failed` otherwise.
+   */
+  readonly state: 'unconfigured' | 'ok' | 'failed'
+  /** Failure reason when the state is `failed`; absent otherwise. */
+  readonly message?: string | undefined
+}
+
+/** `checkZotero` result: the settled connection status (never a business failure). */
+export type ResearchCheckZoteroResult = ResearchResult<ZoteroStatusView>
+
+/** `listZoteroCollections` result: every collection of the configured user library. */
+export type ResearchZoteroCollectionsResult = ResearchResult<{
+  readonly collections: readonly ZoteroCollectionView[]
+}>
+
+/** `searchZotero` result: the parsed items matching the query. */
+export type ResearchZoteroSearchResult = ResearchResult<{
+  readonly results: readonly ZoteroItemView[]
+}>
+
+/** `importZoteroItem` result: whether the paper was newly imported, plus its papers-table id. */
+export type ResearchZoteroImportResult = ResearchResult<{
+  readonly imported: boolean
+  /** The papers-table key: the bare arXiv id, or `zotero-<item key>` for arXiv-less items. */
+  readonly paperId: string
+}>
+
+/** `exportZoteroCollectionToBib` result: appended and already-present citation keys. */
+export type ResearchZoteroExportResult = ResearchResult<{
   readonly added: readonly string[]
   readonly skipped: readonly string[]
 }>

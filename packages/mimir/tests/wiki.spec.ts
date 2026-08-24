@@ -94,3 +94,87 @@ describe('wiki_note project/experiment actions', () => {
       .rejects.toThrow("no experiment with id 'missing'")
   })
 })
+
+
+describe('wiki_note set_paper', () => {
+  const PAPER = {
+    arxivId: '2103.00020v2',
+    title: 'EgoSync & Friends',
+    authors: ['Doe, Jane'],
+    summary: 'Abstract.',
+    url: 'https://arxiv.org/abs/2103.00020v2',
+    notes: 'keep me',
+    tags: ['mesh'],
+    projectIds: [],
+    addedAt: '2026-08-20T00:00:00.000Z',
+  }
+
+  it('records a relevance score against a project and links the paper to it', async () => {
+    const domain = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('papers').put(PAPER.arxivId, PAPER)
+    const outcome = await run(domain, {
+      action: 'set_paper',
+      arxiv_id: PAPER.arxivId,
+      project_id: 'p1',
+      relevance_score: 8,
+      relevance_reason: 'Directly addresses the project direction.',
+    })
+    expect(outcome).toMatchObject({ ok: true, table: 'papers', id: PAPER.arxivId })
+    const stored = domain.table('papers').get(PAPER.arxivId)
+    expect(stored?.relevance?.['p1']?.score).toBe(8)
+    expect(stored?.relevance?.['p1']?.reason).toContain('Directly')
+    expect(stored?.projectIds).toEqual(['p1'])
+    // Untouched fields survive.
+    expect(stored?.notes).toBe('keep me')
+    expect(stored?.tags).toEqual(['mesh'])
+  })
+
+  it('updates tags and notes without a score, and validates its inputs', async () => {
+    const domain = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('papers').put(PAPER.arxivId, PAPER)
+    const outcome = await run(domain, {
+      action: 'set_paper',
+      arxiv_id: PAPER.arxivId,
+      tags: ['mesh', 'video', 'mesh', ' '],
+      notes: 'updated',
+    })
+    expect(outcome).toMatchObject({ ok: true })
+    const stored = domain.table('papers').get(PAPER.arxivId)
+    expect(stored?.tags).toEqual(['mesh', 'video'])
+    expect(stored?.notes).toBe('updated')
+    await expect(run(domain, { action: 'set_paper', arxiv_id: 'nope', notes: 'x' }))
+      .rejects.toThrow("no paper with id 'nope'")
+    await expect(run(domain, {
+      action: 'set_paper', arxiv_id: PAPER.arxivId, project_id: 'p1', relevance_score: 12, relevance_reason: 'r',
+    })).rejects.toThrow('between 0 and 10')
+    await expect(run(domain, {
+      action: 'set_paper', arxiv_id: PAPER.arxivId, project_id: 'nope', relevance_score: 5, relevance_reason: 'r',
+    })).rejects.toThrow("no project with id 'nope'")
+    await expect(run(domain, {
+      action: 'set_paper', arxiv_id: PAPER.arxivId, relevance_score: 5,
+    })).rejects.toThrow("requires a non-empty 'project_id'")
+  })
+
+  it('add_paper re-add preserves the curated notes and relevance', async () => {
+    const domain = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('papers').put(PAPER.arxivId, {
+      ...PAPER,
+      relevance: { p1: { score: 7, reason: 'kept', at: '2026-08-20T00:00:00.000Z' } },
+    })
+    const outcome = await run(domain, {
+      action: 'add_paper',
+      arxiv_id: PAPER.arxivId,
+      title: PAPER.title,
+      summary: 'Refreshed abstract.',
+    })
+    expect(outcome).toMatchObject({ ok: true })
+    const stored = domain.table('papers').get(PAPER.arxivId)
+    expect(stored?.notes).toBe('keep me')
+    expect(stored?.tags).toEqual(['mesh'])
+    expect(stored?.relevance?.['p1']?.score).toBe(7)
+    expect(stored?.summary).toBe('Refreshed abstract.')
+  })
+})

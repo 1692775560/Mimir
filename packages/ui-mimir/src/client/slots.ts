@@ -18,8 +18,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls this package's LocaleNamespaceMap merge (the 'research' seat).
 import type {} from './locales.ts'
-import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
+import type { ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchImportWikiMode, ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
+import type { MetricChartRow } from './view-common.ts'
 import type { WorkbenchChrome } from './shortcuts.ts'
 import type { createResearchPanelStore } from './store.ts'
 
@@ -53,6 +54,19 @@ export interface ResearchPanelInjected {
    */
   compile: (projectId: string) => void
   /**
+   * Hand one assembled compile-fix prompt to the current session's agent (the
+   * paper view's per-issue "fix with AI" button); the outcome lands in toasts.
+   * @param prompt - the assembled fix request (issue, location, source window).
+   */
+  requestCompileFix: (prompt: string) => Promise<void>
+  /**
+   * Hand one assembled related-work prompt to the current session's agent
+   * (the papers view's "draft related work" button); the outcome lands in
+   * toasts.
+   * @param prompt - the assembled draft request (papers, citations, verify loop).
+   */
+  requestRelatedWork: (prompt: string) => Promise<void>
+  /**
    * Apply one editor change to the draft; autosaves after a short debounce.
    * @param content - the textarea's full next value.
    */
@@ -61,6 +75,78 @@ export interface ResearchPanelInjected {
   reloadSource: () => void
   /** Load the literature list once, on the papers view's first open. */
   ensurePapers: () => void
+  /**
+   * Re-fetch the literature list without a loading flash (the papers view's
+   * poll after handing a scoring request to the agent).
+   */
+  refreshPapers: () => void
+  /**
+   * Hand one assembled relevance-scoring prompt to the current session's
+   * agent (the papers view's "score with AI" buttons); the outcome lands in
+   * toasts, and the agent's `wiki_note` writes land in the next refresh.
+   * @param prompt - the assembled scoring request (papers, project direction).
+   */
+  requestPaperScore: (prompt: string) => Promise<void>
+  /**
+   * Hand one assembled figure-organization prompt to the current session's
+   * agent (the figures view's "organize with AI" button); the outcome lands
+   * in toasts, and the agent's `figure_organize` writes land in the next
+   * rescan.
+   * @param prompt - the assembled organize request (figure, project, caption).
+   */
+  requestFigureOrganize: (prompt: string) => Promise<void>
+  /** Load the venue picker's built-in registry once, on first open. */
+  ensureVenueTemplates: () => void
+  /**
+   * Apply one venue (built-in or uploaded kit) to one project; the header
+   * chip updates via the refreshed project list.
+   * @param projectId - wiki project id.
+   * @param options - built-in template id, or a custom kit display name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  applyVenueTemplate: (
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Clear one project's target venue.
+   * @param projectId - wiki project id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  clearVenueTemplate: (projectId: string) => Promise<ResearchFailureView | null>
+  /**
+   * Upload venue-kit files (.cls/.sty/...) into the project's `template/`
+   * directory, one request per file.
+   * @param projectId - wiki project id.
+   * @param dir - the project's paper directory override, when any.
+   * @param files - the picked files.
+   */
+  uploadTemplateFiles: (projectId: string, dir: string | undefined, files: readonly File[]) => Promise<void>
+  /**
+   * Hand one assembled venue-format prompt to the current session's agent
+   * (the paper view's "format to venue" button); the outcome lands in toasts.
+   * @param prompt - the assembled re-layout request (venue, brief path).
+   */
+  requestVenueFormat: (prompt: string) => Promise<void>
+  /** Load the arXiv subscription list once (a stale list triggers one open-time check). */
+  ensureSubscriptions: () => void
+  /**
+   * Add one arXiv subscription, then refresh the list.
+   * @param query - the free-text query; an empty or duplicate one is rejected.
+   * @returns null on success, the settled failure otherwise.
+   */
+  saveArxivSubscription: (query: string) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one arXiv subscription, then refresh the list.
+   * @param id - the subscription id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteArxivSubscription: (id: string) => Promise<ResearchFailureView | null>
+  /**
+   * Check every subscription for new papers now (the bar's manual button).
+   * @returns null on success, the settled failure otherwise.
+   */
+  checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   /**
    * Search arXiv from the papers view; the outcome lands in the view's
    * `arxivSearch` slice.
@@ -76,9 +162,10 @@ export interface ResearchPanelInjected {
   /**
    * Import one arXiv entry into the wiki, then refresh the literature list.
    * @param entry - the parsed arXiv entry of one search result card.
+   * @param projectId - the selected project to link, when any.
    * @returns null on success, the settled failure otherwise.
    */
-  importPaper: (entry: ArxivEntry) => Promise<ResearchFailureView | null>
+  importPaper: (entry: ArxivEntry, projectId?: string) => Promise<ResearchFailureView | null>
   /**
    * Remove one remembered paper, then refresh the literature list.
    * @param arxivId - the bare arXiv id.
@@ -95,8 +182,10 @@ export interface ResearchPanelInjected {
    * Scan one project's paper directory for figures.
    * @param projectId - wiki project id.
    * @param force - bypass the fresh-view skip (the refresh button).
+   * @param quiet - keep a ready list on screen while rescanning (the poll
+   * after handing an organize request to the agent).
    */
-  loadFigures: (projectId: string, force?: boolean) => void
+  loadFigures: (projectId: string, force?: boolean, quiet?: boolean) => void
   /**
    * Upload image files into one project's paper directory through the
    * `/research/figure-upload` route, one POST per file, then force a rescan.
@@ -120,6 +209,55 @@ export interface ResearchPanelInjected {
    */
   deleteFigure: (projectId: string, relPath: string) => Promise<ResearchFailureView | null>
   /**
+   * List one project's generated meeting decks (the meetings view).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip (post-generate/delete reloads).
+   */
+  loadMeetings: (projectId: string, force?: boolean) => void
+  /**
+   * Generate one project's meeting deck from the selected (or default)
+   * papers/figures and section switches. The outcome lands in toasts.
+   * @param projectId - wiki project id.
+   * @param request - the deck options (title/presenter/date/selections).
+   * @returns null on success, the settled failure otherwise.
+   */
+  generateMeetingDeck: (
+    projectId: string,
+    request: {
+      title?: string | undefined
+      presenter?: string | undefined
+      date?: string | undefined
+      paperIds?: readonly string[] | undefined
+      figureRelPaths?: readonly string[] | undefined
+      include?: Partial<MeetingInclude> | undefined
+    },
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Delete one generated meeting deck.
+   * @param projectId - wiki project id.
+   * @param file - the deck file name within the project's meetings directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  deleteMeetingDeck: (projectId: string, file: string) => Promise<ResearchFailureView | null>
+  /**
+   * Rename one figure of one project (same extension); the host moves the
+   * metadata row along and rewrites the paper's `.tex` references. The
+   * outcome lands in toasts.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param newName - the new bare file name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  renameFigure: (projectId: string, relPath: string, newName: string) => Promise<ResearchFailureView | null>
+  /**
+   * Replace one figure's wiki-recorded caption, then quietly rescan.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param caption - the replacement caption.
+   * @returns null on success, the settled failure otherwise.
+   */
+  updateFigure: (projectId: string, relPath: string, caption: string) => Promise<ResearchFailureView | null>
+  /**
    * Insert one figure's standard LaTeX block into the project's `main.tex` —
    * or, when the draft already references the file, just jump there — then
    * switch the workbench to the paper view. Failures surface as toasts.
@@ -127,6 +265,16 @@ export interface ResearchPanelInjected {
    * @param entry - the figure card's entry.
    */
   insertFigure: (projectId: string, entry: FigureEntry) => Promise<void>
+  /**
+   * Generate one metric's comparison chart as a paper figure (the experiments
+   * view's per-chart button): save the rendered SVG into the paper's
+   * `figures/` directory with a registered caption, insert the LaTeX block,
+   * and switch the workbench to the paper view. Failures surface as toasts.
+   * @param projectId - wiki project id.
+   * @param metricKey - the metric the chart compares.
+   * @param rows - the chart's rows (runs carrying a finite value, oldest first).
+   */
+  generateMetricFigure: (projectId: string, metricKey: string, rows: readonly MetricChartRow[]) => Promise<void>
   /** Clear the paper view's consumed jump ticket. */
   consumePaperJump: () => void
   /**
@@ -165,6 +313,33 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure otherwise.
    */
   fetchPaperPdf: (arxivId: string) => Promise<ResearchFailureView | null>
+  /** Probe the Zotero connection once, on the papers view's first open. */
+  ensureZotero: () => void
+  /** Re-probe the Zotero connection (the section's retry entry). */
+  recheckZotero: () => void
+  /**
+   * Search the configured Zotero library; the outcome lands in the view's
+   * `zoteroSearch` slice.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchZotero: (query: string) => void
+  /**
+   * Import one Zotero item into the wiki, then refresh the literature list.
+   * @param key - the Zotero item key of one search result row.
+   * @param projectId - the selected project to link, when any.
+   * @returns null on success, the settled failure otherwise.
+   */
+  importZoteroItem: (key: string, projectId?: string) => Promise<ResearchFailureView | null>
+  /**
+   * Export one Zotero collection into one project's `references.bib`.
+   * @param projectId - wiki project id.
+   * @param collectionKey - the Zotero collection to export.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  exportZoteroCollectionToBib: (
+    projectId: string,
+    collectionKey: string,
+  ) => Promise<ResearchFailureView | ResearchImportCounts>
   /** Load the server list once, on the servers view's first open. */
   ensureServers: () => void
   /**
@@ -239,6 +414,28 @@ export interface ResearchPanelInjected {
     projectId: string,
     arxivIds: string[],
   ) => Promise<ResearchFailureView | ResearchImportCounts>
+  /**
+   * List one project's paper snapshots (the snapshots panel's open).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip (the refresh path).
+   */
+  loadSnapshots: (projectId: string, force?: boolean) => void
+  /**
+   * Fetch one snapshot's files for the panel's diff view.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   */
+  loadSnapshotDetail: (projectId: string, id: string) => void
+  /** Close the snapshots panel's diff view. */
+  closeSnapshotDetail: () => void
+  /**
+   * Revert the paper to one snapshot under optimistic concurrency; the source
+   * and outline re-read from the Host on success (and on a conflict).
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  revertSnapshot: (projectId: string, id: string) => Promise<ResearchFailureView | null>
   /**
    * Reorder the top-level sections of one project's `main.tex`.
    * @param projectId - wiki project id.

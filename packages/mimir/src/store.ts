@@ -25,6 +25,13 @@ export const paperRecord = z.object({
   // Added WITHOUT a version bump: `.optional()` leaves the field absent on
   // records that predate it, so existing v2 JSON stores keep loading.
   pdfPath: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  relevance: z.record(z.string(), z.object({
+    score: z.number(),
+    reason: z.string(),
+    at: z.string(),
+  })).optional(),
   addedAt: z.string(),
 })
 
@@ -52,6 +59,15 @@ export const projectRecord = z.object({
   title: z.string(),
   stage: z.enum(['idea', 'plan', 'experiment', 'writing', 'done']),
   paperDir: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  venue: z.object({
+    /** Built-in registry id, or `custom` for an uploaded kit. */
+    id: z.string(),
+    name: z.string(),
+    custom: z.boolean(),
+    appliedAt: z.string(),
+  }).optional(),
   artifacts: z.array(z.string()),
   reviewRounds: z.number().int().nonnegative(),
   updatedAt: z.string(),
@@ -68,6 +84,16 @@ export const experimentRecord = z.object({
   // Added WITHOUT a version bump: `.optional()` leaves the field absent on
   // records that predate it, so existing v2 JSON stores keep loading.
   serverId: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  lastJob: z.object({
+    jobId: z.string(),
+    status: z.enum(['succeeded', 'failed']),
+    exitCode: z.number().int().nullable(),
+    durationMs: z.number().nonnegative().nullable(),
+    finishedAt: z.string(),
+    summary: z.string(),
+  }).optional(),
   updatedAt: z.string(),
 })
 

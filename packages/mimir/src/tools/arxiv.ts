@@ -75,6 +75,12 @@ async function fetchArxiv(url: string, signal: AbortSignal): Promise<string> {
   return response.text()
 }
 
+/** Optional knobs of one {@link fetchArxivSearch} call. */
+export interface ArxivSearchOptions {
+  /** Sort by submission date, newest first (default: the API's relevance order). */
+  readonly sortBySubmittedDate?: boolean
+}
+
 /**
  * Run one arXiv full-text search and parse the feed. Shared by the
  * `arxiv_search` tool and the panel's `searchArxiv` Remote method; the caller
@@ -82,10 +88,18 @@ async function fetchArxiv(url: string, signal: AbortSignal): Promise<string> {
  * @param query - free-text query matched against all fields.
  * @param maxResults - result cap forwarded to the API.
  * @param signal - abort/timeout signal of the caller.
+ * @param options - sort order knobs (the subscription checker asks for the
+ * newest submissions first).
  * @returns the parsed entries, `[]` for a resultless feed.
  */
-export async function fetchArxivSearch(query: string, maxResults: number, signal: AbortSignal): Promise<ArxivEntry[]> {
-  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${maxResults}`
+export async function fetchArxivSearch(
+  query: string,
+  maxResults: number,
+  signal: AbortSignal,
+  options: ArxivSearchOptions = {},
+): Promise<ArxivEntry[]> {
+  const sort = options.sortBySubmittedDate === true ? '&sortBy=submittedDate&sortOrder=descending' : ''
+  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${maxResults}${sort}`
   return parseArxivFeed(await fetchArxiv(url, signal))
 }
 

@@ -18,12 +18,15 @@
  */
 
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { BibEntry, OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
+import type { BibEntry, OutlineNode, PaperSnapshotView, SectionMove, SectionOutlineTitles, SubsectionMove, VenueView } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
-  ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchSourceView,
+  ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchProjectSlice,
+  ResearchSnapshotDetailView, ResearchSourceView, ResearchVenueTemplatesView,
 } from './controller.ts'
+import { VenuePicker } from './VenuePicker.tsx'
 import { wrapIndex } from './focus.ts'
+import { buildCompileFixPrompt } from './compile-fix.ts'
 import { EDITOR_LINE_HEIGHT_PX, splitTokensByLine, visibleLineRange, widestLine } from './highlight-window.ts'
 import { HIGHLIGHT_MAX_LENGTH, tokenizeLatex } from './latex-highlight.ts'
 import {
@@ -35,6 +38,7 @@ import type { PaperFullscreen } from './store.ts'
 import { failureCopy, lineRangeOf, outlineSectionTitles, SAVE_KEYS, sectionMoveFromDrop, subsectionMoveFromDrop } from './view-common.ts'
 import type { ResearchT, SubsectionDrag } from './view-common.ts'
 import { BibPanel } from './BibPanel.tsx'
+import { SnapshotsPanel } from './SnapshotsPanel.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Editor line height in px (re-exported name kept local to the jump math). */
@@ -285,18 +289,38 @@ function OutlineTree({ nodes, onJump, reorder, gripLabel, dropZoneLabel }: {
  * @returns the editing surface.
  */
 export function PaperView({
-  outline, compileView, source, projectId, dir, editSource, reloadSource, compile,
+  outline, compileView, source, projectId, projectTitle, dir, editSource, reloadSource, compile, requestCompileFix,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
-  ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen, t,
+  ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen,
+  snapshots, snapshotDetail, loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
+  venue, venueTemplates, ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
+  t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
   readonly source: ResearchSourceView | null
   readonly projectId: string | null
+  /** Title of the selected project, shown as a strip on top of the panes. */
+  readonly projectTitle: string | undefined
   readonly dir: string | undefined
+  /** The selected project's target venue; undefined until one is applied. */
+  readonly venue: VenueView | undefined
+  /** The venue picker's built-in template registry slice. */
+  readonly venueTemplates: ResearchVenueTemplatesView
+  readonly ensureVenueTemplates: () => void
+  readonly applyVenueTemplate: (
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ) => Promise<ResearchFailureView | null>
+  readonly clearVenueTemplate: (projectId: string) => Promise<ResearchFailureView | null>
+  readonly uploadTemplateFiles: (projectId: string, dir: string | undefined, files: readonly File[]) => Promise<void>
+  /** Send one assembled venue-format prompt to the current session's agent. */
+  readonly requestVenueFormat: (prompt: string) => Promise<void>
   readonly editSource: (content: string) => void
   readonly reloadSource: () => void
   readonly compile: (projectId: string) => void
+  /** Send one issue's assembled fix prompt to the current session's agent. */
+  readonly requestCompileFix: (prompt: string) => Promise<void>
   readonly bib: ResearchBibView | null
   readonly papers: ResearchPapersView
   readonly ensureBibliography: (projectId: string) => void
@@ -325,6 +349,14 @@ export function PaperView({
   /** The pane holding fullscreen (from the shared store so Esc can exit it), or null. */
   readonly fullscreen: PaperFullscreen | null
   readonly setFullscreen: (pane: PaperFullscreen | null) => void
+  /** The selected project's snapshot list; null until the snapshots panel first opens. */
+  readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
+  /** The snapshot expanded for diffing; null when closed. */
+  readonly snapshotDetail: ResearchSnapshotDetailView | null
+  readonly loadSnapshots: (projectId: string, force?: boolean) => void
+  readonly loadSnapshotDetail: (projectId: string, id: string) => void
+  readonly closeSnapshotDetail: () => void
+  readonly revertSnapshot: (projectId: string, id: string) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
@@ -339,8 +371,13 @@ export function PaperView({
   const [flashLine, setFlashLine] = useState<number | null>(null)
   // The bibliography panel replaces the PDF preview while open.
   const [bibOpen, setBibOpen] = useState(false)
+  // The snapshots panel replaces the PDF preview while open (mutually
+  // exclusive with the bib panel).
+  const [snapOpen, setSnapOpen] = useState(false)
   // The last rejected section reorder, surfaced in the rail.
   const [reorderError, setReorderError] = useState<ResearchFailureView | null>(null)
+  // The issue row whose fix prompt is in flight (one send at a time).
+  const [fixingIndex, setFixingIndex] = useState<number | null>(null)
   // The textarea's viewport in lines/px: drives the windowed gutter and
   // highlight overlay. Coarsened to whole lines so mid-line scrolls don't
   // re-render.
@@ -360,6 +397,7 @@ export function PaperView({
   // for the new project on the next open.
   useEffect(() => {
     setBibOpen(false)
+    setSnapOpen(false)
     setFullscreen(null)
     setReorderError(null)
   }, [projectId, setFullscreen])
@@ -582,6 +620,20 @@ export function PaperView({
   // the textarea even when the widest line is outside the window.
   const sizerLine = useMemo(() => widestLine(sourceLines), [sourceLines])
 
+  // One "fix with AI" click: assemble the prompt from the issue and the
+  // current draft window, then queue it into the current session. Toasts
+  // carry the outcome; the agent's edits re-enter through reload/compile.
+  const onFixIssue = (index: number, issue: ResearchCompileView['issues'][number]): void => {
+    if (fixingIndex !== null) return
+    setFixingIndex(index)
+    const prompt = buildCompileFixPrompt({
+      issue,
+      source: currentSource !== null && currentSource.status === 'ready' ? currentSource.content : null,
+      dir,
+    })
+    void requestCompileFix(prompt).finally(() => { setFixingIndex(null) })
+  }
+
   // The overlay remounts when highlighting toggles; re-sync its scroll after
   // every token recompute so it never lags the textarea.
   useEffect(() => { syncEditorScroll() }, [highlightTokens])
@@ -749,6 +801,26 @@ export function PaperView({
       >
         <div className={css.editorHead}>
           <h3 className={css.sectionTitle}>{t('editor.title')}</h3>
+          {projectTitle !== undefined && (
+            <span className={css.paperProject} title={`${t('paper.project')}：${projectTitle}`}>
+              {projectTitle}
+            </span>
+          )}
+          {projectId !== null && projectTitle !== undefined && (
+            <VenuePicker
+              projectId={projectId}
+              projectTitle={projectTitle}
+              dir={dir}
+              venue={venue}
+              venueTemplates={venueTemplates}
+              ensureVenueTemplates={ensureVenueTemplates}
+              applyVenueTemplate={applyVenueTemplate}
+              clearVenueTemplate={clearVenueTemplate}
+              uploadTemplateFiles={uploadTemplateFiles}
+              requestVenueFormat={requestVenueFormat}
+              t={t}
+            />
+          )}
           {paneTabs}
           <div className={css.paneHeadActions}>
             {currentSource !== null && currentSource.status === 'ready' && (
@@ -866,9 +938,26 @@ export function PaperView({
             disabled={projectId === null}
             data-active={bibOpen || undefined}
             aria-pressed={bibOpen}
-            onClick={() => { setBibOpen(prev => !prev) }}
+            onClick={() => {
+              setBibOpen(prev => !prev)
+              setSnapOpen(false)
+            }}
           >
             {bibOpen ? t('bib.close') : t('bib.open')}
+          </button>
+          <button
+            type="button"
+            className={css.snapToggle}
+            disabled={projectId === null}
+            data-active={snapOpen || undefined}
+            aria-pressed={snapOpen}
+            onClick={() => {
+              setSnapOpen(prev => !prev)
+              setBibOpen(false)
+              if (snapOpen) closeSnapshotDetail()
+            }}
+          >
+            {snapOpen ? t('snapshots.close') : t('snapshots.open')}
           </button>
           {!narrow && (
             <button
@@ -886,7 +975,7 @@ export function PaperView({
         {compileView.issues.length > 0 && (
           <ul className={css.issueList} aria-label={t('issues.title')}>
             {compileView.issues.map((issue, index) => (
-              <li key={`${index}:${issue.message}`}>
+              <li key={`${index}:${issue.message}`} className={css.issueRow}>
                 <button
                   type="button"
                   className={css.issue}
@@ -905,6 +994,16 @@ export function PaperView({
                       <span className={css.issueWhere}>{issue.file}</span>
                     )}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  className={css.issueFix}
+                  disabled={fixingIndex !== null}
+                  title={t('issues.fixWithAi')}
+                  aria-label={t('issues.fixWithAi')}
+                  onClick={() => { onFixIssue(index, issue) }}
+                >
+                  {fixingIndex === index ? t('issues.fixingWithAi') : t('issues.fixWithAi')}
                 </button>
               </li>
             ))}
@@ -926,7 +1025,25 @@ export function PaperView({
               t={t}
             />
           )
-          : pdfUrl === null
+          : snapOpen && projectId !== null
+            ? (
+              <SnapshotsPanel
+                snapshots={snapshots}
+                snapshotDetail={snapshotDetail}
+                source={source}
+                projectId={projectId}
+                loadSnapshots={loadSnapshots}
+                loadSnapshotDetail={loadSnapshotDetail}
+                closeSnapshotDetail={closeSnapshotDetail}
+                revertSnapshot={revertSnapshot}
+                onClose={() => {
+                  setSnapOpen(false)
+                  closeSnapshotDetail()
+                }}
+                t={t}
+              />
+            )
+            : pdfUrl === null
             ? (
               <div className={css.previewEmpty}>
                 <span className={css.emptyGlyph} aria-hidden>📄</span>

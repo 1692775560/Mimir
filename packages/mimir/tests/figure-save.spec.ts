@@ -18,12 +18,13 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { MemoryMediaPool, MemoryStorageBackend } from './helpers/memory-backend.ts'
 import { researchWikiDomainSpec } from '../src/store.ts'
-import { createFigureSaveTool } from '../src/tools/figure.ts'
+import { createFigureOrganizeTool, createFigureSaveTool } from '../src/tools/figure.ts'
 import { ResearchService } from '../src/service.ts'
+import type { SvgConversionDeps } from '../src/svg-convert.ts'
 import type { ProjectRecord } from '../src/types.ts'
 
 /** Boot a memory-backed domain plus a fresh temp workspace, service, and tool. */
-async function harness() {
+async function harness(svg?: SvgConversionDeps) {
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = new MemoryStorageBackend(new MemoryMediaPool())
@@ -43,7 +44,7 @@ async function harness() {
     domain,
     latex: { engine: 'auto', timeoutMs: 1000 },
   })
-  return { domain, workspaceDir, service, tool: createFigureSaveTool(workspaceDir, domain) }
+  return { domain, workspaceDir, service, tool: createFigureSaveTool(workspaceDir, domain, svg ?? {}) }
 }
 
 /** The tool's execute needs a ToolRunContext it never reads in these paths. */
@@ -112,6 +113,37 @@ describe('figure_save', () => {
       .rejects.toThrow('source file not found')
     expect([...domain.table('figures').entries()]).toEqual([])
   })
+
+  it('auto-converts an SVG save and points the LaTeX block at the product', async () => {
+    const { domain, workspaceDir, tool } = await harness({
+      probe: (command) => Promise.resolve(command === 'rsvg-convert' ? '/fake/bin/rsvg-convert' : null),
+      run: async (_executable, args) => {
+        await writeFile(String(args[args.indexOf('-o') + 1]), '%PDF-fake')
+        return { ok: true, message: '' }
+      },
+    })
+    const source = join(workspaceDir, 'plot.svg')
+    await writeFile(source, '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const value = await tool.execute({ path: source, project_id: 'p1', caption: 'Architecture' }, NO_EXEC) as Record<string, unknown>
+    expect(value['relPath']).toBe('figures/plot.svg')
+    expect(value['converted']).toEqual({ relPath: 'figures/plot.pdf', converter: 'rsvg-convert' })
+    expect(String(value['latex'])).toContain('\\includegraphics[width=0.8\\linewidth]{figures/plot.pdf}')
+    expect(String(value['latex'])).toContain('\\caption{Architecture}')
+    expect(await readFile(join(workspaceDir, 'paper', 'figures', 'plot.pdf'), 'utf8')).toBe('%PDF-fake')
+    // The metadata row still tracks the SVG (the managed file).
+    expect(domain.table('figures').get('p1:figures/plot.svg')).toMatchObject({ caption: 'Architecture' })
+  })
+
+  it('keeps the .svg block with a warning when no converter is available', async () => {
+    const { workspaceDir, tool } = await harness({ probe: () => Promise.resolve(null) })
+    const source = join(workspaceDir, 'plot.svg')
+    await writeFile(source, '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const value = await tool.execute({ path: source, project_id: 'p1' }, NO_EXEC) as Record<string, unknown>
+    expect(value['relPath']).toBe('figures/plot.svg')
+    expect(value['converted']).toBeUndefined()
+    expect(String(value['warning'])).toContain('No SVG converter found')
+    expect(String(value['latex'])).toContain('{figures/plot.svg}')
+  })
 })
 
 describe('figures metadata in the workbench service', () => {
@@ -135,5 +167,55 @@ describe('figures metadata in the workbench service', () => {
     expect(domain.table('figures').get('p1:figures/curve.png')).toBeUndefined()
     const listed = await service.listFigures({ projectId: 'p1' })
     expect(listed).toEqual({ ok: true, value: { figures: [] } })
+  })
+})
+
+
+describe('figure_organize', () => {
+  /** Boot the suite plus the organize tool. */
+  async function organizeHarness() {
+    const base = await harness()
+    return { ...base, organize: createFigureOrganizeTool(base.workspaceDir, base.domain) }
+  }
+
+  it('renames the file and sets the caption in one call', async () => {
+    const { domain, workspaceDir, organize } = await organizeHarness()
+    const figuresDir = join(workspaceDir, 'paper', 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    await writeFile(join(figuresDir, 'screenshot-1.png'), PIXELS)
+    await writeFile(join(workspaceDir, 'paper', 'main.tex'), '\\includegraphics{figures/screenshot-1.png}\n')
+    const outcome = await organize.execute({
+      project_id: 'p1',
+      path: 'figures/screenshot-1.png',
+      new_name: 'teaser.png',
+      caption: 'The teaser figure.',
+    }, NO_EXEC) as Record<string, unknown>
+    expect(outcome).toMatchObject({
+      ok: true, relPath: 'figures/teaser.png', caption: 'The teaser figure.', renamedFrom: 'figures/screenshot-1.png',
+    })
+    expect(domain.table('figures').get('p1:figures/teaser.png')?.caption).toBe('The teaser figure.')
+    await expect(readFile(join(workspaceDir, 'paper', 'main.tex'), 'utf8'))
+      .resolves.toContain('figures/teaser.png')
+  })
+
+  it('updates only the caption when no new name is given', async () => {
+    const { domain, workspaceDir, organize } = await organizeHarness()
+    const figuresDir = join(workspaceDir, 'paper', 'figures')
+    await mkdir(figuresDir, { recursive: true })
+    await writeFile(join(figuresDir, 'plot.png'), PIXELS)
+    const outcome = await organize.execute({
+      project_id: 'p1', path: 'figures/plot.png', caption: 'Loss over steps.',
+    }, NO_EXEC) as Record<string, unknown>
+    expect(outcome).toMatchObject({ ok: true, relPath: 'figures/plot.png', caption: 'Loss over steps.' })
+    expect(outcome['renamedFrom']).toBeUndefined()
+    expect(domain.table('figures').get('p1:figures/plot.png')?.caption).toBe('Loss over steps.')
+  })
+
+  it('requires at least one change and surfaces service failures', async () => {
+    const { organize } = await organizeHarness()
+    await expect(organize.execute({ project_id: 'p1', path: 'figures/x.png' }, NO_EXEC))
+      .rejects.toThrow('at least one of new_name or caption')
+    await expect(organize.execute({ project_id: 'nope', path: 'figures/x.png', caption: 'c' }, NO_EXEC))
+      .rejects.toThrow()
   })
 })

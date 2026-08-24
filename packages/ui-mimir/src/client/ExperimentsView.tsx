@@ -19,9 +19,11 @@ import {
   barWidthPercents,
   chartNameLines,
   failureCopy,
+  formatDurationMs,
   formatMetricValue,
   metricChartRows,
   numericMetricKeys,
+  relativeTime,
   type MetricChartRow,
   type ResearchT,
 } from './view-common.ts'
@@ -43,15 +45,26 @@ const CHART_ROW_HEIGHT = 26
  * value. Run names wrap to two lines via `chartNameLines`. Pure inline SVG —
  * no charting dependency.
  */
-function MetricChart({ metricKey, rows }: {
+function MetricChart({ metricKey, rows, generateLabel, generating, onGenerate }: {
   readonly metricKey: string
   readonly rows: readonly MetricChartRow[]
+  /** Localized "generate paper figure" button copy. */
+  readonly generateLabel: string
+  /** Whether this chart's generate request is in flight. */
+  readonly generating: boolean
+  /** The per-chart "generate paper figure" button. */
+  readonly onGenerate: () => void
 }) {
   const widths = barWidthPercents(rows.map(row => row.value))
   const height = rows.length * CHART_ROW_HEIGHT + 4
   return (
     <div className={css.metricChart}>
-      <h4 title={metricKey}>{metricKey}</h4>
+      <div className={css.metricChartHead}>
+        <h4 title={metricKey}>{metricKey}</h4>
+        <button type="button" className={css.retry} disabled={generating} onClick={onGenerate}>
+          {generateLabel}
+        </button>
+      </div>
       <svg
         className={css.metricChartSvg}
         viewBox={`0 0 ${String(CHART_WIDTH)} ${String(height)}`}
@@ -100,7 +113,7 @@ function MetricChart({ metricKey, rows }: {
  */
 export function ExperimentsView({
   experiments, artifact, servers, projectId, ensureServers, deleteExperiment, updateExperiment,
-  saveExperiment, retry, t,
+  saveExperiment, generateMetricFigure, retry, t,
 }: {
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
@@ -110,12 +123,16 @@ export function ExperimentsView({
   readonly deleteExperiment: (id: string) => Promise<ResearchFailureView | null>
   readonly updateExperiment: (id: string, serverId: string | null) => Promise<ResearchFailureView | null>
   readonly saveExperiment: (experiment: ExperimentInput) => Promise<ResearchFailureView | null>
+  /** The per-chart "generate paper figure" button (failures ride toasts). */
+  readonly generateMetricFigure: (metricKey: string, rows: readonly MetricChartRow[]) => Promise<void>
   /** Reload the slice after a load failure (re-selects the current project). */
   readonly retry: () => void
   readonly t: ResearchT
 }) {
   const [openMetrics, setOpenMetrics] = useState<Record<string, boolean>>({})
   const [actionError, setActionError] = useState<string | null>(null)
+  // The metric key whose paper-figure generation is in flight (double-click guard).
+  const [generatingKey, setGeneratingKey] = useState<string | null>(null)
   // The inline create/edit form; `editing` null means create.
   const [form, setForm] = useState<{ editing: ExperimentRecord | null } | null>(null)
   // The relink dropdown needs the server list; load it once per view mount.
@@ -180,9 +197,22 @@ export function ExperimentsView({
             <div className={css.metricCharts}>
               <h3 className={css.sectionTitle}>{t('experiments.compare')}</h3>
               <div className={css.metricChartGrid}>
-                {chartKeys.map(key => (
-                  <MetricChart key={key} metricKey={key} rows={metricChartRows(experiments.list, key)} />
-                ))}
+                {chartKeys.map((key) => {
+                  const rows = metricChartRows(experiments.list, key)
+                  return (
+                    <MetricChart
+                      key={key}
+                      metricKey={key}
+                      rows={rows}
+                      generateLabel={t('experiments.genFigure')}
+                      generating={generatingKey === key}
+                      onGenerate={() => {
+                        setGeneratingKey(key)
+                        void generateMetricFigure(key, rows).finally(() => { setGeneratingKey(null) })
+                      }}
+                    />
+                  )
+                })}
               </div>
             </div>
           )}
@@ -211,6 +241,21 @@ export function ExperimentsView({
                         <span className={css.experimentStatus} data-status={record.status}>
                           {t(`experimentStatus.${record.status}`)}
                         </span>
+                        {record.lastJob !== undefined && (
+                          <span
+                            className={css.experimentLastJob}
+                            title={record.lastJob.summary !== '' ? record.lastJob.summary : undefined}
+                          >
+                            {t('experiments.lastJob')}
+                            <span className={css.jobStatus} data-status={record.lastJob.status}>
+                              {t(`jobStatus.${record.lastJob.status}`)}
+                            </span>
+                            {record.lastJob.durationMs !== null && (
+                              <span>{formatDurationMs(record.lastJob.durationMs)}</span>
+                            )}
+                            <span>{relativeTime(t, record.lastJob.finishedAt)}</span>
+                          </span>
+                        )}
                       </td>
                       <td>
                         {entries.length > 0 && (

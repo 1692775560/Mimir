@@ -12,10 +12,14 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
-import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure } from './figure-insert.ts'
+import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths } from './figure-insert.ts'
+import { anySubscriptionDue } from './subscriptions.ts'
+import { metricFigureCaption, metricFigureFileName, metricFigureSvg } from './metric-figure.ts'
+import type { MetricChartRow } from './view-common.ts'
 import { pruneExpiredToasts, pushToast, type ResearchToast, type ResearchToastKind } from './toasts.ts'
 import type {
   ArxivEntry,
+  ArxivSubscriptionView,
   BibEntry,
   ExperimentRecord,
   ExperimentInput,
@@ -23,13 +27,19 @@ import type {
   JobRecord,
   OutlineNode,
   PaperRecord,
+  PaperSnapshotView,
   ResearchArtifactResult,
+  ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
   ResearchBibliographyResult,
+  ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
+  ResearchCheckZoteroResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
   ResearchCompileStatusView,
+  ResearchConvertFigureResult,
+  ResearchDeleteArxivSubscriptionResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -47,21 +57,41 @@ import type {
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
+  ResearchVenueTemplatesResult,
+  ResearchApplyVenueResult,
+  ResearchClearVenueResult,
+  ResearchDeleteMeetingDeckResult,
+  ResearchGenerateMeetingResult,
+  ResearchMeetingDecksResult,
+  MeetingDeckView,
+  MeetingInclude,
+  VenueTemplateView,
   ResearchOutlineResult,
+  ResearchPaperSnapshotResult,
+  ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProjectView,
   ResearchRemovePaperResult,
+  ResearchRenameFigureResult,
+  ResearchRevertPaperSnapshotResult,
+  ResearchSaveArxivSubscriptionResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSavePaperSourceResult,
+  ResearchSaveFigureResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
   ResearchSearchWebResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
+  ResearchUpdateFigureResult,
   ResearchUpdatePaperResult,
   ResearchWikiSnapshot,
+  ResearchZoteroCollectionsResult,
+  ResearchZoteroExportResult,
+  ResearchZoteroImportResult,
+  ResearchZoteroSearchResult,
   SectionMove,
   SectionOutlineTitles,
   ServerInput,
@@ -69,10 +99,12 @@ import type {
   ServerStatusView,
   SubsectionMove,
   WebSearchEntry,
+  ZoteroCollectionView,
+  ZoteroItemView,
 } from 'dsh-mimir/types'
 
 /**
- * The thirty-three Remote calls this controller needs, exactly as the
+ * The Remote calls this controller needs, exactly as the
  * generated `research` namespace types them.
  */
 export interface ResearchRemote {
@@ -95,15 +127,29 @@ export interface ResearchRemote {
     categories?: string | undefined
     lang?: string | undefined
   }) => Promise<RemoteResult<ResearchSearchWebResult>>
-  importPaper: (request: { entry: ArxivEntry }) => Promise<RemoteResult<ResearchImportPaperResult>>
+  importPaper: (request: { entry: ArxivEntry; projectId?: string | undefined }) => Promise<RemoteResult<ResearchImportPaperResult>>
   removePaper: (request: { arxivId: string }) => Promise<RemoteResult<ResearchRemovePaperResult>>
   updatePaper: (request: {
     arxivId: string
     tags?: string[] | undefined
     projectIds?: string[] | undefined
     notes?: string | undefined
+    relevance?: { projectId: string; score: number; reason: string } | undefined
   }) => Promise<RemoteResult<ResearchUpdatePaperResult>>
   fetchPaperPdf: (request: { arxivId: string }) => Promise<RemoteResult<ResearchFetchPaperPdfResult>>
+  checkZotero: () => Promise<RemoteResult<ResearchCheckZoteroResult>>
+  listZoteroCollections: () => Promise<RemoteResult<ResearchZoteroCollectionsResult>>
+  searchZotero: (request: { query: string; maxResults?: number }) => Promise<RemoteResult<ResearchZoteroSearchResult>>
+  importZoteroItem: (request: { key: string; projectId?: string | undefined }) => Promise<RemoteResult<ResearchZoteroImportResult>>
+  exportZoteroCollectionToBib: (request: {
+    projectId: string
+    collectionKey: string
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchZoteroExportResult>>
+  listArxivSubscriptions: () => Promise<RemoteResult<ResearchArxivSubscriptionsResult>>
+  saveArxivSubscription: (request: { query: string }) => Promise<RemoteResult<ResearchSaveArxivSubscriptionResult>>
+  deleteArxivSubscription: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteArxivSubscriptionResult>>
+  checkArxivSubscriptions: (request: { id?: string }) => Promise<RemoteResult<ResearchCheckArxivSubscriptionsResult>>
   listExperiments: (request: { projectId?: string }) => Promise<RemoteResult<ResearchExperimentsResult>>
   deleteExperiment: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteExperimentResult>>
   updateExperiment: (request: {
@@ -114,7 +160,45 @@ export interface ResearchRemote {
   readArtifact: (request: { projectId: string; name: string }) => Promise<RemoteResult<ResearchArtifactResult>>
   listFigures: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchFiguresResult>>
   deleteFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchDeleteFigureResult>>
+  renameFigure: (request: {
+    projectId: string
+    relPath: string
+    newName: string
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchRenameFigureResult>>
+  updateFigure: (request: {
+    projectId: string
+    relPath: string
+    caption: string
+  }) => Promise<RemoteResult<ResearchUpdateFigureResult>>
+  convertFigure: (request: { projectId: string; relPath: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchConvertFigureResult>>
+  saveFigure: (request: {
+    projectId: string
+    name: string
+    content: string
+    caption?: string | undefined
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchSaveFigureResult>>
   listServers: () => Promise<RemoteResult<ResearchListServersResult>>
+  listVenueTemplates: () => Promise<RemoteResult<ResearchVenueTemplatesResult>>
+  applyVenueTemplate: (request: {
+    projectId: string
+    dir?: string | undefined
+    templateId?: string | undefined
+    customName?: string | undefined
+  }) => Promise<RemoteResult<ResearchApplyVenueResult>>
+  clearVenueTemplate: (request: { projectId: string }) => Promise<RemoteResult<ResearchClearVenueResult>>
+  generateMeetingDeck: (request: {
+    projectId: string
+    title?: string | undefined
+    presenter?: string | undefined
+    date?: string | undefined
+    paperIds?: readonly string[] | undefined
+    figureRelPaths?: readonly string[] | undefined
+    include?: Partial<MeetingInclude> | undefined
+  }) => Promise<RemoteResult<ResearchGenerateMeetingResult>>
+  listMeetingDecks: (request: { projectId: string }) => Promise<RemoteResult<ResearchMeetingDecksResult>>
+  deleteMeetingDeck: (request: { projectId: string; file: string }) => Promise<RemoteResult<ResearchDeleteMeetingDeckResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -149,6 +233,14 @@ export interface ResearchRemote {
     baseOutline: SectionOutlineTitles[]
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSavePaperSourceResult>>
+  listPaperSnapshots: (request: { projectId: string }) => Promise<RemoteResult<ResearchPaperSnapshotsResult>>
+  getPaperSnapshot: (request: { projectId: string; id: string }) => Promise<RemoteResult<ResearchPaperSnapshotResult>>
+  revertPaperSnapshot: (request: {
+    projectId: string
+    id: string
+    baseMtimeMs: number
+    dir?: string | undefined
+  }) => Promise<RemoteResult<ResearchRevertPaperSnapshotResult>>
   exportWiki: () => Promise<RemoteResult<ResearchExportWikiResult>>
   importWiki: (request: {
     snapshot: ResearchWikiSnapshot
@@ -219,6 +311,13 @@ export interface ResearchPapersView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The venue picker's built-in template registry slice. */
+export interface ResearchVenueTemplatesView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly VenueTemplateView[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** The arXiv search panel: the last query's outcome (null before any search). */
 export interface ResearchArxivSearchView {
   readonly query: string
@@ -233,6 +332,38 @@ export interface ResearchWebSearchView {
   readonly status: 'loading' | 'ready' | 'error'
   readonly list: readonly WebSearchEntry[]
   readonly failure: ResearchFailureView | null
+}
+
+/** The papers view's Zotero section: connection status plus the collection list. */
+export interface ResearchZoteroView {
+  readonly status: ResearchLoadStatus
+  /** The settled probe outcome; null while the first check is still cold. */
+  readonly state: 'unconfigured' | 'ok' | 'failed' | null
+  /** The probe's failure reason (state `failed`); null otherwise. */
+  readonly message: string | null
+  /** The configured library's collections; empty until a successful check loads them. */
+  readonly collections: readonly ZoteroCollectionView[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The Zotero search panel: the last query's outcome (null before any search). */
+export interface ResearchZoteroSearchView {
+  readonly query: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly list: readonly ZoteroItemView[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The arXiv subscription bar of the papers view. */
+export interface ResearchSubscriptionsView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly ArxivSubscriptionView[]
+  /** True while a check run is in flight (manual or open-triggered). */
+  readonly checking: boolean
+  /** Whole-call failure of the list load; per-subscription check failures live in `checkErrors`. */
+  readonly failure: ResearchFailureView | null
+  /** The last run's per-subscription fetch failures, keyed by subscription id. */
+  readonly checkErrors: Readonly<Record<string, string>>
 }
 
 /** One per-project fetched view (experiments, artifact, figures). */
@@ -289,6 +420,15 @@ export interface ResearchBibView {
 /** One server's probe lifecycle: in flight, or the last settled view. */
 export type ServerCheckState = ServerStatusView | 'checking'
 
+/** One snapshot's fetched content (the diff source of the snapshots panel). */
+export interface ResearchSnapshotDetailView {
+  readonly projectId: string
+  readonly id: string
+  readonly status: 'loading' | 'ready' | 'error'
+  readonly files: readonly { readonly path: string; readonly content: string }[]
+  readonly failure: ResearchFailureView | null
+}
+
 /** Immutable view published to the panel. */
 export interface ResearchView {
   readonly projects: readonly ResearchProjectView[]
@@ -302,9 +442,17 @@ export interface ResearchView {
   readonly arxivSearch: ResearchArxivSearchView | null
   /** The papers view's web search outcome; null before the first search. */
   readonly webSearch: ResearchWebSearchView | null
+  /** The papers view's arXiv subscription bar. */
+  readonly arxivSubscriptions: ResearchSubscriptionsView
+  /** The papers view's Zotero section (connection status plus collections). */
+  readonly zotero: ResearchZoteroView
+  /** The Zotero section's search outcome; null before the first search. */
+  readonly zoteroSearch: ResearchZoteroSearchView | null
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
   readonly artifact: ResearchArtifactView | null
   readonly figures: ResearchProjectSlice<readonly FigureEntry[]> | null
+  /** The meetings view's generated decks of the selected project; null until first opened. */
+  readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -312,6 +460,12 @@ export interface ResearchView {
   readonly jobs: ResearchJobsView
   /** The selected project's bibliography; null until the bib panel first opens. */
   readonly bib: ResearchBibView | null
+  /** The selected project's paper snapshots; null until the snapshots panel first opens. */
+  readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
+  /** The venue picker's built-in template registry; loads once, lazily. */
+  readonly venueTemplates: ResearchVenueTemplatesView
+  /** The snapshot the snapshots panel expanded for diffing; null when closed. */
+  readonly snapshotDetail: ResearchSnapshotDetailView | null
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
@@ -330,13 +484,24 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   papers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   arxivSearch: null,
   webSearch: null,
+  arxivSubscriptions: Object.freeze({
+    status: 'cold', list: Object.freeze([]), checking: false, failure: null, checkErrors: Object.freeze({}),
+  }),
+  zotero: Object.freeze({
+    status: 'cold', state: null, message: null, collections: Object.freeze([]), failure: null,
+  }),
+  zoteroSearch: null,
   experiments: null,
   artifact: null,
   figures: null,
+  meetings: null,
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
   jobs: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   bib: null,
+  snapshots: null,
+  snapshotDetail: null,
+  venueTemplates: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -368,6 +533,9 @@ export class ResearchController implements HostObservable<ResearchView> {
   private loadPromise: Promise<void> | null = null
   private backupPromise: Promise<void> | null = null
   private papersPromise: Promise<void> | null = null
+  private subscriptionsPromise: Promise<void> | null = null
+  private zoteroPromise: Promise<void> | null = null
+  private zoteroGeneration = 0
   private serversPromise: Promise<void> | null = null
   private jobsPromise: Promise<void> | null = null
   private outlineGeneration = 0
@@ -376,7 +544,14 @@ export class ResearchController implements HostObservable<ResearchView> {
   private arxivGeneration = 0
   private webGeneration = 0
   private bibGeneration = 0
+  private snapshotsGeneration = 0
+  private snapshotDetailGeneration = 0
   private figuresInFlight = false
+  private meetingsGeneration = 0
+  private meetingsInFlight = false
+  /** A venue-registry load already in flight is left alone. */
+  private venueTemplatesInFlight = false
+  private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
   private compileQueued: string | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -516,6 +691,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (projectId === null) return
     this.select(projectId)
     if (this.view.figures !== null) this.loadFigures(projectId, true)
+    if (this.view.snapshots !== null) this.loadSnapshots(projectId, true)
     const artifact = this.view.artifact
     if (artifact !== null) this.loadArtifact(artifact.projectId, artifact.name, true)
     if (this.view.bib !== null) this.reloadBibliography()
@@ -525,6 +701,181 @@ export class ResearchController implements HostObservable<ResearchView> {
   ensurePapers(): void {
     if (this.view.papers.status === 'ready' || this.papersPromise !== null) return
     this.papersPromise = this.loadPapers().finally(() => { this.papersPromise = null })
+  }
+
+  /**
+   * Re-fetch the literature list without flipping the view to loading (the
+   * papers view's poll after handing a scoring request to the agent).
+   */
+  refreshPapers(): void {
+    void this.loadPapers(true)
+  }
+
+  /**
+   * Load the arXiv subscription list once, on the papers view's first open;
+   * once the list settles, a stale subscription (never checked, or checked
+   * over the auto-check gap ago) triggers one open-time check — the host's
+   * scheduled daily check is the steady-state path, this only freshens.
+   */
+  ensureSubscriptions(): void {
+    if (this.view.arxivSubscriptions.status === 'ready' || this.subscriptionsPromise !== null) return
+    this.subscriptionsPromise = this.loadSubscriptions()
+      .then(() => {
+        const { list, checking } = this.view.arxivSubscriptions
+        if (!checking && anySubscriptionDue(list, Date.now())) void this.checkArxivSubscriptions()
+      })
+      .finally(() => { this.subscriptionsPromise = null })
+  }
+
+  /**
+   * Add one arXiv subscription, then refresh the list. The failure view of a
+   * rejected save (empty or duplicate query) is returned so the bar surfaces it.
+   * @param query - the free-text query.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async saveArxivSubscription(query: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.saveArxivSubscription({ query })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadSubscriptions()
+      this.notify('success', 'toast.subscriptionSaved', result.value.subscription.query)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one arXiv subscription, then refresh the list.
+   * @param id - the subscription id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteArxivSubscription(id: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteArxivSubscription({ id })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadSubscriptions()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Check every subscription for new papers (the bar's manual button and the
+   * open-triggered refresh). The run republishes the list with each checked
+   * subscription's post-check view; per-subscription fetch failures land in
+   * `checkErrors`, a whole-call failure returns as the failure view.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async checkArxivSubscriptions(): Promise<ResearchFailureView | null> {
+    const current = this.view.arxivSubscriptions
+    if (current.checking) return null
+    this.publish({
+      arxivSubscriptions: Object.freeze({ ...current, checking: true, checkErrors: Object.freeze({}) }),
+    })
+    try {
+      const carried = await this.remote.checkArxivSubscriptions({})
+      if (this.disposed) return null
+      if (!carried.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+        return failureOf(carried.error.code, carried.error.message)
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+        return businessFailure(result.error)
+      }
+      // Checked subscriptions take their post-check view; unchecked ones (none
+      // today — the panel always checks all) carry over.
+      const checked = new Map(result.value.checks.map(check => [check.subscription.id, check]))
+      const checkErrors: Record<string, string> = {}
+      for (const check of result.value.checks) {
+        if (check.error !== null) checkErrors[check.subscription.id] = check.error
+      }
+      const list = this.view.arxivSubscriptions.list
+        .map(subscription => checked.get(subscription.id)?.subscription ?? subscription)
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'ready',
+          list: Object.freeze(list),
+          checking: false,
+          failure: null,
+          checkErrors: Object.freeze(checkErrors),
+        }),
+      })
+      const added = result.value.checks.reduce((sum, check) => sum + check.added.length, 0)
+      if (added > 0) this.notify('success', 'toast.subscriptionNewPapers', `× ${added}`)
+      return null
+    } catch (error) {
+      if (!this.disposed) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({ ...this.view.arxivSubscriptions, checking: false }),
+        })
+      }
+      return transportFailure(error)
+    }
+  }
+
+  /** Fetch the arXiv subscription list and publish it. */
+  private async loadSubscriptions(): Promise<void> {
+    const current = this.view.arxivSubscriptions
+    this.publish({
+      arxivSubscriptions: Object.freeze({ ...current, status: 'loading', failure: null }),
+    })
+    try {
+      const carried = await this.remote.listArxivSubscriptions()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({
+            ...this.view.arxivSubscriptions,
+            status: 'error',
+            failure: failureOf(carried.error.code, carried.error.message),
+          }),
+        })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({
+          arxivSubscriptions: Object.freeze({
+            ...this.view.arxivSubscriptions,
+            status: 'error',
+            failure: businessFailure(result.error),
+          }),
+        })
+        return
+      }
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'ready',
+          list: result.value.subscriptions,
+          failure: null,
+        }),
+      })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({
+        arxivSubscriptions: Object.freeze({
+          ...this.view.arxivSubscriptions,
+          status: 'error',
+          failure: transportFailure(error),
+        }),
+      })
+    }
   }
 
   /**
@@ -584,16 +935,18 @@ export class ResearchController implements HostObservable<ResearchView> {
    * @param projectId - wiki project id.
    * @param force - bypass the fresh-view skip.
    */
-  loadFigures(projectId: string, force = false): void {
+  loadFigures(projectId: string, force = false, quiet = false): void {
     const current = this.view.figures
     if (this.figuresInFlight) return
     if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
     this.figuresGeneration += 1
     const generation = this.figuresGeneration
     this.figuresInFlight = true
-    this.publish({
-      figures: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
-    })
+    if (!quiet || current === null || current.status !== 'ready') {
+      this.publish({
+        figures: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+      })
+    }
     void (async (): Promise<void> => {
       const publishFigures = (view: ResearchProjectSlice<readonly FigureEntry[]>): void => {
         if (this.disposed || generation !== this.figuresGeneration) return
@@ -620,6 +973,60 @@ export class ResearchController implements HostObservable<ResearchView> {
   }
 
   /**
+   * Rename one figure file of one project and force a rescan. The host moves
+   * the wiki metadata row along and rewrites the paper's `.tex` references;
+   * when any reference was rewritten and the editor draft is clean, the paper
+   * view re-reads the file (a dirty draft is left alone — its next save takes
+   * the conflict path). Failures surface as the returned failure view.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param newName - the new bare file name (same extension).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async renameFigure(projectId: string, relPath: string, newName: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.renameFigure({ projectId, relPath, newName, dir: this.dirOf(projectId) })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.figuresInFlight = false
+      this.loadFigures(projectId, true)
+      if (result.value.references > 0 && this.view.source?.saveState === 'clean') this.refreshPaper(projectId)
+      this.notify(
+        'success',
+        'toast.figureRenamed',
+        result.value.references > 0 ? `${newName} · ${result.value.references}` : newName,
+      )
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Replace one figure's wiki-recorded caption, then quietly rescan so the
+   * card repaints without a loading flash. Failures surface as the returned
+   * failure view.
+   * @param projectId - wiki project id.
+   * @param relPath - figure path relative to the paper directory.
+   * @param caption - the replacement caption.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async updateFigure(projectId: string, relPath: string, caption: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.updateFigure({ projectId, relPath, caption })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.figuresInFlight = false
+      this.loadFigures(projectId, true, true)
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
    * Delete one figure of one project and force a rescan. The failure view of
    * a rejected delete is returned so the card can surface it; a successful
    * delete republishes the figures slice.
@@ -643,6 +1050,304 @@ export class ResearchController implements HostObservable<ResearchView> {
   }
 
   /**
+   * List one project's generated meeting decks. Skips a reload of an
+   * already-ready same project unless forced (generation and deletion force).
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip.
+   */
+  loadMeetings(projectId: string, force = false): void {
+    const current = this.view.meetings
+    if (this.meetingsInFlight) return
+    if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
+    this.meetingsGeneration += 1
+    const generation = this.meetingsGeneration
+    this.meetingsInFlight = true
+    this.publish({
+      meetings: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishMeetings = (view: ResearchProjectSlice<readonly MeetingDeckView[]>): void => {
+        if (this.disposed || generation !== this.meetingsGeneration) return
+        this.publish({ meetings: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.listMeetingDecks({ projectId })
+        if (!carried.ok) {
+          publishMeetings({ projectId, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishMeetings({ projectId, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishMeetings({ projectId, status: 'ready', list: result.value.decks, failure: null })
+      } catch (error) {
+        publishMeetings({ projectId, status: 'error', list: [], failure: transportFailure(error) })
+      } finally {
+        this.meetingsInFlight = false
+      }
+    })()
+  }
+
+  /**
+   * Generate one project's meeting deck, then force a deck-list reload.
+   * Failures surface as the returned failure view; success toasts the slide
+   * count.
+   * @param projectId - wiki project id.
+   * @param request - the deck options (title/presenter/date/selections).
+   * @returns null on success, the settled failure otherwise.
+   */
+  async generateMeetingDeck(
+    projectId: string,
+    request: {
+      title?: string | undefined
+      presenter?: string | undefined
+      date?: string | undefined
+      paperIds?: readonly string[] | undefined
+      figureRelPaths?: readonly string[] | undefined
+      include?: Partial<MeetingInclude> | undefined
+    },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.generateMeetingDeck({ projectId, ...request })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.meetingsInFlight = false
+      this.loadMeetings(projectId, true)
+      this.notify('success', 'meetings.generated', String(result.value.slides))
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Delete one generated deck and force a deck-list reload.
+   * @param projectId - wiki project id.
+   * @param file - the deck file name within the project's meetings directory.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async deleteMeetingDeck(projectId: string, file: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.deleteMeetingDeck({ projectId, file })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.meetingsInFlight = false
+      this.loadMeetings(projectId, true)
+      this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Load the venue picker's built-in registry, once and lazily: a ready (or
+   * in-flight) registry is left alone.
+   */
+  ensureVenueTemplates(): void {
+    if (this.venueTemplatesInFlight) return
+    if (this.view.venueTemplates.status === 'ready') return
+    void this.loadVenueTemplates()
+  }
+
+  /** Fetch the venue registry and publish it. */
+  private async loadVenueTemplates(): Promise<void> {
+    this.venueTemplatesInFlight = true
+    this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.listVenueTemplates()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ venueTemplates: Object.freeze({ status: 'ready', list: result.value.templates, failure: null }) })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.venueTemplatesInFlight = false
+    }
+  }
+
+  /**
+   * Apply one venue (built-in `templateId` or uploaded-kit `customName`) to
+   * one project and refresh the project list so the header chip updates.
+   * @param projectId - wiki project id.
+   * @param options - built-in template id, or a custom kit display name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async applyVenueTemplate(
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.applyVenueTemplate({
+        projectId,
+        dir: this.dirOf(projectId),
+        ...(options.templateId === undefined ? {} : { templateId: options.templateId }),
+        ...(options.customName === undefined ? {} : { customName: options.customName }),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'toast.venueApplied', result.value.venue.name)
+      void this.loadProjects()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Clear one project's target venue and refresh the project list.
+   * @param projectId - wiki project id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async clearVenueTemplate(projectId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.clearVenueTemplate({ projectId })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'toast.venueCleared')
+      void this.loadProjects()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * List one project's paper snapshots (the snapshots panel's open and its
+   * refresh). Skips a refetch of an already-ready same project unless forced;
+   * a list load already in flight is left alone.
+   * @param projectId - wiki project id.
+   * @param force - bypass the fresh-view skip.
+   */
+  loadSnapshots(projectId: string, force = false): void {
+    if (this.snapshotsInFlight) return
+    const current = this.view.snapshots
+    if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
+    this.snapshotsGeneration += 1
+    const generation = this.snapshotsGeneration
+    this.snapshotsInFlight = true
+    this.publish({
+      snapshots: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSnapshots = (view: ResearchProjectSlice<readonly PaperSnapshotView[]>): void => {
+        if (this.disposed || generation !== this.snapshotsGeneration) return
+        this.publish({ snapshots: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.listPaperSnapshots({ projectId })
+        if (!carried.ok) {
+          publishSnapshots({ projectId, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSnapshots({ projectId, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSnapshots({ projectId, status: 'ready', list: result.value.snapshots, failure: null })
+      } catch (error) {
+        publishSnapshots({ projectId, status: 'error', list: [], failure: transportFailure(error) })
+      } finally {
+        this.snapshotsInFlight = false
+      }
+    })()
+  }
+
+  /**
+   * Fetch one snapshot's files for the panel's diff view. A newer open
+   * supersedes an in-flight older read, whose late reply is discarded by
+   * generation.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   */
+  loadSnapshotDetail(projectId: string, id: string): void {
+    this.snapshotDetailGeneration += 1
+    const generation = this.snapshotDetailGeneration
+    this.publish({
+      snapshotDetail: Object.freeze({ projectId, id, status: 'loading', files: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishDetail = (view: ResearchSnapshotDetailView): void => {
+        if (this.disposed || generation !== this.snapshotDetailGeneration) return
+        this.publish({ snapshotDetail: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.getPaperSnapshot({ projectId, id })
+        if (!carried.ok) {
+          publishDetail({ projectId, id, status: 'error', files: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishDetail({ projectId, id, status: 'error', files: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishDetail({ projectId, id, status: 'ready', files: result.value.files, failure: null })
+      } catch (error) {
+        publishDetail({ projectId, id, status: 'error', files: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /** Close the snapshots panel's diff view (superseding any in-flight read). */
+  closeSnapshotDetail(): void {
+    this.snapshotDetailGeneration += 1
+    if (this.view.snapshotDetail !== null) this.publish({ snapshotDetail: null })
+  }
+
+  /**
+   * Revert the paper to one snapshot: the snapshot's files land on disk under
+   * the same optimistic concurrency as `savePaperSource` (the base is the
+   * current draft's mtime). Both a success and a conflict re-read the outline
+   * and the source from the Host, because the file on disk is newer than
+   * either view; a success also re-reads the snapshot list.
+   * @param projectId - wiki project id.
+   * @param id - the snapshot id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async revertSnapshot(projectId: string, id: string): Promise<ResearchFailureView | null> {
+    const source = this.view.source
+    if (source === null || source.projectId !== projectId
+      || source.status !== 'ready' || source.mtimeMs === null) {
+      return failureOf('source-not-ready', 'paper source is not loaded')
+    }
+    try {
+      const carried = await this.remote.revertPaperSnapshot({
+        projectId, id, baseMtimeMs: source.mtimeMs, dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) {
+        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        return businessFailure(result.error)
+      }
+      this.refreshPaper(projectId)
+      this.snapshotsInFlight = false
+      this.loadSnapshots(projectId, true)
+      this.notify('success', 'toast.snapshotReverted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
    * Insert one figure's standard LaTeX block into the selected project's
    * `main.tex` (the figures view's "insert into paper" button). The figure
    * file already lives in the paper directory — the figures view lists exactly
@@ -650,37 +1355,117 @@ export class ResearchController implements HostObservable<ResearchView> {
    * before `\end{document}` and rides the normal draft/autosave path, so an
    * unsaved draft survives and the optimistic-concurrency save still guards
    * the write. A figure the draft already references is never inserted twice:
-   * the existing `\includegraphics` line becomes the jump target instead. SVG
-   * figures reject up front (LaTeX cannot embed them and the paper scaffold
-   * carries no SVG convention). Either way the paper view jumps to the block.
+   * the existing `\includegraphics` line becomes the jump target instead. An
+   * SVG figure is converted on the host first (`convertFigure` — vector PDF
+   * preferred, raster PNG as the fallback) and the block references the
+   * product; a machine with no usable converter keeps the failure toast with
+   * the reason attached. Either way the paper view jumps to the block.
    * @param projectId - wiki project id.
    * @param entry - the figure card's entry.
    * @returns the 1-based target line for the paper view to jump to, or null
    * when the insert failed (a toast already carries the reason).
    */
   async insertFigureIntoPaper(projectId: string, entry: FigureEntry): Promise<number | null> {
-    if (isSvgFigure(entry.name)) {
-      this.notify('error', 'toast.figureSvg', entry.name)
-      return null
-    }
     const source = await this.ensureSourceReady(projectId)
     if (source === null || this.disposed) return null
     if (source.saveState === 'conflict') {
       this.notify('error', 'toast.figureInsertConflict')
       return null
     }
-    const existing = findFigureReferenceLine(source.content, entry.relPath)
-    if (existing !== null) {
-      this.jumpPaper(projectId, existing)
-      this.notify('info', 'toast.figureAlreadyInserted', entry.name)
-      return existing
+    // The duplicate guard covers the SVG's converted products too: an
+    // already-inserted `foo.pdf` reads as "foo.svg is already inserted".
+    for (const candidate of [entry.relPath, ...svgConvertedRelPaths(entry.relPath)]) {
+      const existing = findFigureReferenceLine(source.content, candidate)
+      if (existing !== null) {
+        this.jumpPaper(projectId, existing)
+        this.notify('info', 'toast.figureAlreadyInserted', entry.name)
+        return existing
+      }
     }
-    const block = figureBlockOf(entry.relPath, entry.caption ?? '')
+    let relPath = entry.relPath
+    let convertedName: string | null = null
+    if (isSvgFigure(entry.name)) {
+      try {
+        const carried = await this.remote.convertFigure({ projectId, relPath: entry.relPath, dir: this.dirOf(projectId) })
+        if (!carried.ok) {
+          this.notify('error', 'toast.figureSvgConvertFailed', carried.error.message)
+          return null
+        }
+        const result = carried.value
+        if (!result.ok) {
+          this.notify('error', 'toast.figureSvgConvertFailed', businessFailure(result.error).message)
+          return null
+        }
+        relPath = result.value.relPath
+        convertedName = `${entry.name} → ${relPath.split('/').pop() ?? relPath}`
+      } catch (error) {
+        this.notify('error', 'toast.figureSvgConvertFailed', transportFailure(error).message)
+        return null
+      }
+      if (this.disposed) return null
+    }
+    const block = figureBlockOf(relPath, entry.caption ?? '')
     const inserted = insertFigureBlock(source.content, block)
     this.edit(inserted.content)
     this.jumpPaper(projectId, inserted.line)
-    this.notify('success', 'toast.figureInserted', entry.name)
+    this.notify('success', convertedName === null ? 'toast.figureInserted' : 'toast.figureConvertedSvg', convertedName ?? entry.name)
+    if (convertedName !== null) {
+      // A conversion wrote a new product file into the paper directory; the
+      // figures view's cached scan does not know about it yet.
+      this.figuresInFlight = false
+      this.loadFigures(projectId, true)
+    }
     return inserted.line
+  }
+
+  /**
+   * Generate one metric's comparison chart as a paper figure (the experiments
+   * view's per-chart button): render the rows as a standalone SVG document,
+   * save it through the host (`saveFigure` — writes `figures/metric-<key>.svg`,
+   * registers the caption in the wiki's figures table, and runs the SVG
+   * conversion pipeline), then insert the figure block exactly like the
+   * figures view's insert button (the SVG branch of `insertFigureIntoPaper`
+   * reuses the just-converted product, references it, jumps, and toasts). A
+   * rejected save toasts the reason and touches nothing.
+   * @param projectId - wiki project id.
+   * @param metricKey - the metric the chart compares.
+   * @param rows - the chart's rows (runs carrying a finite value, oldest first).
+   * @returns the 1-based target line for the paper view to jump to, or null
+   * when the save or insert failed (a toast already carries the reason).
+   */
+  async generateMetricFigure(projectId: string, metricKey: string, rows: readonly MetricChartRow[]): Promise<number | null> {
+    if (rows.length === 0) return null
+    const name = metricFigureFileName(metricKey)
+    const caption = metricFigureCaption(metricKey, rows)
+    const content = metricFigureSvg(metricKey, rows)
+    let saved: { relPath: string; caption: string }
+    try {
+      const carried = await this.remote.saveFigure({ projectId, name, content, caption, dir: this.dirOf(projectId) })
+      if (!carried.ok) {
+        this.notify('error', 'toast.metricFigureFailed', carried.error.message)
+        return null
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.notify('error', 'toast.metricFigureFailed', businessFailure(result.error).message)
+        return null
+      }
+      saved = result.value
+    } catch (error) {
+      this.notify('error', 'toast.metricFigureFailed', transportFailure(error).message)
+      return null
+    }
+    if (this.disposed) return null
+    // The figures view's cached scan does not know the new file yet.
+    this.figuresInFlight = false
+    this.loadFigures(projectId, true)
+    return this.insertFigureIntoPaper(projectId, {
+      name: saved.relPath.split('/').pop() ?? name,
+      relPath: saved.relPath,
+      sizeBytes: content.length,
+      mtimeMs: Date.now(),
+      caption: saved.caption,
+    })
   }
 
   /** Clear the consumed paper-editor jump ticket (the paper view's callback). */
@@ -882,13 +1667,16 @@ export class ResearchController implements HostObservable<ResearchView> {
   /**
    * Import one arXiv entry into the wiki, then refresh the literature list so
    * both the library grid and the result card's imported state repaint. The
-   * failure view of a rejected import is returned so the card can surface it.
+   * selected project rides along as the paper's initial project link, so each
+   * project's literature view fills up on its own. The failure view of a
+   * rejected import is returned so the card can surface it.
    * @param entry - the parsed arXiv entry.
+   * @param projectId - the selected project to link, when any.
    * @returns null on success, the settled failure otherwise.
    */
-  async importPaper(entry: ArxivEntry): Promise<ResearchFailureView | null> {
+  async importPaper(entry: ArxivEntry, projectId?: string): Promise<ResearchFailureView | null> {
     try {
-      const carried = await this.remote.importPaper({ entry })
+      const carried = await this.remote.importPaper(projectId === undefined ? { entry } : { entry, projectId })
       if (this.disposed) return null
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
@@ -964,6 +1752,169 @@ export class ResearchController implements HostObservable<ResearchView> {
       await this.loadPapers()
       this.notify('success', 'toast.pdfFetched')
       return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Probe the Zotero connection once, on the papers view's first open; a
+   * successful probe also loads the collection list. A failed or unconfigured
+   * probe stays retryable through {@link recheckZotero}.
+   */
+  ensureZotero(): void {
+    if (this.view.zotero.status === 'ready' || this.zoteroPromise !== null) return
+    this.zoteroPromise = this.loadZotero().finally(() => { this.zoteroPromise = null })
+  }
+
+  /** Re-probe the Zotero connection (the section's retry entry). */
+  recheckZotero(): void {
+    this.zoteroPromise ??= this.loadZotero().finally(() => { this.zoteroPromise = null })
+  }
+
+  /** Run the connection probe; on `ok` follow it with the collection list. */
+  private async loadZotero(): Promise<void> {
+    const publishZotero = (view: ResearchZoteroView): void => {
+      if (this.disposed) return
+      this.publish({ zotero: Object.freeze(view) })
+    }
+    publishZotero({ status: 'loading', state: null, message: null, collections: [], failure: null })
+    try {
+      const carried = await this.remote.checkZotero()
+      if (!carried.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: failureOf(carried.error.code, carried.error.message),
+        })
+        return
+      }
+      const probe = carried.value
+      if (!probe.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: businessFailure(probe.error),
+        })
+        return
+      }
+      const status = probe.value
+      if (status.state !== 'ok') {
+        publishZotero({
+          status: 'ready', state: status.state, message: status.message ?? null,
+          collections: [], failure: null,
+        })
+        return
+      }
+      const listed = await this.remote.listZoteroCollections()
+      if (!listed.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: failureOf(listed.error.code, listed.error.message),
+        })
+        return
+      }
+      if (!listed.value.ok) {
+        publishZotero({
+          status: 'error', state: null, message: null, collections: [],
+          failure: businessFailure(listed.value.error),
+        })
+        return
+      }
+      publishZotero({ status: 'ready', state: 'ok', message: null, collections: listed.value.value.collections, failure: null })
+    } catch (error) {
+      publishZotero({ status: 'error', state: null, message: null, collections: [], failure: transportFailure(error) })
+    }
+  }
+
+  /**
+   * Search the configured Zotero library from the papers view; the outcome
+   * lands in the view's `zoteroSearch` slice. A superseded query never
+   * publishes.
+   * @param query - the free-text query; an empty one never leaves the client.
+   */
+  searchZotero(query: string): void {
+    const trimmed = query.trim()
+    if (trimmed === '') return
+    this.zoteroGeneration += 1
+    const generation = this.zoteroGeneration
+    this.publish({
+      zoteroSearch: Object.freeze({ query: trimmed, status: 'loading', list: Object.freeze([]), failure: null }),
+    })
+    void (async (): Promise<void> => {
+      const publishSearch = (view: ResearchZoteroSearchView): void => {
+        if (this.disposed || generation !== this.zoteroGeneration) return
+        this.publish({ zoteroSearch: Object.freeze(view) })
+      }
+      try {
+        const carried = await this.remote.searchZotero({ query: trimmed })
+        if (!carried.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: failureOf(carried.error.code, carried.error.message) })
+          return
+        }
+        const result = carried.value
+        if (!result.ok) {
+          publishSearch({ query: trimmed, status: 'error', list: [], failure: businessFailure(result.error) })
+          return
+        }
+        publishSearch({ query: trimmed, status: 'ready', list: result.value.results, failure: null })
+      } catch (error) {
+        publishSearch({ query: trimmed, status: 'error', list: [], failure: transportFailure(error) })
+      }
+    })()
+  }
+
+  /**
+   * Import one Zotero item into the wiki, then refresh the literature list so
+   * the library grid and the item's imported state repaint. The selected
+   * project rides along as the paper's initial project link, matching the
+   * arXiv import. The failure view of a rejected import is returned so the
+   * row can surface it.
+   * @param key - the Zotero item key.
+   * @param projectId - the selected project to link, when any.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async importZoteroItem(key: string, projectId?: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.importZoteroItem(projectId === undefined ? { key } : { key, projectId })
+      if (this.disposed) return null
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadPapers()
+      this.notify('success', 'toast.paperImported')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Export one Zotero collection into one project's `references.bib`, then
+   * repaint the open bib panel from the Host's authoritative file. The
+   * settled counts are returned so the invoking button shows its own feedback.
+   * @param projectId - wiki project id.
+   * @param collectionKey - the Zotero collection to export.
+   * @returns the settled counts on success, the failure view otherwise.
+   */
+  async exportZoteroCollectionToBib(
+    projectId: string,
+    collectionKey: string,
+  ): Promise<ResearchFailureView | ResearchImportCounts> {
+    try {
+      const carried = await this.remote.exportZoteroCollectionToBib({
+        projectId, collectionKey, dir: this.dirOf(projectId),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      const counts = Object.freeze({ added: result.value.added, skipped: result.value.skipped })
+      if (this.disposed) return counts
+      this.notify('success', 'toast.bibImported', `× ${counts.added}`)
+      const bib = this.view.bib
+      if (bib !== null && bib.projectId === projectId && bib.status !== 'loading') {
+        this.publish({ bib: Object.freeze({ ...bib, lastImport: counts }) })
+        this.reloadBibliography()
+      }
+      return counts
     } catch (error) {
       return transportFailure(error)
     }
@@ -1498,15 +2449,28 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
   }
 
-  /** Toast each job whose poll-observed status newly flipped terminal. */
+  /**
+   * Toast each job whose poll-observed status newly flipped terminal, then
+   * refresh the loaded experiments slice when a LINKED job settled: the
+   * Host's write-back flipped that experiment's status and recorded the
+   * outcome as `lastJob`, and the row should show both without a reselect.
+   */
   private notifyJobTransitions(prev: readonly JobRecord[], next: readonly JobRecord[]): void {
     const before = new Map(prev.map(job => [job.id, job.status]))
+    let linkedSettled = false
     for (const job of next) {
       const prior = before.get(job.id)
       if (prior === undefined || prior === job.status) continue
       const detail = job.command.length > 60 ? `${job.command.slice(0, 59)}…` : job.command
       if (job.status === 'succeeded') this.notify('success', 'toast.jobSucceeded', detail)
       else if (job.status === 'failed') this.notify('error', 'toast.jobFailed', detail)
+      if ((job.status === 'succeeded' || job.status === 'failed') && job.experimentId !== undefined) {
+        linkedSettled = true
+      }
+    }
+    const experiments = this.view.experiments
+    if (linkedSettled && experiments !== null && experiments.status === 'ready') {
+      void this.loadExperiments(experiments.projectId, this.outlineGeneration)
     }
   }
 
@@ -1520,6 +2484,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   select(projectId: string): void {
     this.outlineGeneration += 1
     const generation = this.outlineGeneration
+    this.snapshotsGeneration += 1
+    this.snapshotDetailGeneration += 1
     this.clearTimers()
     this.saveInFlight = false
     this.saveAgain = false
@@ -1529,6 +2495,8 @@ export class ResearchController implements HostObservable<ResearchView> {
         projectId, status: 'loading', content: '', mtimeMs: null, saveState: 'clean', failure: null,
       }),
       experiments: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+      snapshots: null,
+      snapshotDetail: null,
     })
     void this.loadOutline(projectId, generation)
     void this.loadCompileStatus(projectId)
@@ -1672,9 +2640,11 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
   }
 
-  /** Fetch the literature list and publish it. */
-  private async loadPapers(): Promise<void> {
-    this.publish({ papers: Object.freeze({ ...this.view.papers, status: 'loading', failure: null }) })
+  /** Fetch the literature list and publish it. A quiet poll keeps a ready list on screen. */
+  private async loadPapers(quiet = false): Promise<void> {
+    if (!quiet || this.view.papers.status !== 'ready') {
+      this.publish({ papers: Object.freeze({ ...this.view.papers, status: 'loading', failure: null }) })
+    }
     try {
       const carried = await this.remote.listPapers()
       if (this.disposed) return

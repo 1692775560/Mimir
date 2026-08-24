@@ -1,9 +1,10 @@
 /**
- * The research workbench: a wide fixed overlay with a left rail (the six
+ * The research workbench: a wide fixed overlay with a left rail (the seven
  * view tabs plus the project picker at the bottom) and a content area that
  * renders the active view — the project overview card, the Overleaf-style
  * paper editor, the literature library, the experiment records with the
- * experiment log, the paper-figure grid, and the compute-server board. All
+ * experiment log, the paper-figure grid, the group-meeting deck builder, and
+ * the compute-server board. All
  * data arrives through the four props shares — the shared store carries
  * open/selection/active-tab, the `useResearch` hook carries the remote view,
  * and the inject face carries the verbs. The component owns no subscription
@@ -11,7 +12,7 @@
  * @module dsh-client-ui-mimir/client/ResearchPanel
  */
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
 import { arrowTab, trapFocusIndex } from './focus.ts'
@@ -22,6 +23,7 @@ import { PaperView } from './PaperView.tsx'
 import { PapersView } from './PapersView.tsx'
 import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
+import { MeetingsView } from './MeetingsView.tsx'
 import { ServersView } from './ServersView.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import css from './ResearchPanel.module.css'
@@ -33,6 +35,7 @@ const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
   papers: 'tab.papers',
   experiments: 'tab.experiments',
   figures: 'tab.figures',
+  meetings: 'tab.meetings',
   servers: 'tab.servers',
 }
 
@@ -79,10 +82,27 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
       <path d="M5 4.75h.01M5 11.25h.01" />
     </svg>
   ),
+  meetings: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="13" height="9" rx="1.5" />
+      <path d="M8 11v2.5M5.5 14.5h5" />
+      <path d="M4.5 8.5l2-2 2 1.5 3-3" />
+    </svg>
+  ),
 }
 
 /** The artifact shown by the experiments view's log section. */
 const EXPERIMENT_LOG_ARTIFACT = 'EXPERIMENT_LOG.md'
+
+/** localStorage key the sidebar project-list fold persists under. */
+const PROJECTS_COLLAPSED_STORAGE_KEY = 'mimir.sideProjects.collapsed'
+
+/** 10×10 disclosure chevron, rotated by the consumer's data attribute. */
+const CHEVRON_ICON = (
+  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 3.5 5 6l2.5-2.5" />
+  </svg>
+)
 
 /** 14×14 header glyphs for the theme and language switches. */
 const MOON_ICON = (
@@ -118,12 +138,19 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
  */
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
-  ensure, selectProject, compile, editSource, reloadSource,
-  ensurePapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
-  insertFigure, consumePaperJump,
+  ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
+  requestRelatedWork, requestPaperScore, requestFigureOrganize,
+  ensurePapers, refreshPapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
+  renameFigure, updateFigure,
+  ensureSubscriptions, saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
+  ensureZotero, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
+  insertFigure, consumePaperJump, generateMetricFigure,
   deleteExperiment, updateExperiment, saveExperiment, ensureServers, saveServer, deleteServer, checkServer, checkAllServers,
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
+  loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
+  ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
+  loadMeetings, generateMeetingDeck, deleteMeetingDeck,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -141,17 +168,37 @@ export function ResearchPanel({
   const papers = useResearch(view => view.papers)
   const arxivSearch = useResearch(view => view.arxivSearch)
   const webSearch = useResearch(view => view.webSearch)
+  const arxivSubscriptions = useResearch(view => view.arxivSubscriptions)
+  const zotero = useResearch(view => view.zotero)
+  const zoteroSearch = useResearch(view => view.zoteroSearch)
   const experiments = useResearch(view => view.experiments)
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
+  const meetings = useResearch(view => view.meetings)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
   const bib = useResearch(view => view.bib)
+  const snapshots = useResearch(view => view.snapshots)
+  const venueTemplates = useResearch(view => view.venueTemplates)
+  const snapshotDetail = useResearch(view => view.snapshotDetail)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // Sidebar project list fold; persists across panel opens like the paper
+  // pane layout does. Collapsed still shows the selected project's name.
+  const [projectsCollapsed, setProjectsCollapsed] = useState(
+    () => localStorage.getItem(PROJECTS_COLLAPSED_STORAGE_KEY) === '1',
+  )
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROJECTS_COLLAPSED_STORAGE_KEY, projectsCollapsed ? '1' : '0')
+    } catch {
+      // A full/blocked localStorage drops persistence; the fold still works.
+    }
+  }, [projectsCollapsed])
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -167,7 +214,9 @@ export function ResearchPanel({
   }, [open, projectsStatus, selectedProjectId, projects, selectProject])
   useEffect(() => {
     if (open && activeTab === 'papers') ensurePapers()
-  }, [open, activeTab, ensurePapers])
+    if (open && activeTab === 'papers') ensureSubscriptions()
+    if (open && activeTab === 'papers') ensureZotero()
+  }, [open, activeTab, ensurePapers, ensureSubscriptions, ensureZotero])
   // The overview's stat chips count the papers and figures slices, both lazy:
   // warm them when the overview opens so the chips show real numbers instead
   // of dashes; the activity card reads the jobs slice, equally lazy. The
@@ -315,7 +364,7 @@ export function ResearchPanel({
             </button>
           </div>
         </div>
-        {/* The six views as a tablist: 1–6 and ArrowUp/Down/Left/Right all
+        {/* The seven views as a tablist: 1–7 and ArrowUp/Down/Left/Right all
             switch, aria-selected carries the active tab to AT. */}
         <nav
           className={css.nav}
@@ -350,12 +399,26 @@ export function ResearchPanel({
             </button>
           ))}
         </nav>
-        <div className={css.sideProjects}>
-          <h3 className={css.sectionTitle}>{t('projects.title')}</h3>
-          {(projectsStatus === 'cold' || projectsStatus === 'loading') && (
+        <div className={css.sideProjects} data-collapsed={projectsCollapsed || undefined}>
+          <button
+            type="button"
+            className={css.sideProjectsToggle}
+            aria-expanded={!projectsCollapsed}
+            aria-label={t(projectsCollapsed ? 'projects.expand' : 'projects.collapse')}
+            onClick={() => { setProjectsCollapsed(prev => !prev) }}
+          >
+            <span className={css.collapseChevron} data-up={projectsCollapsed || undefined} aria-hidden>{CHEVRON_ICON}</span>
+            <span className={css.sectionTitle}>{t('projects.title')}</span>
+            {projectsCollapsed && selectedProject !== undefined && (
+              <span className={css.sideProjectsCurrent} title={selectedProject.title}>
+                {selectedProject.title}
+              </span>
+            )}
+          </button>
+          {!projectsCollapsed && (projectsStatus === 'cold' || projectsStatus === 'loading') && (
             <p className={css.hint}>{t('projects.loading')}</p>
           )}
-          {projectsStatus === 'error' && (
+          {!projectsCollapsed && projectsStatus === 'error' && (
             <p className={css.failure} role="status">
               {t('error.projects')}
               <button type="button" className={css.retry} onClick={ensure}>
@@ -363,10 +426,10 @@ export function ResearchPanel({
               </button>
             </p>
           )}
-          {projectsStatus === 'ready' && projects.length === 0 && (
+          {!projectsCollapsed && projectsStatus === 'ready' && projects.length === 0 && (
             <p className={css.hint}>{t('projects.empty')}</p>
           )}
-          {projectsStatus === 'ready' && projects.length > 0 && (
+          {!projectsCollapsed && projectsStatus === 'ready' && projects.length > 0 && (
             <div className={css.projectList}>
               {projects.map(project => (
                 <button
@@ -395,10 +458,12 @@ export function ResearchPanel({
             compileView={compileView}
             source={source}
             projectId={selectedProjectId}
+            projectTitle={selectedProject?.title}
             dir={selectedProject?.paperDir}
             editSource={editSource}
             reloadSource={reloadSource}
             compile={compile}
+            requestCompileFix={requestCompileFix}
             bib={bib}
             papers={papers}
             ensureBibliography={ensureBibliography}
@@ -413,6 +478,19 @@ export function ResearchPanel({
             consumePaperJump={consumePaperJump}
             fullscreen={paperFullscreen}
             setFullscreen={actions.setPaperFullscreen}
+            snapshots={snapshots}
+            snapshotDetail={snapshotDetail}
+            loadSnapshots={loadSnapshots}
+            loadSnapshotDetail={loadSnapshotDetail}
+            closeSnapshotDetail={closeSnapshotDetail}
+            revertSnapshot={revertSnapshot}
+            venue={selectedProject?.venue}
+            venueTemplates={venueTemplates}
+            ensureVenueTemplates={ensureVenueTemplates}
+            applyVenueTemplate={applyVenueTemplate}
+            clearVenueTemplate={clearVenueTemplate}
+            uploadTemplateFiles={uploadTemplateFiles}
+            requestVenueFormat={requestVenueFormat}
             t={t}
           />
         )}
@@ -421,9 +499,13 @@ export function ResearchPanel({
             papers={papers}
             arxivSearch={arxivSearch}
             webSearch={webSearch}
+            arxivSubscriptions={arxivSubscriptions}
             projects={projects}
             selectedProjectId={selectedProjectId}
             ensurePapers={ensurePapers}
+            saveArxivSubscription={saveArxivSubscription}
+            deleteArxivSubscription={deleteArxivSubscription}
+            checkArxivSubscriptions={checkArxivSubscriptions}
             searchArxiv={searchArxiv}
             searchWeb={searchWeb}
             importPaper={importPaper}
@@ -431,6 +513,15 @@ export function ResearchPanel({
             removePaper={removePaper}
             importPapersToBib={importPapersToBib}
             fetchPaperPdf={fetchPaperPdf}
+            zotero={zotero}
+            zoteroSearch={zoteroSearch}
+            recheckZotero={recheckZotero}
+            searchZotero={searchZotero}
+            importZoteroItem={importZoteroItem}
+            exportZoteroCollectionToBib={exportZoteroCollectionToBib}
+            refreshPapers={refreshPapers}
+            requestRelatedWork={requestRelatedWork}
+            requestPaperScore={requestPaperScore}
             t={t}
           />
         )}
@@ -444,6 +535,11 @@ export function ResearchPanel({
             deleteExperiment={deleteExperiment}
             updateExperiment={updateExperiment}
             saveExperiment={saveExperiment}
+            generateMetricFigure={(metricKey, rows) =>
+              selectedProjectId === null
+                ? Promise.resolve()
+                : generateMetricFigure(selectedProjectId, metricKey, rows)
+            }
             retry={() => { if (selectedProjectId !== null) selectProject(selectedProjectId) }}
             t={t}
           />
@@ -453,11 +549,30 @@ export function ResearchPanel({
             figures={figures}
             experiments={experiments}
             projectId={selectedProjectId}
+            projectTitle={selectedProject?.title ?? ''}
             dir={selectedProject?.paperDir}
             loadFigures={loadFigures}
             uploadFigures={uploadFigures}
             deleteFigure={deleteFigure}
+            renameFigure={renameFigure}
+            updateFigure={updateFigure}
+            requestFigureOrganize={requestFigureOrganize}
             insertFigure={(entry) => selectedProjectId === null ? Promise.resolve() : insertFigure(selectedProjectId, entry)}
+            t={t}
+          />
+        )}
+        {activeTab === 'meetings' && (
+          <MeetingsView
+            meetings={meetings}
+            papers={papers}
+            figures={figures}
+            projectId={selectedProjectId}
+            dir={selectedProject?.paperDir}
+            ensurePapers={ensurePapers}
+            loadFigures={loadFigures}
+            loadMeetings={loadMeetings}
+            generateMeetingDeck={generateMeetingDeck}
+            deleteMeetingDeck={deleteMeetingDeck}
             t={t}
           />
         )}

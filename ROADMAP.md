@@ -13,6 +13,16 @@ polish round every few iterations.
 
 ## Done
 
+- [x] Bundled research skills (v0.8.0): nine ARIS-style workflow playbooks
+      (pipeline / lit-review / novelty-check / experiment-plan /
+      result-to-claim / paper-drafting / citation-audit / rebuttal /
+      figure-plan) ship inside dsh-mimir and register via
+      `ctx.skills.register()` at runtime rank 250 — project-level same-name
+      skills override; the `skills` service is consumed through
+      `ctx.inject` so registry-less compositions load unchanged;
+      `skills.enabled` config knob; bodies ride the bundle as template
+      literals (lib-only publishing)
+
 - [x] Server tags + experiment server links: ServerRecord grew `tags`
       (`.default([])`, no version bump) with saveServer cleaning
       (trim/empty-out/dedupe), ExperimentRecord grew `serverId` (optional, no

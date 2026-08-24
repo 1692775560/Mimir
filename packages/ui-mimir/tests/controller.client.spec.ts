@@ -15,6 +15,7 @@ import type {
   ResearchCheckServerResult,
   ResearchCompileResult,
   ResearchCompileStatusResult,
+  ResearchConvertFigureResult,
   ResearchDeleteExperimentResult,
   ResearchDeleteFigureResult,
   ResearchDeleteJobResult,
@@ -33,6 +34,7 @@ import type {
   ResearchRemovePaperResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
+  ResearchSaveFigureResult,
   ResearchSavePaperSourceResult,
   ResearchSaveServerResult,
   ResearchSearchArxivResult,
@@ -85,6 +87,8 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     readArtifact: missing('readArtifact'),
     listFigures: missing('listFigures'),
     deleteFigure: missing('deleteFigure'),
+    convertFigure: missing('convertFigure'),
+    saveFigure: missing('saveFigure'),
     listServers: missing('listServers'),
     saveServer: missing('saveServer'),
     deleteServer: missing('deleteServer'),
@@ -97,6 +101,9 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     importPapersToBib: missing('importPapersToBib'),
     reorderPaperSections: missing('reorderPaperSections'),
     reorderPaperSubsections: missing('reorderPaperSubsections'),
+    listPaperSnapshots: missing('listPaperSnapshots'),
+    getPaperSnapshot: missing('getPaperSnapshot'),
+    revertPaperSnapshot: missing('revertPaperSnapshot'),
     updateExperiment: missing('updateExperiment'),
     saveExperiment: missing('saveExperiment'),
     listBackups: missing('listBackups'),
@@ -850,6 +857,69 @@ describe('ResearchController remote jobs', () => {
     })
   })
 
+  it('refreshes the loaded experiments slice when a linked job settles', async () => {
+    let round = 0
+    let experimentLoads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => {
+        experimentLoads += 1
+        return Promise.resolve(carried<ResearchExperimentsResult>({ ok: true, value: { experiments: [] } }))
+      },
+      listJobs: () => {
+        round += 1
+        const jobs = round === 1
+          ? [JOB_RUNNING]
+          : [{ ...JOB_RUNNING, status: 'succeeded' as const, exitCode: 0, finishedAt: '2026-08-02T00:01:00.000Z' }]
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs } }))
+      },
+    }))
+    controller.select('p1')
+    controller.ensureJobs()
+    await settle()
+    expect(experimentLoads).toBe(1)
+    controller.refreshJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list[0]?.status).toBe('succeeded')
+    // The settle wrote back to the linked experiment: the slice reloads once.
+    expect(experimentLoads).toBe(2)
+  })
+
+  it('leaves the experiments slice alone when an UNLINKED job settles', async () => {
+    let round = 0
+    let experimentLoads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '', mtimeMs: 1 } })),
+      listExperiments: () => {
+        experimentLoads += 1
+        return Promise.resolve(carried<ResearchExperimentsResult>({ ok: true, value: { experiments: [] } }))
+      },
+      listJobs: () => {
+        round += 1
+        const unlinked = { ...JOB_RUNNING, experimentId: undefined }
+        const jobs = round === 1
+          ? [unlinked]
+          : [{ ...unlinked, status: 'succeeded' as const, exitCode: 0, finishedAt: '2026-08-02T00:01:00.000Z' }]
+        return Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs } }))
+      },
+    }))
+    controller.select('p1')
+    controller.ensureJobs()
+    await settle()
+    controller.refreshJobs()
+    await settle()
+    expect(controller.getSnapshot().jobs.list[0]?.status).toBe('succeeded')
+    expect(experimentLoads).toBe(1)
+  })
+
   it('deleteJob drops the row and reports the business failure on an unknown id', async () => {
     const controller = new ResearchController(stubRemote({
       listJobs: () => Promise.resolve(carried<ResearchListJobsResult>({ ok: true, value: { jobs: [JOB_RUNNING] } })),
@@ -1433,15 +1503,89 @@ describe('ResearchController figure insert', () => {
     expect(view.toasts.at(-1)).toMatchObject({ kind: 'info', copy: 'toast.figureAlreadyInserted' })
   })
 
-  it('rejects an SVG figure with a clear toast and never reads the source', async () => {
-    let reads = 0
+  it('converts an SVG figure on the host and inserts the block referencing the product', async () => {
+    let convertCalls = 0
     const controller = new ResearchController(stubRemote({
-      getPaperSource: () => { reads += 1; return Promise.resolve(carried(sourceOk(TEX, 1000))) },
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+      convertFigure: (request) => {
+        convertCalls += 1
+        expect(request).toMatchObject({ projectId: 'p1', relPath: 'figures/plot.svg' })
+        return Promise.resolve(carried<ResearchConvertFigureResult>({
+          ok: true, value: { relPath: 'figures/plot.pdf', converter: 'rsvg-convert' },
+        }))
+      },
+      // The conversion rescans the figures view so the new product card shows.
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
     }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBe(6)
+    expect(convertCalls).toBe(1)
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toContain('\\includegraphics[width=\\linewidth]{figures/plot.pdf}')
+    expect(view.source?.content).toContain('\\label{fig:plot}')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureConvertedSvg', detail: 'plot.svg → plot.pdf' })
+  })
+
+  it('treats an already-referenced converted product as inserted, never converting again', async () => {
+    let convertCalls = 0
+    const withProduct = TEX.replace('text', '\\begin{figure}[t]\n  \\includegraphics{figures/plot.pdf}\n\\end{figure}')
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(withProduct, 1000))),
+      convertFigure: () => {
+        convertCalls += 1
+        return Promise.reject(new Error('should not be called'))
+      },
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBe(5)
+    expect(convertCalls).toBe(0)
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toBe(withProduct)
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'info', copy: 'toast.figureAlreadyInserted', detail: 'plot.svg' })
+  })
+
+  it('toasts the reason and inserts nothing when the SVG conversion fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      convertFigure: () => Promise.resolve(carried<ResearchConvertFigureResult>({
+        ok: false, error: { code: 'operation-failed', message: 'No SVG converter found on this machine (looked for rsvg-convert, inkscape, magick).' },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
     const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
     expect(line).toBeNull()
-    expect(reads).toBe(0)
-    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureSvg', detail: 'plot.svg' })
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toBe(TEX)
+    expect(view.toasts.at(-1)).toMatchObject({
+      kind: 'error',
+      copy: 'toast.figureSvgConvertFailed',
+      detail: 'No SVG converter found on this machine (looked for rsvg-convert, inkscape, magick).',
+    })
+  })
+
+  it('toasts the transport failure when the SVG conversion call itself fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      convertFigure: () => Promise.reject(new Error('socket closed')),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({
+      kind: 'error', copy: 'toast.figureSvgConvertFailed', detail: 'socket closed',
+    })
   })
 
   it('toasts the failure when the paper source cannot be loaded', async () => {
@@ -1474,4 +1618,88 @@ describe('ResearchController figure insert', () => {
     expect(controller.getSnapshot().source?.content).toBe('my draft')
     expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.figureInsertConflict' })
   })
+
+  describe('generateMetricFigure (the experiments chart button)', () => {
+  const ROWS = [
+    { id: 'e1', name: 'baseline', status: 'success' as const, value: 92.4 },
+    { id: 'e2', name: 'full model', status: 'success' as const, value: 88.1 },
+  ]
+
+  it('saves the rendered SVG through the host, then inserts the converted product', async () => {
+    let savedRequest: unknown = null
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      savePaperSource: () => Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } })),
+      saveFigure: (request) => {
+        savedRequest = request
+        return Promise.resolve(carried<ResearchSaveFigureResult>({
+          ok: true, value: {
+            relPath: 'figures/metric-mpjpe.svg',
+            caption: 'Comparison of mpjpe across experiments: baseline (92.4), full model (88.1).',
+            converted: { relPath: 'figures/metric-mpjpe.pdf', converter: 'rsvg-convert' },
+          },
+        }))
+      },
+      // The insert path re-asks for the conversion; the host reuses the fresh product.
+      convertFigure: () => Promise.resolve(carried<ResearchConvertFigureResult>({
+        ok: true, value: { relPath: 'figures/metric-mpjpe.pdf', converter: 'cached' },
+      })),
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBe(6)
+    expect(savedRequest).toMatchObject({ projectId: 'p1', name: 'metric-mpjpe.svg' })
+    const request = savedRequest as { content: string; caption: string }
+    expect(request.content).toContain('<svg xmlns="http://www.w3.org/2000/svg"')
+    expect(request.content).toContain('>baseline</text>')
+    expect(request.caption).toContain('Comparison of mpjpe')
+    const view = controller.getSnapshot()
+    expect(view.source?.content).toContain('\\includegraphics[width=\\linewidth]{figures/metric-mpjpe.pdf}')
+    expect(view.source?.content).toContain('\\caption{Comparison of mpjpe across experiments: baseline (92.4), full model (88.1).}')
+    expect(view.source?.content).toContain('\\label{fig:metric-mpjpe}')
+    expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
+    expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureConvertedSvg' })
+  })
+
+  it('toasts the reason and inserts nothing when the save is rejected', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      saveFigure: () => Promise.resolve(carried<ResearchSaveFigureResult>({
+        ok: false, error: { code: 'invalid-name', name: 'metric-mpjpe.svg' },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().source?.content).toBe(TEX)
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({ kind: 'error', copy: 'toast.metricFigureFailed' })
+  })
+
+  it('toasts the transport failure when the save call itself fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(TEX, 1000))),
+      saveFigure: () => Promise.reject(new Error('socket closed')),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', ROWS)
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts.at(-1)).toMatchObject({
+      kind: 'error', copy: 'toast.metricFigureFailed', detail: 'socket closed',
+    })
+  })
+
+  it('does nothing for an empty row list', async () => {
+    const controller = new ResearchController(stubRemote({}))
+    const line = await controller.generateMetricFigure('p1', 'mpjpe', [])
+    expect(line).toBeNull()
+    expect(controller.getSnapshot().toasts).toEqual([])
+  })
+})
 })
