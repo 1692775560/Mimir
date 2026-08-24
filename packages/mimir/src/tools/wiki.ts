@@ -13,7 +13,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { ResearchWikiDomain } from '../store.ts'
 
 const ACTIONS = [
-  'add_paper', 'add_idea', 'fail_idea', 'add_claim', 'set_claim', 'set_project',
+  'add_paper', 'set_paper', 'add_idea', 'fail_idea', 'add_claim', 'set_claim', 'set_project',
   'add_experiment', 'set_experiment', 'list', 'get',
 ] as const
 const TABLES = ['papers', 'ideas', 'claims', 'projects', 'experiments'] as const
@@ -32,6 +32,10 @@ interface WikiArgs {
   readonly summary?: string
   readonly url?: string
   readonly notes?: string
+  readonly tags?: string[]
+  readonly project_ids?: string[]
+  readonly relevance_score?: number
+  readonly relevance_reason?: string
   readonly hypothesis?: string
   readonly reason?: string
   readonly text?: string
@@ -88,13 +92,54 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         authors: args.authors ?? [],
         summary: requireField(args.summary, 'summary', args.action),
         url: args.url ?? `https://arxiv.org/abs/${arxivId}`,
-        notes: args.notes ?? '',
-        // An agent-driven re-add must not wipe workbench-curated organization.
+        // An agent-driven re-add must not wipe workbench-curated fields.
+        notes: args.notes ?? existing?.notes ?? '',
         tags: [...(existing?.tags ?? [])],
         projectIds: [...(existing?.projectIds ?? [])],
+        ...(existing?.relevance === undefined ? {} : { relevance: existing.relevance }),
         addedAt: new Date().toISOString(),
       }
       await domain.table('papers').put(arxivId, record)
+      return { ok: true, table: 'papers', id: arxivId, record: record as unknown as JsonValue }
+    }
+    case 'set_paper': {
+      const arxivId = requireField(args.arxiv_id, 'arxiv_id', args.action)
+      const table = domain.table('papers')
+      const existing = table.get(arxivId)
+      if (existing === undefined) throw new Error(`wiki_note: no paper with id '${arxivId}'`)
+      let projectIds = [...(args.project_ids ?? existing.projectIds)]
+      let relevance = existing.relevance
+      if (args.relevance_score !== undefined) {
+        const projectId = requireField(args.project_id, 'project_id', args.action)
+        if (domain.table('projects').get(projectId) === undefined) {
+          throw new Error(`wiki_note: no project with id '${projectId}'`)
+        }
+        if (!Number.isFinite(args.relevance_score) || args.relevance_score < 0 || args.relevance_score > 10) {
+          throw new Error(`wiki_note action 'set_paper' requires relevance_score between 0 and 10, got '${args.relevance_score}'`)
+        }
+        const reason = requireField(args.relevance_reason, 'relevance_reason', args.action)
+        relevance = {
+          ...relevance,
+          [projectId]: { score: args.relevance_score, reason, at: new Date().toISOString() },
+        }
+        // Scoring a paper against a project implies the link.
+        if (!projectIds.includes(projectId)) projectIds = [...projectIds, projectId]
+      }
+      for (const projectId of projectIds) {
+        if (domain.table('projects').get(projectId) === undefined) {
+          throw new Error(`wiki_note: no project with id '${projectId}'`)
+        }
+      }
+      const record = {
+        ...existing,
+        notes: args.notes ?? existing.notes,
+        tags: args.tags === undefined
+          ? existing.tags
+          : [...new Set(args.tags.map(tag => tag.trim()).filter(tag => tag !== ''))],
+        projectIds,
+        ...(relevance === undefined ? {} : { relevance }),
+      }
+      await table.put(arxivId, record)
       return { ok: true, table: 'papers', id: arxivId, record: record as unknown as JsonValue }
     }
     case 'add_idea': {
@@ -241,7 +286,7 @@ function renderOutcome(value: Record<string, JsonValue | undefined>): string {
 export function createWikiNoteTool(domain: ResearchWikiDomain): ToolDefinition {
   return defineTool({
     name: 'wiki_note',
-    description: 'Read and write the persistent research wiki: remembered papers (add_paper), ideas including never-deleted failed ones (add_idea, fail_idea), tracked claims (add_claim, set_claim), project records (set_project points a project at its paper directory), and experiment runs (add_experiment, set_experiment); list and get read any table. Always check the ideas table before proposing work, to avoid re-proving failed directions. Save useful papers you find with add_paper, record every experiment run with add_experiment/set_experiment, and call figure_save right after generating a paper-worthy image — the workbench only shows what the wiki remembers.',
+    description: 'Read and write the persistent research wiki: remembered papers (add_paper; set_paper updates notes/tags/project links and records a 0-10 relevance score against a project), ideas including never-deleted failed ones (add_idea, fail_idea), tracked claims (add_claim, set_claim), project records (set_project points a project at its paper directory), and experiment runs (add_experiment, set_experiment); list and get read any table. Always check the ideas table before proposing work, to avoid re-proving failed directions. Save useful papers you find with add_paper, record every experiment run with add_experiment/set_experiment, and call figure_save right after generating a paper-worthy image — the workbench only shows what the wiki remembers.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'The wiki operation to perform.' },
       table: { type: 'string', enum: TABLES, description: 'Table for list/get (papers|ideas|claims|projects|experiments).' },
@@ -251,7 +296,11 @@ export function createWikiNoteTool(domain: ResearchWikiDomain): ToolDefinition {
       authors: { type: 'array', items: { type: 'string' }, description: 'Author names for add_paper.' },
       summary: { type: 'string', description: 'Abstract for add_paper.' },
       url: { type: 'string', description: 'URL for add_paper; defaults to the arXiv abstract page.' },
-      notes: { type: 'string', description: 'Working notes for add_paper.' },
+      notes: { type: 'string', description: 'Working notes for add_paper/set_paper.' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Replacement tag list for set_paper.' },
+      project_ids: { type: 'array', items: { type: 'string' }, description: 'Replacement project-link list for set_paper.' },
+      relevance_score: { type: 'number', description: '0-10 relevance score for set_paper (requires project_id and relevance_reason); also links the paper to that project.' },
+      relevance_reason: { type: 'string', description: 'One-paragraph justification of relevance_score for set_paper.' },
       hypothesis: { type: 'string', description: 'Hypothesis for add_idea.' },
       reason: { type: 'string', description: 'Why the idea failed, for fail_idea.' },
       text: { type: 'string', description: 'Claim text for add_claim.' },

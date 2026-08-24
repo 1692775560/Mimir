@@ -17,6 +17,16 @@ import type { BibEntry } from './bibtex.ts'
 /** One independent-review verdict. */
 export type Verdict = 'PASS' | 'WARN' | 'FAIL'
 
+/** One project's AI relevance verdict on one remembered paper. */
+export interface PaperRelevance {
+  /** 0–10 relevance score (10 = central to the project's direction). */
+  readonly score: number
+  /** One-paragraph justification of the score. */
+  readonly reason: string
+  /** ISO-8601 timestamp of the scoring. */
+  readonly at: string
+}
+
 /** One arXiv paper remembered by the research wiki. */
 export interface PaperRecord {
   /** Bare arXiv id (version suffix allowed, e.g. `2103.00020v2`). */
@@ -36,6 +46,11 @@ export interface PaperRecord {
    * workbench fetches the PDF (records predating the field read as absent).
    */
   readonly pdfPath?: string | undefined
+  /**
+   * AI relevance verdicts keyed by project id; absent until a scoring pass
+   * writes one (records predating the field read as absent).
+   */
+  readonly relevance?: Record<string, PaperRelevance> | undefined
   /** ISO-8601 timestamp of the record's first write. */
   readonly addedAt: string
 }
@@ -423,6 +438,22 @@ export type ResearchFiguresResult = ResearchResult<{ readonly figures: readonly 
 
 /** `deleteFigure` result: the deleted file's paper-directory-relative path. */
 export type ResearchDeleteFigureResult = ResearchResult<{ readonly relPath: string }>
+
+/**
+ * `renameFigure` result: the file's new paper-directory-relative path plus
+ * the number of `.tex` files whose `\includegraphics` references were
+ * rewritten to it.
+ */
+export type ResearchRenameFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly references: number
+}>
+
+/** `updateFigure` result: the figure metadata row after the caption upsert. */
+export type ResearchUpdateFigureResult = ResearchResult<{
+  readonly relPath: string
+  readonly caption: string
+}>
 
 /**
  * `convertFigure` result: the paper-directory-relative path of the converted

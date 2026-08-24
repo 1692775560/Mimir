@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { researchWikiDomainSpec } from './store.ts'
 import { createArxivSearchTool, createPaperFetchTool } from './tools/arxiv.ts'
 import { createWikiNoteTool } from './tools/wiki.ts'
-import { createFigureSaveTool } from './tools/figure.ts'
+import { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
 import { createLatexCompileTool } from './tools/latex.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
@@ -31,7 +31,7 @@ import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
-export type { Verdict, PaperRecord, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
+export type { Verdict, PaperRecord, PaperRelevance, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus } from './types.ts'
 export type {
   ArxivSubscriptionCheckView,
   ArxivSubscriptionView,
@@ -66,6 +66,7 @@ export type {
   ResearchProjectView,
   ResearchRejected,
   ResearchRemovePaperResult,
+  ResearchRenameFigureResult,
   ResearchResult,
   ResearchSaveExperimentResult,
   ResearchSaveArxivSubscriptionResult,
@@ -74,6 +75,7 @@ export type {
   ResearchSearchArxivResult,
   ResearchSubmitJobResult,
   ResearchSuccess,
+  ResearchUpdateFigureResult,
   ResearchCheckZoteroResult,
   ResearchZoteroCollectionsResult,
   ResearchZoteroExportResult,
@@ -132,7 +134,7 @@ export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
 export { createZoteroClient } from './tools/zotero.ts'
 export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
-export { createFigureSaveTool } from './tools/figure.ts'
+export { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
 export type { WikiSnapshotSource } from './wiki-snapshot.ts'
 export {
@@ -592,6 +594,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createPaperFetchTool(domain))
   ctx.tools.register(createWikiNoteTool(domain))
   ctx.tools.register(createFigureSaveTool(deps.workspaceDir, domain))
+  ctx.tools.register(createFigureOrganizeTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
 
   registerIdeaCommand(ctx, deps)

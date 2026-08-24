@@ -25,6 +25,13 @@ export const paperRecord = z.object({
   // Added WITHOUT a version bump: `.optional()` leaves the field absent on
   // records that predate it, so existing v2 JSON stores keep loading.
   pdfPath: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  relevance: z.record(z.string(), z.object({
+    score: z.number(),
+    reason: z.string(),
+    at: z.string(),
+  })).optional(),
   addedAt: z.string(),
 })
 
