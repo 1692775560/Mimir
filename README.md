@@ -88,16 +88,12 @@ Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1
 
 ## Quickstart
 
-Mimir is distributed as two npm packages:
+Mimir is a single npm package: `dsh-mimir` carries the research commands, tools, wiki, reviewer loop, server APIs, **and** the six-view Web workbench (shipped as the package's `dsh.client` bundle — installing the host plugin is all it takes; the Web roster row doubles as the browser row). The legacy `dsh-client-ui-mimir` package remains published for existing source integrations, but new installs do not need it.
 
-- `dsh-mimir` provides the research commands, tools, wiki, reviewer loop, and server APIs. This is the only package required for normal use.
-- `dsh-client-ui-mimir` provides the six-view Web workbench. It must be integrated into the dsh Web client and does not appear in the sidebar merely by installing the npm package.
-
-Check the currently published versions at any time:
+Check the currently published version at any time:
 
 ```sh
 npm view dsh-mimir version
-npm view dsh-client-ui-mimir version
 ```
 
 ### Prerequisites
@@ -163,23 +159,17 @@ dsh plugin --profile web add dsh-mimir@latest
 npm view dsh-mimir version
 ```
 
-For packages installed directly in a Node.js project, run:
+For packages installed directly in a Node.js project instead, run:
 
 ```sh
-npm install dsh-mimir@latest dsh-client-ui-mimir@latest
+npm install dsh-mimir@latest
 ```
 
 ### 5. Full Web workbench
 
-Install the Web workbench package with npm:
+Nothing extra to install: since v0.11.0 the six-view workbench ships inside `dsh-mimir` itself (the package declares `dsh.client` and serves its client bundle at `/plugins/dsh-mimir/client.js`). Restart `dsh web` after installing or upgrading, then click **Mimir** in the sidebar footer.
 
-```sh
-npm install dsh-client-ui-mimir@latest
-```
-
-The two packages version in lockstep: `dsh-client-ui-mimir` declares `dsh-mimir` as a peer dependency with a floor at the current release (npm installs it automatically when missing), because each workbench release may call Remote methods that only that host release serves. When upgrading, upgrade both together (`npm install dsh-mimir@latest dsh-client-ui-mimir@latest`); a newer UI against an older host silently lacks the newest panel features.
-
-One important limitation: the currently published dsh Web composition does not automatically discover standalone client plugins or mount the `research` Remote namespace. Installing `dsh-client-ui-mimir` alone therefore does not add the Mimir sidebar button. The complete six-view UI currently requires registering the client package in a dsh source checkout and applying the Remote assembly described in [Known limitations](#known-limitations). The host-side research commands, tools, wiki, automatic artifact saving, and `/research/*` APIs work without that UI integration.
+If you previously integrated the standalone `dsh-client-ui-mimir` package into a dsh source checkout, remove its roster row (`ui-mimir`) when you upgrade — keeping both mounts the panel twice. The legacy package stays published and versioned in lockstep for integrations that still reference it.
 
 ### 6. Develop from source (optional)
 
@@ -349,7 +339,7 @@ Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-age
   disposers.push(await ctx.remote.$mount(researchRemote))
   ```
 
-  The client plugin (`dsh-client-ui-mimir`) must likewise be registered in the web composition. This is a dsh-side design constraint (the assembly is an explicit allowlist), not a Mimir defect — see [Quickstart §5](#5-the-web-workbench).
+  The Remote assembly line is the only wiring left: the client bundle itself ships inside `dsh-mimir` since v0.11.0, so no separate client package needs registering.
 - **Compile status is host process memory** — a host restart forgets the last result; the panel shows `idle` until the next compile even if a previously built `main.pdf` is still on disk.
 - **No live push** — the panel neither polls nor subscribes; compiles started elsewhere (`/paper-compile` or the tool) become visible on the next selection or compile.
 
@@ -359,6 +349,8 @@ Full example with comments: [examples/mimir-agent/cordis.yml](examples/mimir-age
 pnpm install
 pnpm run build       # ordered pipeline: mimir typecheck → mimir bundle (emits the
                      # typert artifacts ui-mimir typechecks against) → ui-mimir
+                     # typecheck+bundle → mimir client bundle (the workbench,
+                     # built from ui-mimir's compiled client entry)
 pnpm test            # vitest, both packages
 pnpm run typecheck   # tsc -b both packages; assumes a prior build (ui-mimir
                      # imports the generated dsh-mimir/remote declarations)
@@ -366,12 +358,12 @@ pnpm run typecheck   # tsc -b both packages; assumes a prior build (ui-mimir
 
 Layout:
 
-- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (55 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
-- `packages/ui-mimir` — the browser workbench (`dsh-client-ui-mimir`): sidebar toggle + overlay panel.
+- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, venue templates, the `research` Remote namespace (55 methods), the `/research/pdf` / `/research/paper-pdf` / `/research/figure` / `/research/figure-upload` / `/research/template-upload` routes, **and the bundled Web workbench** (`lib/client.js`, built from ui-mimir's client entry, served under the package's own `dsh.client` declaration).
+- `packages/ui-mimir` — the browser workbench sources; also still published as the legacy standalone `dsh-client-ui-mimir` for existing integrations.
 - `packages/typert-protocol` — vendored, never-published source copy of the Typert protocol (see below).
 - `examples/mimir-agent` — the cordis patch used in the Quickstart.
 
-Build artifacts: `packages/mimir/lib/{index.js, invariant.js, typert.host.js, typert.remote-client.js, types/}` and `packages/ui-mimir/lib/{index.js, invariant.js, client.js, types/}`.
+Build artifacts: `packages/mimir/lib/{index.js, invariant.js, typert.host.js, typert.remote-client.js, client.js, types/}` and `packages/ui-mimir/lib/{index.js, invariant.js, client.js, types/}`.
 
 `packages/ui-mimir/scripts/screenshot.ts` is a QA harness (not part of the test suite): against a running `dsh web` instance with the plugin mounted, it captures one PNG per workbench tab into `/tmp/research-ui/`. It requires a local Playwright installation; adjust the import/`CHROMIUM` path at the top of the file.
 

@@ -2,10 +2,12 @@
   "name": "mimir-monorepo",
   "private": true,
   "packageManager": "pnpm@11.18.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
-    "build": "tsc -b packages/mimir && pnpm --filter dsh-mimir run bundle && tsc -b packages/ui-mimir && pnpm --filter dsh-client-ui-mimir run bundle",
+    "build": "tsc -b packages/mimir && pnpm --filter dsh-mimir run bundle && tsc -b packages/ui-mimir && pnpm --filter dsh-client-ui-mimir run bundle && pnpm --filter dsh-mimir run bundle:client",
     "typecheck": "tsc -b packages/mimir packages/ui-mimir",
     "test": "vitest run",
     "test:e2e": "playwright test",

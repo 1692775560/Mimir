@@ -106,6 +106,23 @@ export function clientBundle(
   return [lib, client]
 }
 
+/**
+ * Browser bundle variant for a package whose client entry lives in ANOTHER
+ * workspace package (the single-package layout: the host package ships the
+ * workbench under its own name). The entry is spelled at the call site; the
+ * banner id stays the host package's name so the loader row matches.
+ * @param id - plugin id (the host package's name), stamped into the
+ * __ModuleLoader__.load handoff and onto the injected style tags.
+ * @param clientEntry - the compiled client entry, relative to this package.
+ * @returns the tsdown config of the browser bundle alone.
+ */
+export function clientBundleOnly(
+  id: string,
+  clientEntry: string,
+): UserConfig[] {
+  return [clientConfig(id, clientEntry)]
+}
+
 function clientLibraryConfig(
   id: string,
   libEntry: readonly string[],
