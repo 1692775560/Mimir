@@ -139,6 +139,7 @@ export function ResearchPanel({
   ensureJobs, refreshJobs, submitJob, deleteJob,
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
+  ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -166,6 +167,7 @@ export function ResearchPanel({
   const jobs = useResearch(view => view.jobs)
   const bib = useResearch(view => view.bib)
   const snapshots = useResearch(view => view.snapshots)
+  const venueTemplates = useResearch(view => view.venueTemplates)
   const snapshotDetail = useResearch(view => view.snapshotDetail)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
@@ -469,6 +471,13 @@ export function ResearchPanel({
             loadSnapshotDetail={loadSnapshotDetail}
             closeSnapshotDetail={closeSnapshotDetail}
             revertSnapshot={revertSnapshot}
+            venue={selectedProject?.venue}
+            venueTemplates={venueTemplates}
+            ensureVenueTemplates={ensureVenueTemplates}
+            applyVenueTemplate={applyVenueTemplate}
+            clearVenueTemplate={clearVenueTemplate}
+            uploadTemplateFiles={uploadTemplateFiles}
+            requestVenueFormat={requestVenueFormat}
             t={t}
           />
         )}

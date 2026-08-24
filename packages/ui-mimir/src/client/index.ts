@@ -68,6 +68,25 @@ async function uploadOneFigure(projectId: string, dir: string | undefined, file:
 }
 
 /**
+ * Upload one venue-kit file through the host's template upload route. The
+ * route answers JSON on success; anything else throws with the response's
+ * own text.
+ * @param projectId - wiki project id.
+ * @param dir - the project's paper directory override, when any.
+ * @param file - the picked file.
+ * @returns resolution after the file is stored.
+ */
+async function uploadOneTemplateFile(projectId: string, dir: string | undefined, file: File): Promise<void> {
+  const query = `?project=${encodeURIComponent(projectId)}&name=${encodeURIComponent(file.name)}`
+    + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
+  const response = await fetch(`/research/template-upload${query}`, { method: 'POST', body: file })
+  if (!response.ok) {
+    const detail = (await response.text()).trim()
+    throw new Error(detail === '' ? `upload failed (${String(response.status)})` : detail)
+  }
+}
+
+/**
  * Client plugin body: the research toggle, the panel overlay, and the shared
  * object layer.
  * @param ctx - client root context.
@@ -175,6 +194,19 @@ export function apply(ctx: ClientContext): void {
       requestPaperScore: prompt => sendPromptToCurrentSession(prompt, 'toast.scoreSent', 'toast.scoreSendFailed'),
       // The figures view's "organize with AI" button: same channel.
       requestFigureOrganize: prompt => sendPromptToCurrentSession(prompt, 'toast.figureOrganizeSent', 'toast.figureOrganizeSendFailed'),
+      // The paper view's venue picker and "format to venue" button.
+      ensureVenueTemplates: () => { controller.ensureVenueTemplates() },
+      applyVenueTemplate: (projectId, options) => controller.applyVenueTemplate(projectId, options),
+      clearVenueTemplate: projectId => controller.clearVenueTemplate(projectId),
+      uploadTemplateFiles: async (projectId, dir, files) => {
+        let done = 0
+        for (const file of files) {
+          await uploadOneTemplateFile(projectId, dir, file)
+          done += 1
+        }
+        if (done > 0) controller.notify('success', 'toast.templateUploaded', `× ${done}`)
+      },
+      requestVenueFormat: prompt => sendPromptToCurrentSession(prompt, 'toast.venueFormatSent', 'toast.venueFormatSendFailed'),
       editSource: (content) => { controller.edit(content) },
       reloadSource: () => { controller.reloadSource() },
       ensurePapers: () => { controller.ensurePapers() },

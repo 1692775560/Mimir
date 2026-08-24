@@ -57,6 +57,10 @@ import type {
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
+  ResearchVenueTemplatesResult,
+  ResearchApplyVenueResult,
+  ResearchClearVenueResult,
+  VenueTemplateView,
   ResearchOutlineResult,
   ResearchPaperSnapshotResult,
   ResearchPaperSnapshotsResult,
@@ -163,6 +167,14 @@ export interface ResearchRemote {
     dir?: string | undefined
   }) => Promise<RemoteResult<ResearchSaveFigureResult>>
   listServers: () => Promise<RemoteResult<ResearchListServersResult>>
+  listVenueTemplates: () => Promise<RemoteResult<ResearchVenueTemplatesResult>>
+  applyVenueTemplate: (request: {
+    projectId: string
+    dir?: string | undefined
+    templateId?: string | undefined
+    customName?: string | undefined
+  }) => Promise<RemoteResult<ResearchApplyVenueResult>>
+  clearVenueTemplate: (request: { projectId: string }) => Promise<RemoteResult<ResearchClearVenueResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -272,6 +284,13 @@ export interface ResearchPaperJump {
 export interface ResearchPapersView {
   readonly status: ResearchLoadStatus
   readonly list: readonly PaperRecord[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The venue picker's built-in template registry slice. */
+export interface ResearchVenueTemplatesView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly VenueTemplateView[]
   readonly failure: ResearchFailureView | null
 }
 
@@ -407,6 +426,8 @@ export interface ResearchView {
   readonly bib: ResearchBibView | null
   /** The selected project's paper snapshots; null until the snapshots panel first opens. */
   readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
+  /** The venue picker's built-in template registry; loads once, lazily. */
+  readonly venueTemplates: ResearchVenueTemplatesView
   /** The snapshot the snapshots panel expanded for diffing; null when closed. */
   readonly snapshotDetail: ResearchSnapshotDetailView | null
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
@@ -442,6 +463,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   bib: null,
   snapshots: null,
   snapshotDetail: null,
+  venueTemplates: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -486,6 +508,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   private snapshotsGeneration = 0
   private snapshotDetailGeneration = 0
   private figuresInFlight = false
+  /** A venue-registry load already in flight is left alone. */
+  private venueTemplatesInFlight = false
   private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
   private compileQueued: string | null = null
@@ -978,6 +1002,89 @@ export class ResearchController implements HostObservable<ResearchView> {
       this.figuresInFlight = false
       this.loadFigures(projectId, true)
       this.notify('success', 'toast.deleted')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Load the venue picker's built-in registry, once and lazily: a ready (or
+   * in-flight) registry is left alone.
+   */
+  ensureVenueTemplates(): void {
+    if (this.venueTemplatesInFlight) return
+    if (this.view.venueTemplates.status === 'ready') return
+    void this.loadVenueTemplates()
+  }
+
+  /** Fetch the venue registry and publish it. */
+  private async loadVenueTemplates(): Promise<void> {
+    this.venueTemplatesInFlight = true
+    this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.listVenueTemplates()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ venueTemplates: Object.freeze({ status: 'ready', list: result.value.templates, failure: null }) })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({ venueTemplates: Object.freeze({ ...this.view.venueTemplates, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.venueTemplatesInFlight = false
+    }
+  }
+
+  /**
+   * Apply one venue (built-in `templateId` or uploaded-kit `customName`) to
+   * one project and refresh the project list so the header chip updates.
+   * @param projectId - wiki project id.
+   * @param options - built-in template id, or a custom kit display name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async applyVenueTemplate(
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.applyVenueTemplate({
+        projectId,
+        dir: this.dirOf(projectId),
+        ...(options.templateId === undefined ? {} : { templateId: options.templateId }),
+        ...(options.customName === undefined ? {} : { customName: options.customName }),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'toast.venueApplied', result.value.venue.name)
+      void this.loadProjects()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Clear one project's target venue and refresh the project list.
+   * @param projectId - wiki project id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  async clearVenueTemplate(projectId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.clearVenueTemplate({ projectId })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'toast.venueCleared')
+      void this.loadProjects()
       return null
     } catch (error) {
       return transportFailure(error)

@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 50 `@Remote` signatures intact, and forwards every method body to a
+ * all 55 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -63,6 +63,9 @@ import type {
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
   ResearchUpdatePaperResult,
+  ResearchVenueTemplatesResult,
+  ResearchApplyVenueResult,
+  ResearchClearVenueResult,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
   ResearchZoteroCollectionsResult,
@@ -82,6 +85,7 @@ import * as subscriptions from './services/subscriptions.ts'
 import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
+import * as venue from './services/venue.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -129,7 +133,7 @@ export interface ResearchServiceConfig {
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 50 `@Remote` signatures; every method
+ * `research` Remote namespace and all 55 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -423,6 +427,27 @@ export class ResearchService extends TypertRemoteService {
     dir?: string | undefined
   }): Promise<ResearchSaveFigureResult> {
     return experiment.saveFigure(this.deps, request)
+  }
+
+  // venue domain: target-conference templates
+  @Remote('listVenueTemplates')
+  listVenueTemplates(): Promise<ResearchVenueTemplatesResult> {
+    return venue.listVenueTemplates()
+  }
+
+  @Remote('applyVenueTemplate')
+  applyVenueTemplate(request: {
+    projectId: string
+    dir?: string | undefined
+    templateId?: string | undefined
+    customName?: string | undefined
+  }): Promise<ResearchApplyVenueResult> {
+    return venue.applyVenueTemplate(this.deps, request)
+  }
+
+  @Remote('clearVenueTemplate')
+  clearVenueTemplate(request: { projectId: string }): Promise<ResearchClearVenueResult> {
+    return venue.clearVenueTemplate(this.deps, request)
   }
 
   // server domain

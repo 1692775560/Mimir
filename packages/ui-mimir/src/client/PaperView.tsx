@@ -18,12 +18,13 @@
  */
 
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import type { BibEntry, OutlineNode, PaperSnapshotView, SectionMove, SectionOutlineTitles, SubsectionMove } from 'dsh-mimir/types'
+import type { BibEntry, OutlineNode, PaperSnapshotView, SectionMove, SectionOutlineTitles, SubsectionMove, VenueView } from 'dsh-mimir/types'
 import type {
   ResearchBibView, ResearchCompileView, ResearchFailureView, ResearchImportCounts,
   ResearchOutlineView, ResearchPaperJump, ResearchPapersView, ResearchProjectSlice,
-  ResearchSnapshotDetailView, ResearchSourceView,
+  ResearchSnapshotDetailView, ResearchSourceView, ResearchVenueTemplatesView,
 } from './controller.ts'
+import { VenuePicker } from './VenuePicker.tsx'
 import { wrapIndex } from './focus.ts'
 import { buildCompileFixPrompt } from './compile-fix.ts'
 import { EDITOR_LINE_HEIGHT_PX, splitTokensByLine, visibleLineRange, widestLine } from './highlight-window.ts'
@@ -291,7 +292,9 @@ export function PaperView({
   outline, compileView, source, projectId, projectTitle, dir, editSource, reloadSource, compile, requestCompileFix,
   bib, papers, ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib,
   ensurePapers, reorderPaperSections, reorderPaperSubsections, paperJump, consumePaperJump, fullscreen, setFullscreen,
-  snapshots, snapshotDetail, loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot, t,
+  snapshots, snapshotDetail, loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
+  venue, venueTemplates, ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
+  t,
 }: {
   readonly outline: ResearchOutlineView | null
   readonly compileView: ResearchCompileView
@@ -300,6 +303,19 @@ export function PaperView({
   /** Title of the selected project, shown as a strip on top of the panes. */
   readonly projectTitle: string | undefined
   readonly dir: string | undefined
+  /** The selected project's target venue; undefined until one is applied. */
+  readonly venue: VenueView | undefined
+  /** The venue picker's built-in template registry slice. */
+  readonly venueTemplates: ResearchVenueTemplatesView
+  readonly ensureVenueTemplates: () => void
+  readonly applyVenueTemplate: (
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ) => Promise<ResearchFailureView | null>
+  readonly clearVenueTemplate: (projectId: string) => Promise<ResearchFailureView | null>
+  readonly uploadTemplateFiles: (projectId: string, dir: string | undefined, files: readonly File[]) => Promise<void>
+  /** Send one assembled venue-format prompt to the current session's agent. */
+  readonly requestVenueFormat: (prompt: string) => Promise<void>
   readonly editSource: (content: string) => void
   readonly reloadSource: () => void
   readonly compile: (projectId: string) => void
@@ -789,6 +805,21 @@ export function PaperView({
             <span className={css.paperProject} title={`${t('paper.project')}：${projectTitle}`}>
               {projectTitle}
             </span>
+          )}
+          {projectId !== null && projectTitle !== undefined && (
+            <VenuePicker
+              projectId={projectId}
+              projectTitle={projectTitle}
+              dir={dir}
+              venue={venue}
+              venueTemplates={venueTemplates}
+              ensureVenueTemplates={ensureVenueTemplates}
+              applyVenueTemplate={applyVenueTemplate}
+              clearVenueTemplate={clearVenueTemplate}
+              uploadTemplateFiles={uploadTemplateFiles}
+              requestVenueFormat={requestVenueFormat}
+              t={t}
+            />
           )}
           {paneTabs}
           <div className={css.paneHeadActions}>
