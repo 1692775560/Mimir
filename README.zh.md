@@ -383,6 +383,12 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 
 ## 更新日志
 
+### 0.8.1
+
+- 修复：没有论文目录的项目会导致整个项目列表加载失败（`paperDir` 以显式 `undefined` 输出，过不了网关的 JSON 边界校验）；`submitJob` 未关联实验时的 `experimentId` 是同款隐患。两处现在都在缺省时完全省略该键，附回归测试。
+- 论文页：窄窗格下头部按钮和保存徽标不再逐字换行（项目名/编译状态用省略号吸收挤压）。
+- 文献页：订阅新文献列表可折叠（默认折叠；手动检新成功后自动展开一次；状态持久化）。侧栏项目列表也可折叠，折叠后仍显示当前项目名。
+
 ### 0.8.0
 
 - 九个**内置科研 skills**（`research-pipeline`、`research-lit-review`、`research-novelty-check`、`research-experiment-plan`、`research-result-to-claim`、`research-paper-drafting`、`research-citation-audit`、`research-rebuttal`、`research-figure-plan`）在宿主挂载 skill registry 时注册进 agent 的 skill 目录；`skills.enabled: false` 可关闭，项目级同名 skill 可覆盖。
