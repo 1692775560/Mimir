@@ -364,7 +364,7 @@ pnpm run typecheck   # tsc -b both packages; assumes a prior build (ui-mimir
 
 Layout:
 
-- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (52 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
+- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (55 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
 - `packages/ui-mimir` — the browser workbench (`dsh-client-ui-mimir`): sidebar toggle + overlay panel.
 - `packages/typert-protocol` — vendored, never-published source copy of the Typert protocol (see below).
 - `examples/mimir-agent` — the cordis patch used in the Quickstart.
@@ -382,6 +382,12 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 - `build/client-preset/` vendors the dsh client-bundle tsdown preset (closure-factory browser artifact + lightningcss pipeline), slimmed to what this repository builds.
 
 ## Changelog
+
+### 0.10.0
+
+- **Venue templates**: pick a target venue in the paper header — 11 built-in formats (CVPR/ICCV/ECCV, NeurIPS/ICML/ICLR/AAAI, ACL, IEEE conference/journal, ACM acmart) with official kit URLs and formatting checklists. Applying writes `template/TEMPLATE.md` (the re-layout brief) into the paper directory and records the venue on the project; "Format to venue" hands the re-layout task to the agent (content untouched, compile-verified).
+- **Custom venue kits**: upload any venue's `.cls`/`.sty`/`.tex`/`.bst` files into `template/`, name the venue, and apply — same brief + agent handoff as a built-in.
+- The `research` Remote namespace grows to 55 methods (`listVenueTemplates`, `applyVenueTemplate`, `clearVenueTemplate`), plus the `/research/template-upload` route.
 
 ### 0.9.0
 
