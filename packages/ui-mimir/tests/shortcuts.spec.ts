@@ -13,15 +13,15 @@ function key(keyValue: string, patch: Partial<Parameters<typeof shortcutFor>[0]>
 }
 
 describe('shortcutFor', () => {
-  it('maps digits 1-6 to the rail tabs in order', () => {
+  it('maps digits 1-7 to the rail tabs in order', () => {
     TABS.forEach((tab, index) => {
       expect(shortcutFor(key(String(index + 1)))).toEqual({ type: 'tab', tab })
     })
-    expect(TABS).toHaveLength(6)
+    expect(TABS).toHaveLength(7)
   })
 
   it('ignores digits outside the tab range and non-digit keys', () => {
-    expect(shortcutFor(key('7'))).toBeNull()
+    expect(shortcutFor(key('8'))).toBeNull()
     expect(shortcutFor(key('0'))).toBeNull()
     expect(shortcutFor(key('q'))).toBeNull()
     // A shifted digit arrives as the shifted character, not a digit.

@@ -512,6 +512,32 @@ export type ResearchSaveFigureResult = ResearchResult<{
   readonly warning?: string | undefined
 }>
 
+/** One generated group-meeting deck as listed on disk (meetings/<projectId>/). */
+export interface MeetingDeckView {
+  /** File name within the project's meetings directory. */
+  readonly file: string
+  readonly sizeBytes: number
+  /** ISO-8601 mtime of the pptx file. */
+  readonly updatedAt: string
+}
+
+/** `generateMeetingDeck` outcome: the produced file name plus slide count. */
+export type ResearchGenerateMeetingResult = ResearchResult<{ readonly file: string; readonly slides: number }>
+
+/** `listMeetingDecks` outcome, newest first. */
+export type ResearchMeetingDecksResult = ResearchResult<{ readonly decks: readonly MeetingDeckView[] }>
+
+/** `deleteMeetingDeck` outcome. */
+export type ResearchDeleteMeetingDeckResult = ResearchResult<{ readonly file: string }>
+
+/** Which sections a group-meeting deck carries. */
+export interface MeetingInclude {
+  readonly progress: boolean
+  readonly experiments: boolean
+  readonly figures: boolean
+  readonly papers: boolean
+}
+
 /** One remembered compute server (a GPU box the experiments run on). */
 export interface ServerRecord {
   readonly id: string

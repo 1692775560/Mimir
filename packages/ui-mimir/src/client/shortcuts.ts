@@ -9,8 +9,8 @@
 
 import type { ResearchTab } from './store.ts'
 
-/** The six view tabs in rail order — also the `1`–`6` shortcut order. */
-export const TABS: readonly ResearchTab[] = ['overview', 'paper', 'papers', 'experiments', 'figures', 'servers']
+/** The seven view tabs in rail order — also the `1`–`7` shortcut order. */
+export const TABS: readonly ResearchTab[] = ['overview', 'paper', 'papers', 'experiments', 'figures', 'meetings', 'servers']
 
 /** The panel header's chrome snapshot: resolved color scheme + active locale. */
 export interface WorkbenchChrome {

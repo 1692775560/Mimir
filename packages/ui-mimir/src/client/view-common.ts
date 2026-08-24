@@ -100,6 +100,15 @@ export function figureUrl(projectId: string, relPath: string, dir: string | unde
     + (dir === undefined ? '' : `&dir=${encodeURIComponent(dir)}`)
 }
 
+/**
+ * Build the meeting-deck download URL for one generated pptx. The route
+ * answers with `Content-Disposition: attachment`, so an `<a href>` download
+ * works without an RPC round-trip.
+ */
+export function meetingDeckUrl(projectId: string, file: string): string {
+  return `/research/meeting?project=${encodeURIComponent(projectId)}&file=${encodeURIComponent(file)}`
+}
+
 /** One run's row in one metric's comparison chart. */
 export interface MetricChartRow {
   readonly id: string

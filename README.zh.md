@@ -8,7 +8,7 @@
 arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX 写作 → 编译 → 预览——一个工作台，由你的 agent 驱动。</p>
 
 <p>
-<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
 <a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
@@ -22,9 +22,9 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 
 ## 视频演示
 
-[![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+[![观看 Mimir 产品演示](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)
 
-▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)**（22 MB）——涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，平滑缩放突出各个工作流程。
+▶ **[在线播放或下载完整 MP4 演示](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)**（22 MB）——涵盖 AI 辅助科研、文献管理、实验管理、图表归档和论文写作，平滑缩放突出各个工作流程。
 
 ![论文工作台：大纲、源码编辑器、编译产物 PDF 预览](docs/screenshots/tab-paper-compiled.png)
 
@@ -67,7 +67,7 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 
 可用 `skills.enabled: false` 关闭（见配置参考）。
 
-### Web 工作台——六视图，一个浮层
+### Web 工作台——七视图，一个浮层
 
 侧栏开关打开 96vw×95vh 工作台：
 
@@ -78,9 +78,10 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 | 📚 **文献** | 收录论文的标签/笔记/项目关联、面板内 arXiv 搜索一键导入、逐卡片加入 `references.bib`、一键**「生成 related work 草稿」**把筛选结果连同写作要求发给 agent |
 | 🧪 **实验** | 运行记录与指标对比图、内联新增/编辑表单、服务器内联换绑、远程任务 settle 自动**回写最近任务徽标**、任意对比图一键**生成论文图**、`EXPERIMENT_LOG.md` 渲染 |
 | 🖼️ **图表** | 论文目录图片网格：预览、拖拽上传、复制 LaTeX 引用、插入论文（SVG 宿主侧自动转 PDF/PNG）；`figure_save` 入库的图带 caption + 关联实验徽标 |
+| 🎞️ **组会** | 一键组会 PPT：勾选文献（默认按 AI 相关度取前 12）与图表、开关四个板块，宿主侧确定性渲染 16:9 pptx（无需 agent 会话）落盘 `meetings/<project>/`；已生成的汇报可下载/删除 |
 | 🖥️ **服务器** | GPU 机器卡片：TCP 探测 + SSH `nvidia-smi` 读取（利用率/显存条、标签筛选）；提交远程命令为实时轮询任务，输出尾部可展开，可关联实验联动状态 |
 
-面板头部带深色/浅色主题和中/EN 语言切换。键盘优先：`1–6` 或方向键切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译；对话框有焦点陷阱，所有控件带可见焦点环。窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
+面板头部带深色/浅色主题和中/EN 语言切换。键盘优先：`1–7` 或方向键切换视图、`Esc` 关闭、`⌘/Ctrl+Enter` 编译；对话框有焦点陷阱，所有控件带可见焦点环。窄窗口自动降级（不足 900px 时论文视图变单栏；不足 700px 时侧栏变为顶部水平条）。
 
 | 深色模式：总览 | 深色模式：论文 | 论文：窄屏 tab 布局 |
 | --- | --- | --- |
@@ -88,10 +89,7 @@ arXiv 文献 · 持久化研究 wiki · 实验与远程 GPU · 图表 · LaTeX �
 
 ## 快速上手
 
-Mimir 由两个 npm 包组成：
-
-- `dsh-mimir`：研究命令、工具、wiki、评审循环与服务端接口。普通使用只需安装这个包。
-- `dsh-client-ui-mimir`：六视图 Web 工作台。它需要集成到 dsh 的 Web 客户端中，不能仅靠安装 npm 包自动出现在侧栏。
+Mimir 是单个 npm 包：`dsh-mimir` 同时携带研究命令、工具、wiki、评审循环、服务端接口，**以及**七视图 Web 工作台（以 `dsh.client` bundle 形式随包发布——装上宿主插件即得完整界面，Web 名册行兼作浏览器行）。旧版 `dsh-client-ui-mimir` 包仍同步发布，供仍在源码中引用它的集成使用；新安装不再需要它。
 
 当前发布版本可随时通过 npm 查询：
 
@@ -135,7 +133,7 @@ npm install dsh-mimir@latest
 仓库已经提供可直接使用的 dsh patch。克隆仓库后无需构建，即可用已安装的 npm 插件启动：
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
@@ -166,25 +164,21 @@ npm view dsh-mimir version
 如果是在 Node.js 项目中直接安装的依赖，则运行：
 
 ```sh
-npm install dsh-mimir@latest dsh-client-ui-mimir@latest
+npm install dsh-mimir@latest
 ```
 
 ### 5. 完整 Web 工作台
 
-Web 工作台包可通过 npm 安装：
+无需额外安装：自 v0.11.0 起工作台随 `dsh-mimir` 本体发布（包声明了 `dsh.client`，并在 `/plugins/dsh-mimir/client.js` 提供客户端 bundle）。安装或升级后重启 `dsh web`，点击侧栏底部的 **Mimir** 即可。
 
-```sh
-npm install dsh-client-ui-mimir@latest
-```
-
-但需要注意：当前已发布的 dsh Web 组合不会自动发现独立客户端插件，也不会自动挂载 `research` Remote 命名空间。因此，仅安装 `dsh-client-ui-mimir` 不会让 Mimir 按钮自动出现在侧栏。完整六视图界面目前需要在 dsh 源码项目中注册该客户端包，并完成 [已知限制](#已知限制) 中说明的 Remote 装配；宿主侧的研究命令、工具、wiki、自动保存和 `/research/*` 接口不受此限制。
+如果你之前在 dsh 源码里集成过独立的 `dsh-client-ui-mimir` 包，升级时请删掉它的名册行（`ui-mimir`）——两者同时保留会把面板挂载两次。旧包会继续同步发版，供仍引用它的集成使用。
 
 ### 6. 从源码开发（可选）
 
-只有参与 Mimir 开发或集成完整 Web 工作台时才需要构建源码：
+只有参与 Mimir 开发时才需要构建源码：
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build
@@ -382,6 +376,33 @@ pnpm run typecheck   # tsc -b 两个包；需先构建（ui-mimir 引用生成�
 - `build/client-preset/` vendored 了 dsh 客户端打包的 tsdown 预设（闭包工厂浏览器产物 + lightningcss 流水线），裁剪到本仓库所需的范围。
 
 ## 更新日志
+
+### 0.12.0
+
+- **组会汇报（Meetings）**：新工作台视图把项目 wiki 一键变成 PPT——标题/汇报人/日期、四个板块开关（进展/实验/图表/文献）、文献多选（带相关度评分，空选=按评分取前 12）、图表缩略图多选。宿主侧用 pptxgenjs 确定性渲染 16:9 `.pptx`（不需要 agent 会话），落盘 `meetings/<project>/`；已生成的汇报在视图里可下载/删除。
+- **新内置技能 `research-meeting-deck`**：让 agent 先把素材备好（文献笔记、图表一句话 takeaway、真实阶段）再生成；幻灯片文风规则改编自 [academic-Group-meeting-skills](https://github.com/mlxbc12138/academic-Group-meeting-skills)，源码中已署名致谢。
+- 图表来源改为扫描论文目录（注册表 caption 按文件名主干合并），面板上传但没有元数据行的图也会嵌入；纯 svg 跳过。
+- `research` Remote 命名空间增至 58 个方法（`generateMeetingDeck`、`listMeetingDecks`、`deleteMeetingDeck`），新增 `/research/meeting` 附件下载路由。
+- 仓库迁移至 `1692775560/dsh-Mimir-Academic-research`，徽章与克隆链接已更新。
+
+### 0.11.0
+
+- **单包安装**：Web 工作台直接随 `dsh-mimir` 发布（`dsh.client` 声明 + 内置 `lib/client.js`），`dsh plugin --profile web add dsh-mimir@latest` 一条命令即有完整 UI——不再需要单独安装 `dsh-client-ui-mimir`，也不需要源码集成。旧包继续同步发布；升级时请删掉名册里的旧行，避免重复挂载。
+- `dsh-client-ui-mimir` 的 `dsh-mimir` peer 下限跟随当前版本（>= 0.11.0），防止新工作台搭配缺少对应 Remote 方法的旧宿主。
+
+### 0.10.0
+
+- **会议模板**：论文头部可选目标会议——11 个内置格式（CVPR/ICCV/ECCV、NeurIPS/ICML/ICLR/AAAI、ACL、IEEE 会议/期刊、ACM acmart），带官方模板链接与排版清单。应用后写入 `template/TEMPLATE.md` 并记录到项目；「按模板排版」把重排任务交给 agent（不改内容，编译验证）。
+- **自定义会议模板**：上传任意会议的 `.cls`/`.sty`/`.tex`/`.bst` 文件到 `template/`，命名并应用，流程与内置一致。
+- `research` Remote 命名空间增至 55 个方法，新增 `/research/template-upload` 路由。
+
+### 0.9.0
+
+- **文献按项目隔离**：arXiv/Zotero 导入自动关联当前项目，文献视图默认只显示选中项目（可切换查看全部）——不同论文的文献列表不再混为一谈。
+- **AI 相关度评分**：让 agent 按项目方向给每篇文献打分（0–10 附一句话理由，按分数段着色）；支持单篇与批量评分，面板轮询回显。评分按项目存储，同一篇文献在不同项目可有不同分数。
+- **图表管理**：同主干的 `png`/`svg` 合并为一张卡片（格式徽标）；内联重命名（自动改写所有 `.tex` 引用与元数据行）与描述编辑；新增 `figure_organize` 工具，agent 可按请求批量归纳命名（「AI 归纳命名」）。
+- **全屏 PDF 阅读器**：已抓取 PDF 的文献可全屏阅读（原生查看器 + 笔记侧栏，Esc 关闭）。
+- `research` Remote 命名空间增至 52 个方法。
 
 ### 0.8.1
 

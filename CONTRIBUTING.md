@@ -8,7 +8,7 @@ change must pass, and the pitfalls that have bitten us before.
 ## Setup
 
 ```bash
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build   # ordered: mimir tsc+bundle, then ui-mimir tsc+bundle

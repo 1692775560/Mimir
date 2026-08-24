@@ -8,7 +8,7 @@
 arXiv literature · persistent research wiki · experiments &amp; remote GPUs · figures · LaTeX writing → compile → preview — one workbench, driven by your agent.</p>
 
 <p>
-<a href="https://github.com/1692775560/Mimir/actions/workflows/ci.yml"><img src="https://github.com/1692775560/Mimir/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
 <a href="https://www.npmjs.com/package/dsh-client-ui-mimir"><img src="https://img.shields.io/npm/v/dsh-client-ui-mimir?label=dsh-client-ui-mimir" alt="npm: dsh-client-ui-mimir"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
@@ -22,9 +22,9 @@ arXiv literature · persistent research wiki · experiments &amp; remote GPUs ·
 
 ## Video demo
 
-[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)
+[![Watch the Mimir product demo](docs/media/mimir-demo-preview.gif)](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)
 
-▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/Mimir/main/docs/media/mimir-demo.mp4)** (22 MB) — AI-assisted research, literature management, experiments, figure archiving, and paper writing, with smooth zooms that highlight each workflow.
+▶ **[Play or download the complete MP4 demo](https://raw.githubusercontent.com/1692775560/dsh-Mimir-Academic-research/main/docs/media/mimir-demo.mp4)** (22 MB) — AI-assisted research, literature management, experiments, figure archiving, and paper writing, with smooth zooms that highlight each workflow.
 
 ![Paper workbench: outline, source editor, compiled PDF preview](docs/screenshots/tab-paper-compiled.png)
 
@@ -67,7 +67,7 @@ When the host composition mounts a skill registry (the shipped web profile does)
 
 Disable them with `skills.enabled: false` (see the configuration reference).
 
-### Web workbench — six views, one overlay
+### Web workbench — seven views, one overlay
 
 A sidebar toggle opens a 96vw×95vh workbench:
 
@@ -78,9 +78,10 @@ A sidebar toggle opens a 96vw×95vh workbench:
 | 📚 **Library** | Remembered papers with tags, notes and per-project links, in-panel arXiv search with one-click import, add-to-`references.bib` — and a one-click **related-work draft** that sends the filtered selection to the agent with thematic writing instructions |
 | 🧪 **Experiments** | Run records with metric-comparison charts, inline create/edit form, server relink dropdowns, automatic **last-job writeback** when a remote run settles, one-click **paper figure** from any comparison chart, and a rendered `EXPERIMENT_LOG.md` |
 | 🖼️ **Figures** | Paper-directory image grid: preview, drag-and-drop upload, copy-LaTeX-reference, insert-into-paper (SVG auto-converts to PDF/PNG on the host); `figure_save` figures show caption + linked-experiment badges |
+| 🎞️ **Meetings** | One-click group-meeting deck: pick papers (default = top 12 by AI relevance) and figures, toggle sections, and the host renders a 16:9 pptx deterministically (no agent round-trip) into `meetings/<project>/`; decks list with download/delete |
 | 🖥️ **Servers** | GPU fleet cards with TCP probe and SSH `nvidia-smi` readouts (utilization/memory bars, tag filters); submit remote commands as live-polled jobs with expandable output tails and optional experiment linkage |
 
-Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1–6` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; the dialog traps focus and every control shows a focus ring. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
+Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1–7` or arrow keys switch views, `Esc` closes, `⌘/Ctrl+Enter` compiles; the dialog traps focus and every control shows a focus ring. Narrow windows degrade gracefully (below 900px the paper view goes single-column; below 700px the rail becomes a top strip).
 
 | Dark mode: overview | Dark mode: paper | Paper: narrow-width tab layout |
 | --- | --- | --- |
@@ -88,7 +89,7 @@ Dark/light theme and 中/EN toggles live in the panel header. Keyboard-first: `1
 
 ## Quickstart
 
-Mimir is a single npm package: `dsh-mimir` carries the research commands, tools, wiki, reviewer loop, server APIs, **and** the six-view Web workbench (shipped as the package's `dsh.client` bundle — installing the host plugin is all it takes; the Web roster row doubles as the browser row). The legacy `dsh-client-ui-mimir` package remains published for existing source integrations, but new installs do not need it.
+Mimir is a single npm package: `dsh-mimir` carries the research commands, tools, wiki, reviewer loop, server APIs, **and** the seven-view Web workbench (shipped as the package's `dsh.client` bundle — installing the host plugin is all it takes; the Web roster row doubles as the browser row). The legacy `dsh-client-ui-mimir` package remains published for existing source integrations, but new installs do not need it.
 
 Check the currently published version at any time:
 
@@ -131,7 +132,7 @@ npm install dsh-mimir@latest
 The repository includes a ready-to-use dsh patch. Clone it and start with the installed npm plugin; no source build is required:
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
 ```
@@ -167,7 +168,7 @@ npm install dsh-mimir@latest
 
 ### 5. Full Web workbench
 
-Nothing extra to install: since v0.11.0 the six-view workbench ships inside `dsh-mimir` itself (the package declares `dsh.client` and serves its client bundle at `/plugins/dsh-mimir/client.js`). Restart `dsh web` after installing or upgrading, then click **Mimir** in the sidebar footer.
+Nothing extra to install: since v0.11.0 the workbench ships inside `dsh-mimir` itself (the package declares `dsh.client` and serves its client bundle at `/plugins/dsh-mimir/client.js`). Restart `dsh web` after installing or upgrading, then click **Mimir** in the sidebar footer.
 
 If you previously integrated the standalone `dsh-client-ui-mimir` package into a dsh source checkout, remove its roster row (`ui-mimir`) when you upgrade — keeping both mounts the panel twice. The legacy package stays published and versioned in lockstep for integrations that still reference it.
 
@@ -176,7 +177,7 @@ If you previously integrated the standalone `dsh-client-ui-mimir` package into a
 Build from source only when contributing to Mimir or integrating the complete Web workbench:
 
 ```sh
-git clone https://github.com/1692775560/Mimir.git
+git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
 cd Mimir
 pnpm install
 pnpm run build
@@ -376,6 +377,14 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 - `build/client-preset/` vendors the dsh client-bundle tsdown preset (closure-factory browser artifact + lightningcss pipeline), slimmed to what this repository builds.
 
 ## Changelog
+
+### 0.12.0
+
+- **Group-meeting decks (组会)**: a new workbench tab turns the project's wiki into a presentation — deck title/presenter/date, four section switches (progress/experiments/figures/papers), paper multi-select with relevance chips (empty = top 12 by score), and a figure thumbnail multi-select. The host renders a real 16:9 `.pptx` via pptxgenjs (no agent session needed) into `meetings/<project>/`; generated decks list in the tab with download and delete.
+- **New bundled skill `research-meeting-deck`**: an agent playbook that curates the deck's raw material first (paper notes, figure takeaway captions, honest stage) — the slide-voice rules are adapted from [academic-Group-meeting-skills](https://github.com/mlxbc12138/academic-Group-meeting-skills), credited in the source.
+- Deck figures come from a disk scan of the paper directory (registry captions merge by stem), so panel-uploaded images without a metadata row are embedded too; svg-only files are skipped.
+- The `research` Remote namespace grows to 58 methods (`generateMeetingDeck`, `listMeetingDecks`, `deleteMeetingDeck`), plus the `/research/meeting` attachment download route.
+- The repository moved to `1692775560/dsh-Mimir-Academic-research`; badges and clone links updated.
 
 ### 0.11.0
 
