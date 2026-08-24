@@ -95,6 +95,39 @@ export interface ResearchPanelInjected {
    * @param prompt - the assembled organize request (figure, project, caption).
    */
   requestFigureOrganize: (prompt: string) => Promise<void>
+  /** Load the venue picker's built-in registry once, on first open. */
+  ensureVenueTemplates: () => void
+  /**
+   * Apply one venue (built-in or uploaded kit) to one project; the header
+   * chip updates via the refreshed project list.
+   * @param projectId - wiki project id.
+   * @param options - built-in template id, or a custom kit display name.
+   * @returns null on success, the settled failure otherwise.
+   */
+  applyVenueTemplate: (
+    projectId: string,
+    options: { templateId?: string | undefined; customName?: string | undefined },
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Clear one project's target venue.
+   * @param projectId - wiki project id.
+   * @returns null on success, the settled failure otherwise.
+   */
+  clearVenueTemplate: (projectId: string) => Promise<ResearchFailureView | null>
+  /**
+   * Upload venue-kit files (.cls/.sty/...) into the project's `template/`
+   * directory, one request per file.
+   * @param projectId - wiki project id.
+   * @param dir - the project's paper directory override, when any.
+   * @param files - the picked files.
+   */
+  uploadTemplateFiles: (projectId: string, dir: string | undefined, files: readonly File[]) => Promise<void>
+  /**
+   * Hand one assembled venue-format prompt to the current session's agent
+   * (the paper view's "format to venue" button); the outcome lands in toasts.
+   * @param prompt - the assembled re-layout request (venue, brief path).
+   */
+  requestVenueFormat: (prompt: string) => Promise<void>
   /** Load the arXiv subscription list once (a stale list triggers one open-time check). */
   ensureSubscriptions: () => void
   /**

@@ -49,6 +49,7 @@ function projectView(record: {
   title: string
   stage: ResearchProjectView['stage']
   paperDir?: string | undefined
+  venue?: ResearchProjectView['venue']
   reviewRounds: number
   artifacts: readonly string[]
   updatedAt: string
@@ -60,6 +61,7 @@ function projectView(record: {
     // Absent, never `undefined`: an explicit undefined key trips the
     // gateway's JSON boundary validation and fails the whole list call.
     ...(record.paperDir === undefined ? {} : { paperDir: record.paperDir }),
+    ...(record.venue === undefined ? {} : { venue: record.venue }),
     reviewRounds: record.reviewRounds,
     artifacts: Object.freeze([...record.artifacts]),
     updatedAt: record.updatedAt,

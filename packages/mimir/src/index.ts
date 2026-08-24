@@ -26,6 +26,7 @@ import { registerPaperCommands } from './commands/paper.ts'
 import type { ResearchCommandDeps } from './commands/common.ts'
 import { resolvePaperDir } from './paper-source.ts'
 import { isFigureFile } from './artifacts.ts'
+import { TEMPLATE_DIR_NAME } from './services/venue.ts'
 import { ResearchService } from './service.ts'
 import { registerResearchSkills } from './skills.ts'
 import { startWikiBackupLoop } from './backup.ts'
@@ -568,12 +569,79 @@ function createFigureUploadHandler(
   }
 }
 
+/** Raw-body cap of the template upload route (a security invariant, not a tunable). */
+const TEMPLATE_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024
+
+/** Extensions a venue-kit upload accepts (plain LaTeX kit files; no archives). */
+const TEMPLATE_UPLOAD_EXTENSIONS = new Set(['.cls', '.sty', '.tex', '.bst', '.bbx', '.cbx', '.clo', '.def', '.cfg', '.md', '.txt', '.pdf'])
+
+/**
+ * Receive one uploaded venue-kit file for a wiki project's paper directory.
+ * The query carries `?project=` (an unknown id is a 404) and `?name=`
+ * (reduced to its basename; an extension outside
+ * {@link TEMPLATE_UPLOAD_EXTENSIONS} is a 400), plus an optional `?dir=`
+ * override resolved like the figure route. The raw body lands at
+ * `template/<name>` under the paper directory (created on demand, same-name
+ * overwrite); a body over {@link TEMPLATE_UPLOAD_LIMIT_BYTES} is a 413, any
+ * method but POST a 405.
+ * @param deps - Shared command dependencies (workspace root and open domain).
+ * @returns the route handler owning the full response lifecycle.
+ */
+function createTemplateUploadHandler(
+  deps: ResearchCommandDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const root = resolve(deps.workspaceDir)
+  return async (req, res) => {
+    if (req.method !== 'POST') {
+      res.writeHead(405).end()
+      return
+    }
+    const url = new URL(req.url ?? '/', 'http://research.local')
+    const projectId = url.searchParams.get('project')
+    if (projectId === null || projectId.length === 0) {
+      res.writeHead(400).end('expected ?project=<project id>')
+      return
+    }
+    const record = deps.domain.table('projects').get(projectId)
+    if (record === undefined) {
+      res.writeHead(404).end('unknown research project')
+      return
+    }
+    const name = basename(url.searchParams.get('name') ?? '')
+    if (name === '' || !TEMPLATE_UPLOAD_EXTENSIONS.has(extname(name).toLowerCase())) {
+      res.writeHead(400).end('name must name a LaTeX kit file (.cls/.sty/.tex/.bst/...)')
+      return
+    }
+    const dir = resolvePaperDir(root, url.searchParams.get('dir') ?? undefined, record.paperDir)
+    if (dir === undefined) {
+      res.writeHead(400).end('dir must be a relative path inside the research workspace')
+      return
+    }
+    const chunks: Buffer[] = []
+    let sizeBytes = 0
+    for await (const chunk of req) {
+      sizeBytes += (chunk as Buffer).length
+      if (sizeBytes > TEMPLATE_UPLOAD_LIMIT_BYTES) {
+        res.writeHead(413).end('template file exceeds the 50MB limit')
+        req.destroy()
+        return
+      }
+      chunks.push(chunk as Buffer)
+    }
+    const templateDir = join(dir, TEMPLATE_DIR_NAME)
+    await mkdir(templateDir, { recursive: true })
+    await writeFile(join(templateDir, name), Buffer.concat(chunks))
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ relPath: `${TEMPLATE_DIR_NAME}/${name}` }))
+  }
+}
+
 
 /**
  * Mount the research suite: open the wiki domain, register the four tools and
  * the five commands, mount the research panel's Remote service and its HTTP
- * routes (compiled-paper PDF, paper PDF, figure, figure upload), and tie the
- * domain's close to the plugin lifecycle.
+ * routes (compiled-paper PDF, paper PDF, figure, figure upload, template
+ * upload), and tie the domain's close to the plugin lifecycle.
  * @param ctx - Plugin context.
  * @param config - Validated plugin config.
  * @returns resolution after the domain is open and every surface is registered.
@@ -679,5 +747,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       handler: createFigureUploadHandler(deps),
     }),
     'mimir.figureUploadRoute',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/template-upload',
+      handler: createTemplateUploadHandler(deps),
+    }),
+    'mimir.templateUploadRoute',
   )
 }
