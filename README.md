@@ -364,7 +364,7 @@ pnpm run typecheck   # tsc -b both packages; assumes a prior build (ui-mimir
 
 Layout:
 
-- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (50 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
+- `packages/mimir` — the host plugin (`dsh-mimir`): commands, tools, wiki domain, reviewer loop, LaTeX compile, BibTeX management, paper snapshots, arXiv keyword subscriptions with scheduled new-paper checks, the `research` Remote namespace (52 methods), and the `/research/pdf` / `/research/figure` / `/research/figure-upload` routes.
 - `packages/ui-mimir` — the browser workbench (`dsh-client-ui-mimir`): sidebar toggle + overlay panel.
 - `packages/typert-protocol` — vendored, never-published source copy of the Typert protocol (see below).
 - `examples/mimir-agent` — the cordis patch used in the Quickstart.
@@ -382,6 +382,14 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 - `build/client-preset/` vendors the dsh client-bundle tsdown preset (closure-factory browser artifact + lightningcss pipeline), slimmed to what this repository builds.
 
 ## Changelog
+
+### 0.9.0
+
+- **Per-project literature scoping**: arXiv/Zotero imports auto-associate with the current project, and the literature view filters to the selected project by default (toggle to see all) — different papers no longer share one mixed reading list.
+- **AI relevance scoring**: ask the agent to rate each paper's relevance to the project's direction (0–10 with a one-line reason, colored chip per band); single-paper and batch scoring, polled back into the panel. Scores are stored per project, so one paper can carry different verdicts in different projects.
+- **Figure management**: same-stem `png`/`svg` exports collapse into one card with format badges; inline rename (rewrites every `.tex` reference and metadata row) and caption editing; a new `figure_organize` tool lets the agent batch-rename and caption figures on request ("AI 归纳命名").
+- **Fullscreen PDF reader**: any paper with a fetched PDF opens in a fullscreen overlay (native viewer + notes sidebar, Esc to close).
+- The `research` Remote namespace grows to 52 methods (`renameFigure`, `updateFigure`; `importPaper`/`importZoteroItem`/`updatePaper` signature extensions).
 
 ### 0.8.1
 
