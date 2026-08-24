@@ -383,6 +383,12 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 
 ## Changelog
 
+### 0.8.1
+
+- Fix: a project without a paper directory broke the whole project list (`paperDir` was emitted as an explicit `undefined`, failing the gateway's JSON boundary validation); `submitJob`'s unlinked `experimentId` had the same latent bug. Both keys are now omitted when unset, with regression tests.
+- Paper view: head-row buttons and the save pill no longer wrap character-by-character in narrow panes (project name / compile status absorb the squeeze with ellipsis).
+- Literature view: the new-subscription-papers list is collapsible (default folded; a successful manual check unfolds it once; persists). Sidebar project list is collapsible too, still showing the selected project's name.
+
 ### 0.8.0
 
 - Nine **bundled research skills** (`research-pipeline`, `research-lit-review`, `research-novelty-check`, `research-experiment-plan`, `research-result-to-claim`, `research-paper-drafting`, `research-citation-audit`, `research-rebuttal`, `research-figure-plan`) register into the host's skill catalog when a skill registry is mounted; `skills.enabled: false` opts out, and project-level same-name skills override them.
