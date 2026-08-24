@@ -179,6 +179,9 @@ describe('generateMeetingDeck', () => {
     await domain.table('projects').put(PROJECT.id, PROJECT)
     await mkdir(join(workspaceDir, 'paper', 'figures'), { recursive: true })
     await writeFile(join(workspaceDir, 'paper', 'figures', 'a.png'), PNG_BYTES)
+    // A disk-only figure (no metadata row, e.g. uploaded through the panel)
+    // must still reach the deck.
+    await writeFile(join(workspaceDir, 'paper', 'figures', 'c.png'), PNG_BYTES)
     // An svg-only record has no raster sibling and must not reach the deck.
     await domain.table('figures').put('p1:figures/a.png', {
       id: 'p1:figures/a.png', projectId: 'p1', relPath: 'figures/a.png',
@@ -201,8 +204,8 @@ describe('generateMeetingDeck', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.value.file.endsWith('.pptx')).toBe(true)
-    // title + agenda + progress + experiments + one figure + two papers + closing
-    expect(result.value.slides).toBe(8)
+    // title + agenda + progress + experiments + two figures + two papers + closing
+    expect(result.value.slides).toBe(9)
 
     const deckPath = meetingDeckPath(workspaceDir, 'p1', result.value.file)
     expect(deckPath).toBeDefined()

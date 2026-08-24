@@ -134,8 +134,12 @@ export function MeetingsView({
       .sort((left, right) => scoreOf(right, projectId) - scoreOf(left, projectId)),
   [papers, projectId])
 
+  // The deck embeds raster siblings only (svg is skipped host-side), so the
+  // pick grid offers exactly the files that can make it into the deck.
   const projectFigures = useMemo(
-    () => figures !== null && figures.projectId === projectId && figures.status === 'ready' ? figures.list : [],
+    () => figures !== null && figures.projectId === projectId && figures.status === 'ready'
+      ? figures.list.filter(figure => /\.(png|jpe?g)$/i.test(figure.relPath))
+      : [],
     [figures, projectId],
   )
 

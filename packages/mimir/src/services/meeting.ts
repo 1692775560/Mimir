@@ -23,6 +23,7 @@ import type {
   ResearchMeetingDecksResult,
 } from '../types.ts'
 import { resolvePaperDir } from '../paper-source.ts'
+import { listPaperFigures, type FigureFile } from '../artifacts.ts'
 import { success, rejected } from './common.ts'
 import type { WikiAdminDeps } from './wiki-admin.ts'
 
@@ -341,23 +342,37 @@ export async function generateMeetingDeck(
   const dir = resolvePaperDir(deps.workspaceDir, undefined, project.paperDir)
   const figures: MeetingFigureInput[] = []
   if (dir !== undefined) {
-    const records = [...deps.domain.table('figures').entries()]
-      .map(([, record]) => record)
-      .filter(record => record.projectId === project.id)
-      .filter(record => request.figureRelPaths === undefined || request.figureRelPaths.includes(record.relPath))
-    // Group by stem: embed the raster sibling, skip svg-only records.
-    const byStem = new Map<string, FigureRecord[]>()
-    for (const record of records) {
-      const stem = record.relPath.replace(/\.[^.]+$/, '')
+    // Scan the paper directory (not just the metadata table): figures dropped
+    // in through the upload route have no table row, and a deck that silently
+    // drops them reads as broken. Captions merge from the table when a row
+    // exists (any sibling of the stem may carry it).
+    const meta = deps.domain.table('figures')
+    const scanned = (await listPaperFigures(dir))
+      .filter(entry => request.figureRelPaths === undefined || request.figureRelPaths.includes(entry.relPath))
+    // Group by stem: embed the raster sibling, skip svg-only files.
+    const byStem = new Map<string, FigureFile[]>()
+    for (const entry of scanned) {
+      const stem = entry.relPath.replace(/\.[^.]+$/, '')
       const group = byStem.get(stem) ?? []
-      group.push(record)
+      group.push(entry)
       byStem.set(stem, group)
     }
     for (const group of byStem.values()) {
-      const raster = group.find(record => DECK_IMAGE_EXTENSIONS.has(extname(record.relPath).toLowerCase()))
+      const raster = group.find(entry => DECK_IMAGE_EXTENSIONS.has(extname(entry.relPath).toLowerCase()))
       if (raster === undefined) continue
-      const caption = group.find(record => record.caption !== '')?.caption ?? raster.caption
-      figures.push({ record: Object.freeze({ ...raster, caption }), imagePath: join(dir, raster.relPath) })
+      const caption = group
+        .map(entry => meta.get(`${project.id}:${entry.relPath}`)?.caption ?? '')
+        .find(text => text !== '') ?? ''
+      figures.push({
+        record: Object.freeze({
+          id: `${project.id}:${raster.relPath}`,
+          projectId: project.id,
+          relPath: raster.relPath,
+          caption,
+          createdAt: new Date(raster.mtimeMs).toISOString(),
+        }),
+        imagePath: join(dir, raster.relPath),
+      })
       if (figures.length >= DECK_MAX_FIGURES) break
     }
   }
