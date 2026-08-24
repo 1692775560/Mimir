@@ -1,0 +1,10 @@
+# Self-activation layer for `dsh plugin --profile web add dsh-mimir`: the
+# CLI reads `dsh.bundle.patch` from package.json and mounts the research
+# suite with its defaults — workspace `./.research` (relative to the
+# directory dsh starts in), reviewer spawn ×3, latex auto, arXiv ×10,
+# subscriptions + hourly backups on. Override any knob in your profile's own
+# cordis.patch.yml (applied after this bundle layer).
+
+- insert:
+    - id: mimir
+      name: dsh-mimir

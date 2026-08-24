@@ -129,15 +129,13 @@ npm install dsh-mimir@latest
 
 ### 2. Start Mimir
 
-The repository includes a ready-to-use dsh patch. Clone it and start with the installed npm plugin; no source build is required:
+`dsh-mimir` is a self-activating bundle (it declares `dsh.bundle`), so the install command above already mounted it into the `web` profile — just start dsh:
 
 ```sh
-git clone https://github.com/1692775560/dsh-Mimir-Academic-research.git
-cd Mimir
-dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"
+dsh web
 ```
 
-Then open <http://127.0.0.1:3080>. The wiki is stored at `~/.dsh/storages/research_wiki.json` by default. Research artifacts—including papers, generated figures, and experiments—are saved under `./.research` in the directory where dsh was started.
+Then open <http://127.0.0.1:3080>. To override the defaults (workspace directory, LaTeX engine, reviewer rounds), edit the profile's own `cordis.patch.yml`; the bundle layer applies first. Running from a source checkout instead still works: clone the repository and `dsh web --patch "$PWD/examples/mimir-agent/cordis.yml"`. The wiki is stored at `~/.dsh/storages/research_wiki.json` by default. Research artifacts—including papers, generated figures, and experiments—are saved under `./.research` in the directory where dsh was started.
 
 ### 3. First session
 
