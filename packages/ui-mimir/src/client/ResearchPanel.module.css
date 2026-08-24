@@ -851,6 +851,137 @@
   min-width: 0;
 }
 
+/* Venue picker: header chip plus the registry popover. */
+.venuePicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.venueChip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px dashed var(--mimir-hairline-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.venueChip:hover {
+  border-color: var(--mimir-accent);
+  color: var(--mimir-accent);
+}
+
+.venueChip[data-set] {
+  border-style: solid;
+  border-color: var(--mimir-accent);
+  background: var(--mimir-accent-soft);
+  color: var(--mimir-accent);
+  font-weight: 500;
+}
+
+.venuePopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 300px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--mimir-hairline);
+  border-radius: var(--mimir-radius-card);
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: var(--mimir-card-shadow);
+}
+
+.venuePopoverTitle {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary, #8a93a6);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.venueGroup {
+  margin-bottom: 8px;
+}
+
+.venueGroupTitle {
+  margin: 0 0 2px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, #8a93a6);
+}
+
+.venueOption {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.venueOption:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 5%));
+}
+
+.venueOption[data-active] {
+  background: var(--mimir-accent-soft);
+  color: var(--mimir-accent);
+  font-weight: 500;
+}
+
+.venueCustomRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.venueCustomRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.venueFileInput {
+  width: 100%;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+}
+
+.venueClear {
+  display: block;
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary, #d93026);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.venueClear:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+
 .outlineRail {
   flex: 0 0 200px;
   min-height: 0;

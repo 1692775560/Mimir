@@ -59,6 +59,15 @@ export const projectRecord = z.object({
   title: z.string(),
   stage: z.enum(['idea', 'plan', 'experiment', 'writing', 'done']),
   paperDir: z.string().optional(),
+  // Added WITHOUT a version bump: `.optional()` leaves the field absent on
+  // records that predate it, so existing v2 JSON stores keep loading.
+  venue: z.object({
+    /** Built-in registry id, or `custom` for an uploaded kit. */
+    id: z.string(),
+    name: z.string(),
+    custom: z.boolean(),
+    appliedAt: z.string(),
+  }).optional(),
   artifacts: z.array(z.string()),
   reviewRounds: z.number().int().nonnegative(),
   updatedAt: z.string(),

@@ -92,6 +92,8 @@ export interface ProjectRecord {
    * each project point at its own LaTeX tree under the same workspace.
    */
   readonly paperDir?: string | undefined
+  /** Target venue of the paper; absent until one is applied. */
+  readonly venue?: VenueView | undefined
   /** Artifact paths relative to the configured workspace directory. */
   readonly artifacts: string[]
   /** Number of completed independent-review rounds. */
@@ -206,6 +208,15 @@ export interface ReviewRound {
 
 /* ── Web research panel wire payloads (the `research` Remote namespace) ───── */
 
+/** The venue format a project targets (built-in registry entry or custom kit). */
+export interface VenueView {
+  /** Built-in registry id, or `custom` for an uploaded kit. */
+  readonly id: string
+  readonly name: string
+  readonly custom: boolean
+  readonly appliedAt: string
+}
+
 /** One project row as the research panel lists it. */
 export interface ResearchProjectView {
   readonly id: string
@@ -213,6 +224,8 @@ export interface ResearchProjectView {
   readonly stage: ProjectStage
   /** Paper directory relative to the workspace root; absent means `paper`. */
   readonly paperDir?: string | undefined
+  /** Target venue of the paper; absent until one is applied. */
+  readonly venue?: VenueView | undefined
   /** Number of completed independent-review rounds. */
   readonly reviewRounds: number
   /** Artifact paths relative to the workspace root (for the overview view). */
@@ -274,6 +287,24 @@ export type ResearchResult<T> = ResearchSuccess<T> | ResearchRejected<ResearchFa
 
 /** `listProjects` result: every wiki project, most recently updated first. */
 export type ResearchListProjectsResult = ResearchResult<{ readonly projects: readonly ResearchProjectView[] }>
+
+/** One built-in venue template entry as the panel lists it. */
+export interface VenueTemplateView {
+  readonly id: string
+  readonly name: string
+  readonly series: string
+  readonly url: string
+  readonly checklist: string
+}
+
+/** `listVenueTemplates` result: the built-in registry for the venue picker. */
+export type ResearchVenueTemplatesResult = ResearchResult<{ readonly templates: readonly VenueTemplateView[] }>
+
+/** `applyVenueTemplate` result: the venue now recorded on the project. */
+export type ResearchApplyVenueResult = ResearchResult<{ readonly venue: VenueView }>
+
+/** `clearVenueTemplate` result: the project whose venue was cleared. */
+export type ResearchClearVenueResult = ResearchResult<{ readonly projectId: string }>
 
 /** `getPaperOutline` result: the section tree of `<workspace>/paper/main.tex`. */
 export type ResearchOutlineResult = ResearchResult<{
