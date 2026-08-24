@@ -51,7 +51,8 @@
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
     "lib/client.js",
-    "lib/client.js.map"
+    "lib/client.js.map",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "bundle": "tsdown",
@@ -110,6 +111,19 @@
         "@deepseek-ai/dsh-client-ui-theme"
       ],
       "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
-  }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "research",
+    "arxiv",
+    "latex",
+    "zotero",
+    "literature",
+    "experiment-tracking"
+  ]
 }
