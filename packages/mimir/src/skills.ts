@@ -381,54 +381,103 @@ Design and produce the paper's figures so each one earns its column width.
   column width, referenced in the text, and captioned with its takeaway.
 ` + SHARED_RULES
 
-// The deck-style rules below (Chinese slide voice, one message per slide,
-// figure-left/caption-right, Fig.X takeaway captions) are adapted from the
-// academic-Group-meeting-skills project
-// (https://github.com/mlxbc12138/academic-Group-meeting-skills) — credit and
-// thanks; Mimir renders them deterministically via pptxgenjs instead of
-// per-slide HTML.
+// Path A below drives the academic-Group-meeting-skills pipeline directly
+// (https://github.com/mlxbc12138/academic-Group-meeting-skills) — cloned at
+// first use, never vendored (the upstream repo ships no license file, so we
+// reference rather than copy it). Its slide-voice rules (Microsoft YaHei,
+// image-left/caption-right, Fig.X Chinese takeaway captions) also govern the
+// Path-B renderer. Credit and thanks to the upstream authors.
 export const RESEARCH_MEETING_DECK = String.raw`
-# Meeting Deck — prepare a group-meeting report from the wiki
+# Meeting Deck — 组会 PPT：逐图精读 or 全项目汇报
 
-Prepare the material for a group-meeting (组会) deck, then let the workbench
-render it. The 组会 / Meetings tab generates the .pptx deterministically from
-the wiki — your job is to make sure what it reads is worth projecting.
+Two decks, two engines. Pick by what the user asked for:
 
-## Slide voice (the house style)
+- **Path A — 单篇文献逐图精读**: one paper, one slide per figure, reference
+  deck style. Drives the upstream academic-Group-meeting-skills script.
+- **Path B — 全项目组会汇报**: progress + experiments + figures + selected
+  papers, rendered deterministically by the \`meeting_deck\` tool.
 
-- Chinese, plain and direct: one slide carries one message, stated in the
-  heading — never "实验结果", always "方法 X 在 Y 上超过 baseline 2.1 个点".
-- Figures present as image-left / caption-right; the caption is the takeaway
-  sentence ("Fig.2 去掉检索模块后召回掉 8 个点"), not a description of axes.
-- Progress is stated against the project stage and the venue target, not as a
-  diary.
+Both land in \`<workspace>/meetings/<projectId>/\`, so the workbench's 组会 /
+Meetings tab lists and downloads them.
 
-## Prepare the material
+## Path A — figure-by-figure deck of ONE paper
 
-1. **Papers** — the deck pulls the project's library papers, relevance-sorted,
-   capped at 12. Re-read the project's paper notes: each kept paper needs a
-   one-paragraph \`notes\` (update with \`wiki_note { action: 'update_paper' }\`)
-   and a relevance score so the sort is honest. A paper without notes shows up
-   as its abstract — weak on a slide.
-2. **Figures** — every figure slide takes its caption from the wiki registry.
-   Walk the 图表 tab and give each figure its takeaway caption before
-   generating; an empty caption wastes the right column.
-3. **Experiments** — the deck lists up to 8 recent runs with their metrics.
-   Make sure the runs you want projected are logged via
-   \`wiki_note { action: 'add_experiment' }\` with real metric values.
-4. **Progress** — \`wiki_note { action: 'set_project' }\` must reflect the
-   true stage, and the venue target (venue tab) should be set if the project
-   is aiming at a conference.
+1. First use only, clone the upstream skill:
+   \`git clone --depth 1 https://github.com/mlxbc12138/academic-Group-meeting-skills ~/.dsh/skills-external/academic-Group-meeting-skills\`
+   The script is at
+   \`~/.dsh/skills-external/academic-Group-meeting-skills/academic-Group-meeting-skills/scripts/paper_figures_to_ppt.py\`
+   (call it SCRIPT below). Read
+   \`~/.dsh/skills-external/academic-Group-meeting-skills/academic-Group-meeting-skills/references/style-profile.md\`
+   before laying out slides.
+2. Renderer check: \`command -v pdftoppm\` (poppler). If missing, write the
+   shim at the bottom of this skill to \`<scratch>/bin/pdftoppm\`,
+   \`chmod +x\` it, and pass \`--pdftoppm <scratch>/bin/pdftoppm\` to extract.
+3. Extract (paper PDFs live under \`<workspace>/papers/<arxivId>.pdf\` after
+   \`paper_fetch\`):
+   \`uv run --with pdfplumber --with pillow --with python-pptx python SCRIPT extract --pdf <paper.pdf> --workdir <scratch>\`
+4. Polish \`<scratch>/manifest.json\` — this is where the quality comes from:
+   drop logos/decorations/tiny icons; fill \`paper.title_zh\`,
+   \`paper.journal_if\`, \`paper.author_school\`; turn every \`raw_caption\`
+   into a takeaway \`zh_caption\` ("Fig. 2 去掉检索模块召回掉 8 个点", not an
+   axis description) plus \`zh_panel_captions\` A/B/C/D lines when the figure
+   has panels; crop huge composite figures into \`subslides\`. Keep exact
+   values, units, gene/method names verbatim.
+5. Build:
+   \`uv run --with pdfplumber --with pillow --with python-pptx python SCRIPT build --manifest <scratch>/manifest.json --out <out.pptx> --reference-pptx ~/.dsh/skills-external/academic-Group-meeting-skills/academic-Group-meeting-skills/assets/reference-style.pptx\`
+6. Register: copy the pptx to
+   \`<workspace>/meetings/<projectId>/<slug>-<yyyymmdd>.pptx\` — it shows in
+   the 组会 tab immediately.
 
-## Generate, then polish
+## Path B — whole-project report (deterministic)
 
-- Tell the user to open the 组会 tab, pick the papers/figures to include,
-  and hit 生成 — the deck lands in \`meetings/<project>/\` and downloads from
-  the tab. If you are preparing a specific meeting, draft the deck title and
-  the 下一步计划 talking points for them.
-- After generation, ask for the one-slide feedback: which slide would the
-  advisor attack first? Strengthen that slide's evidence (a missing run, a
-  missing baseline) before the meeting, not during it.
+1. Curate what the deck renders — it projects exactly what the wiki holds:
+   one-paragraph \`notes\` per featured paper
+   (\`wiki_note { action: 'update_paper' }\`), takeaway captions on figures,
+   logged runs with real metrics, and an honest stage
+   (\`wiki_note { action: 'set_project' }\`).
+2. Optional 逐图 slides inside the report: after a Path-A extract, copy the
+   chosen crops into \`<workspace>/meetings/.paper-figures/<arxivId>/\` and
+   write \`manifest.json\` there as
+   \`[{"file": "fig-01.png", "label": "Figure 1", "caption": "Fig.1 中文 takeaway"}]\`
+   — at most 3 per paper make the deck.
+3. Call \`meeting_deck\` with \`project_id\` (plus optional \`title\`,
+   \`presenter\`, \`date\`, \`paper_ids\`, \`include_*\` switches). The tool
+   returns the deck path; the user downloads from the 组会 tab.
+
+## Slide voice (both paths)
+
+- Chinese, one message per slide, stated in the heading — never "实验结果",
+  always "方法 X 在 Y 上超过 baseline 2.1 个点".
+- Figures image-left / caption-right; the caption is the takeaway sentence.
+- Microsoft YaHei everywhere; fixed readable caption sizes over auto-shrink.
+
+## pdftoppm shim (Path A step 2)
+
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["pypdfium2", "pillow"]
+# ///
+"""pdftoppm-compatible shim: -r <dpi> -png <input.pdf> <prefix> via pypdfium2."""
+import sys
+import pypdfium2 as pdfium
+
+args = sys.argv[1:]
+dpi = 150
+while args and args[0].startswith("-"):
+    flag = args.pop(0)
+    if flag == "-r":
+        dpi = int(args.pop(0))
+    elif flag == "-png":
+        pass
+    else:
+        raise SystemExit("shim: unsupported flag " + flag)
+doc = pdfium.PdfDocument(args[0])
+n = len(doc)
+width = max(2, len(str(n)))
+for i in range(n):
+    doc[i].render(scale=dpi / 72).to_pil().save(args[1] + "-" + str(i + 1).zfill(width) + ".png")
+doc.close()
 ` + SHARED_RULES
 
 
@@ -490,8 +539,8 @@ export const BUNDLED_SKILLS: readonly BundledSkill[] = [
   },
   {
     name: 'research-meeting-deck',
-    description: 'Prepare group-meeting (组会) material — paper notes, figure takeaway captions, logged runs, honest stage — so the Meetings tab renders a deck worth projecting. Use when the user says "组会", "组会汇报", "meeting deck", "group meeting slides", or a lab meeting is coming.',
-    whenToUse: 'A group meeting is coming and the deck should be generated from curated wiki material.',
+    description: 'Generate a group-meeting (组会) deck that actually shows paper figures: either run the bundled academic-Group-meeting-skills pipeline (pdftoppm shim + paper_figures_to_ppt.py) for a figure-by-figure paper walkthrough, or call the meeting_deck tool for a whole-project report with per-figure slides. Use when the user says "组会", "组会汇报", "meeting deck", "group meeting slides", or a lab meeting is coming.',
+    whenToUse: 'A group meeting is coming and the user wants a slide deck with real paper figures, generated end-to-end.',
     content: RESEARCH_MEETING_DECK,
   },
 ]

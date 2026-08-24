@@ -13,7 +13,7 @@ import { BUNDLED_SKILLS, registerResearchSkills } from '../src/skills.ts'
 
 /** Tool, command, and artifact names the plugin itself registers/ships. */
 const REAL_SURFACES = [
-  'arxiv_search', 'paper_fetch', 'wiki_note', 'figure_save', 'latex_compile',
+  'arxiv_search', 'paper_fetch', 'wiki_note', 'figure_save', 'latex_compile', 'meeting_deck',
   'research-idea', 'research-plan', 'research-review', 'paper-write', 'paper-compile',
   'IDEA_REPORT.md', 'EXPERIMENT_PLAN.md', 'EXPERIMENT_LOG.md', 'NARRATIVE_REPORT.md',
 ]

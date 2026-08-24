@@ -378,6 +378,12 @@ Contributing: branch off `main` (`feature/<name>` or `fix/<name>`), keep `pnpm r
 
 ## Changelog
 
+### 0.13.0
+
+- **Decks with real paper figures**: the Meetings pipeline now embeds figure-by-figure slides — drop a `meetings/.paper-figures/<arxivId>/manifest.json` (extracted from the paper PDF) next to the project and each selected paper's intro slide is followed by up to 3 per-figure slides with its extracted images.
+- **New `meeting_deck` agent tool**: the agent can generate the whole-project report deck itself (title/presenter/date, section switches, paper selection) — same renderer as the tab, so the result lands in 已生成的汇报 with download/delete.
+- **Direct integration of [academic-Group-meeting-skills](https://github.com/mlxbc12138/academic-Group-meeting-skills)**: the rewritten `research-meeting-deck` skill walks the agent through the original repo's pipeline end to end — clone the skill, run `paper_figures_to_ppt.py extract` against the project's cached arXiv PDFs (with a bundled single-file `pdftoppm` shim for hosts without poppler), let the agent polish manifest captions, `build` a figure-by-figure deck against the skill's reference style, then file the `.pptx` into `meetings/<project>/` where the tab manages it. Path B remains the built-in whole-project deck via `meeting_deck`.
+
 ### 0.12.0
 
 - **Group-meeting decks (组会)**: a new workbench tab turns the project's wiki into a presentation — deck title/presenter/date, four section switches (progress/experiments/figures/papers), paper multi-select with relevance chips (empty = top 12 by score), and a figure thumbnail multi-select. The host renders a real 16:9 `.pptx` via pptxgenjs (no agent session needed) into `meetings/<project>/`; generated decks list in the tab with download and delete.

@@ -96,6 +96,7 @@ describe('buildDeckModel', () => {
       date: '2026-08-24',
       paperCount: 3,
       papers: [paperOf('2103.00020', 9)],
+      paperFigures: {},
       experiments: [experimentOf('e1')],
       figures: [{
         record: {
@@ -121,6 +122,7 @@ describe('buildDeckModel', () => {
       date: '2026-08-24',
       paperCount: 0,
       papers: [],
+      paperFigures: {},
       experiments: [],
       figures: [],
       include: { progress: true, experiments: true, figures: true, papers: true },
@@ -138,6 +140,7 @@ describe('buildDeckModel', () => {
       date: '2026-08-24',
       paperCount: 1,
       papers: [paperOf('2103.00020', 9)],
+      paperFigures: {},
       experiments: [],
       figures: [],
       include: { progress: false, experiments: false, figures: false, papers: true },
@@ -156,6 +159,7 @@ describe('buildDeckModel', () => {
       date: '2026-08-24',
       paperCount: 0,
       papers: [],
+      paperFigures: {},
       experiments,
       figures: [],
       include: { progress: false, experiments: true, figures: false, papers: false },
@@ -164,6 +168,32 @@ describe('buildDeckModel', () => {
     if (slide?.kind !== 'bullets') throw new Error('expected an experiments slide')
     expect(slide.bullets.length).toBe(9)
     expect(slide.bullets.at(-1)?.text).toContain('另外 2 次实验')
+  })
+
+  it('appends one 逐图 slide per extracted paper figure after the intro', () => {
+    const slides = buildDeckModel({
+      project: PROJECT,
+      title: '组会汇报',
+      date: '2026-08-24',
+      paperCount: 1,
+      papers: [paperOf('2103.00020', 9)],
+      paperFigures: {
+        '2103.00020': [
+          { imagePath: '/tmp/fig-01.png', label: 'Figure 1', caption: 'Fig.1 方法总览：检索模块是核心' },
+          { imagePath: '/tmp/fig-02.png', label: 'Figure 2', caption: 'Fig.2 去掉检索召回掉 8 个点' },
+        ],
+      },
+      experiments: [],
+      figures: [],
+      include: { progress: false, experiments: false, figures: false, papers: true },
+    })
+    const figureSlides = slides.filter(slide => slide.kind === 'figure')
+    expect(figureSlides.length).toBe(2)
+    expect(figureSlides[0]?.kind === 'figure' ? figureSlides[0].heading : '').toContain('Figure 1')
+    expect(figureSlides[1]?.kind === 'figure' ? figureSlides[1].caption : '').toContain('召回掉 8 个点')
+    // The intro slide still precedes the figure slides.
+    const introIndex = slides.findIndex(slide => slide.kind === 'bullets' && slide.heading.startsWith('Paper'))
+    expect(slides.indexOf(figureSlides[0] as never)).toBeGreaterThan(introIndex)
   })
 })
 
@@ -243,6 +273,29 @@ describe('generateMeetingDeck', () => {
     if (!picked.ok) return
     // title + agenda + two paper slides + closing
     expect(picked.value.slides).toBe(5)
+  })
+
+  it('embeds extracted paper figures when an extraction manifest exists', async () => {
+    const { domain, workspaceDir, service } = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('papers').put('2103.00020', paperOf('2103.00020', 9))
+    const assetsDir = join(workspaceDir, 'meetings', '.paper-figures', '2103.00020')
+    await mkdir(assetsDir, { recursive: true })
+    await writeFile(join(assetsDir, 'fig-01.png'), PNG_BYTES)
+    await writeFile(join(assetsDir, 'manifest.json'), JSON.stringify([
+      { file: 'fig-01.png', label: 'Figure 1', caption: 'Fig.1 方法总览' },
+      // A manifest row whose crop file is gone is dropped, not fatal.
+      { file: 'gone.png', label: 'Figure 2', caption: 'missing' },
+    ]))
+    const result = await service.generateMeetingDeck({
+      projectId: 'p1',
+      date: '2026-08-24',
+      include: { progress: false, experiments: false, figures: false },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // title + agenda + paper intro + one 逐图 slide + closing
+    expect(result.value.slides).toBe(5)
   })
 })
 
