@@ -1427,6 +1427,23 @@ li.dropIndicator {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+/* The venue badge yields first: it ellipsizes below its 220px cap so the
+   save pill and the fullscreen button stay reachable in narrow panes. */
+.editorHead .venuePicker {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.editorHead .venueChip {
+  min-width: 0;
+}
+
+.editorHead .venuePicker .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .editorHead {
