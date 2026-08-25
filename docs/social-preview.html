@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background:
+      radial-gradient(900px 500px at 85% 20%, #e9e2d0 0%, rgba(233,226,208,0) 60%),
+      radial-gradient(700px 460px at 10% 90%, #e3dccb 0%, rgba(227,220,203,0) 55%),
+      #f6f2e9;
+    position: relative;
+  }
+  .wrap {
+    position: relative;
+    width: 1280px; height: 640px;
+    padding: 72px 0 0 84px;
+  }
+  .brand { display: flex; align-items: center; gap: 26px; }
+  .logo {
+    width: 96px; height: 96px; border-radius: 26px;
+    background: linear-gradient(145deg, #232b3d, #161c2a);
+    color: #f6f2e9;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 58px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 14px 30px rgba(30, 36, 51, .28);
+  }
+  .name {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 88px; font-weight: 700; color: #1e2433; letter-spacing: 1px;
+    line-height: 1;
+  }
+  .tagline {
+    margin-top: 30px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 44px; color: #2c3550; font-weight: 600; line-height: 1.25;
+  }
+  .tagline em { font-style: normal; color: #47608c; }
+  .tagline-zh {
+    margin-top: 14px;
+    font-size: 25px; color: #6b6353; letter-spacing: 2px;
+    max-width: 600px;
+  }
+  .chips { margin-top: 34px; display: flex; gap: 12px; max-width: 600px; flex-wrap: wrap; }
+  .chip {
+    background: #fffdf8; border: 1px solid #ddd4c0;
+    color: #4a4436; font-size: 19px;
+    padding: 9px 18px; border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(60, 54, 40, .06);
+  }
+  .foot {
+    position: absolute; left: 84px; bottom: 52px;
+    font-size: 19px; color: #8a8171; letter-spacing: .5px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .foot b { color: #47608c; font-weight: 600; }
+  .shot {
+    position: absolute; right: -110px; top: 118px;
+    width: 560px;
+    transform: rotate(2.5deg);
+    border-radius: 18px;
+    border: 1px solid rgba(120, 110, 88, .25);
+    box-shadow: 0 30px 70px rgba(40, 42, 60, .28), 0 4px 14px rgba(40,42,60,.12);
+    background: #fff;
+  }
+  .shot img { width: 100%; display: block; border-radius: 17px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div class="name">Mimir</div>
+    </div>
+    <div class="tagline">The whole <em>research cycle</em>,<br>in one workbench.</div>
+    <div class="tagline-zh">一站式智能科研工作台 · 管理科研全周期</div>
+    <div class="chips">
+      <span class="chip">LaTeX 边写边编译</span>
+      <span class="chip">arXiv 文献</span>
+      <span class="chip">实验追踪</span>
+      <span class="chip">组会 PPT</span>
+      <span class="chip">GPU 服务器</span>
+    </div>
+    <div class="foot">Open-source plugin for <b>DeepSeek Harness</b> · dsh-mimir</div>
+    <div class="shot"><img src="/Users/wujie/Mimir/docs/screenshots/tab-overview.png"></div>
+  </div>
+</body>
+</html>
