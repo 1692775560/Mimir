@@ -46,6 +46,8 @@ dsh plugin --profile web add dsh-mimir@latest   # 安装即自动激活
 dsh web                                          # 然后打开 http://127.0.0.1:3080
 ```
 
+装到了旧版本（比如 0.11.x/0.12.x）？dsh 的插件商店走 pnpm，默认会延迟加载刚发布的新版本。改用精确版本号：`dsh plugin --profile web remove dsh-mimir && dsh plugin --profile web add dsh-mimir@0.14.1`
+
 点击侧栏底部的 **Mimir**。wiki 存在 `~/.dsh/storages/research_wiki.json`，工件落盘 `./.research`。
 
 可选能力：

@@ -46,6 +46,8 @@ dsh plugin --profile web add dsh-mimir@latest   # installs and self-activates
 dsh web                                          # then open http://127.0.0.1:3080
 ```
 
+Got an old version (e.g. 0.11.x/0.12.x)? dsh's plugin store uses pnpm, which holds back freshly published releases by default. Pin the exact version instead: `dsh plugin --profile web remove dsh-mimir && dsh plugin --profile web add dsh-mimir@0.14.1`
+
 Click **Mimir** in the sidebar footer. The wiki persists at `~/.dsh/storages/research_wiki.json`; artifacts land under `./.research`.
 
 Optional capabilities:
