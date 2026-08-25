@@ -9,13 +9,13 @@
  */
 
 import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: pulls the Client assembly's ctx.remote merge. NOTE: the published
-// @deepseek-ai/dsh-api-remotes does not mount the research namespace; the
-// augmentation below supplies its types (see README "Known limitations").
+// Type-only: pulls the Client assembly's ctx.remote merge (TypertClientRemote).
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: mounts the generated `research` Remote namespace types onto the
-// client Remote map (TypertRemoteNamespaceMap), so ctx.remote.research types.
-import type {} from 'dsh-mimir/remote'
+// Runtime + types: the generated research Remote contribution. The panel
+// mounts the namespace itself (see apply): the published dsh-api-remotes
+// assembly does not carry it, and the bundle preset inlines generated
+// `/remote` modules, so no module-table row is needed.
+import researchRemote from 'dsh-mimir/remote'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the theme plugin's Context merge (ctx.theme).
@@ -52,8 +52,8 @@ export {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'research'
 
-/** Required services: the slot registry, the Remote namespace, the sessions domain, the copy, and the theme preference. */
-export const inject = ['slots', 'remote', 'remote.research', 'sessions', 'locale', 'theme']
+/** Required services: the slot registry, the Remote carrier, the sessions domain, the copy, and the theme preference. `remote.research` is NOT listed: this module mounts that namespace itself, and an inject entry would make the loader wait for a service that only this module can create. */
+export const inject = ['slots', 'remote', 'sessions', 'locale', 'theme']
 
 /**
  * Upload one figure file through the host's upload route. The route answers
@@ -93,11 +93,35 @@ async function uploadOneTemplateFile(projectId: string, dir: string | undefined,
 }
 
 /**
- * Client plugin body: the research toggle, the panel overlay, and the shared
- * object layer.
+ * Client plugin body: mounts the research Remote namespace, then loads the
+ * panel as a nested plugin that injects it. Stock dsh distributions do not
+ * carry the research namespace in their Remote assembly, so the panel must
+ * mount it itself; cordis only hands a service to fibers that inject it, and
+ * an inject entry on THIS module would deadlock (the loader would wait for a
+ * service only this module creates). The nested plugin is created after the
+ * mount settles, so its inject resolves immediately.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  void (async () => {
+    const unmountResearch = await ctx.remote.$mount(researchRemote)
+    ctx.effect(() => unmountResearch, 'ui-mimir: research remote')
+    ctx.plugin({
+      name: 'dsh-client-ui-mimir/panel',
+      inject: ['slots', 'remote.research', 'sessions', 'locale', 'theme'],
+      apply: panelApply,
+    })
+  })().catch((error: unknown) => {
+    console.error('[dsh-mimir] failed to mount the research remote:', error)
+  })
+}
+
+/**
+ * The research panel proper: the toggle, the overlay, and the shared object
+ * layer. Runs in the nested fiber where `remote.research` is injected.
+ * @param ctx - nested plugin context with the research namespace injected.
+ */
+function panelApply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-mimir: dictionaries')
 
   // The browser `ctx.sessions` is the client runtime's ISessions, but the
