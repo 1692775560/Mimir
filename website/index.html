@@ -13,9 +13,10 @@
 /* ================= design tokens =================
    字号阶梯 1.25：12 / 14 / 16 / 20 / 24 / 32 / 40 / 64
    间距阶梯 4pt：4 / 8 / 16 / 24 / 32 / 48 / 64 / 96
-   色板：暖米底 + 深墨蓝，次级文字对比度 ≥ 4.5:1 */
+   色板：暖纸底 + 深墨蓝，次级文字对比度 ≥ 4.5:1 */
 :root {
   --bg: #f6f2e9;
+  --paper: #fbf8f0;
   --surface: #fffdf8;
   --ink: #1e2433;
   --ink-2: #2c3550;
@@ -25,7 +26,7 @@
   --accent-strong: #3a4f75;
   --accent-soft: rgb(71 96 140 / 10%);
   --line: #ddd4c0;
-  --code-bg: #1c2233;
+  --code-bg: #171c28;
   --code-ink: #d7e0f4;
 
   --fs-12: 12px; --fs-14: 14px; --fs-16: 16px;
@@ -51,12 +52,17 @@ body {
   line-height: 1.6;
   overflow-x: hidden;
 }
+/* 纸面颗粒（sketchbook 触感） */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 200; pointer-events: none; opacity: .05;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="180" height="180" filter="url(%23n)"/></svg>');
+}
 .serif { font-family: Georgia, "Times New Roman", "Songti SC", serif; }
 .mono { font-family: "SF Mono", Menlo, Consolas, monospace; }
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--s4); }
 ::selection { background: var(--accent); color: #fff; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
-section { scroll-margin-top: var(--s7); }
+section { scroll-margin-top: 88px; }
 
 /* ---------- motion primitives ---------- */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
@@ -64,14 +70,17 @@ section { scroll-margin-top: var(--s7); }
 .rise { opacity: 0; animation: rise .8s cubic-bezier(.22, .8, .3, 1) forwards; }
 @keyframes rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
 
-/* ---------- nav ---------- */
+/* ---------- floating pill nav（DSH 式） ---------- */
 nav {
-  position: sticky; top: 0; z-index: 50;
-  backdrop-filter: blur(14px);
-  background: rgb(246 242 233 / 78%);
-  border-bottom: 1px solid var(--line);
+  position: sticky; top: 14px; z-index: 50;
+  max-width: 1064px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgb(255 253 248 / 72%);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 28px rgb(40 42 60 / 8%);
+  margin-inline: max(16px, calc((100% - 1064px) / 2));
 }
-.nav-inner { display: flex; align-items: center; gap: 12px; height: var(--s7); }
+.nav-inner { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 10px 0 var(--s3); }
 .logo-badge {
   width: var(--s5); height: var(--s5); border-radius: 9px;
   background: linear-gradient(145deg, #232b3d, #161c2a);
@@ -81,47 +90,45 @@ nav {
 }
 .logo-badge:hover { transform: rotate(-8deg) scale(1.08); }
 .nav-name { font-family: Georgia, serif; font-weight: 700; font-size: var(--fs-20); }
-.nav-links { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+.nav-tag {
+  font-family: "SF Mono", Menlo, monospace; font-size: 10px; letter-spacing: .08em;
+  color: var(--accent); border: 1px solid rgb(71 96 140 / 30%);
+  padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+}
+.nav-links { margin-left: auto; display: flex; align-items: center; gap: var(--s1); }
 .nav-links a {
   position: relative;
   color: var(--muted); text-decoration: none; font-size: var(--fs-14);
-  padding: 12px var(--s2);   /* ≥44px 触控目标 */
-  border-radius: 8px;
-  transition: color .15s ease;
+  padding: 10px 12px;
+  border-radius: 999px;
+  transition: color .15s ease, background .15s ease;
 }
-.nav-links a:not(.nav-gh)::after {
-  content: ""; position: absolute; left: var(--s2); right: var(--s2); bottom: 7px;
-  height: 2px; border-radius: 2px; background: var(--accent);
-  transform: scaleX(0); transform-origin: left;
-  transition: transform .22s cubic-bezier(.22, .8, .3, 1);
-}
-.nav-links a:hover { color: var(--ink); }
-.nav-links a:not(.nav-gh):hover::after { transform: scaleX(1); }
+.nav-links a:hover { color: var(--ink); background: rgb(71 96 140 / 7%); }
 .nav-gh {
   display: inline-flex; align-items: center; gap: 7px;
   background: var(--ink); color: var(--bg) !important;
   padding: 8px var(--s3) !important; border-radius: 999px; font-weight: 500;
   transition: background .15s ease, transform .15s ease;
 }
-.nav-gh:hover { background: #323c55; transform: translateY(-1px); }
-@media (max-width: 760px) { .nav-links a:not(.nav-gh) { display: none; } }
+.nav-gh:hover { background: #323c55 !important; transform: translateY(-1px); }
+@media (max-width: 760px) { .nav-links a:not(.nav-gh), .nav-tag { display: none; } }
 
 /* ---------- hero ---------- */
-.hero { position: relative; padding: var(--s8) 0 var(--s7); text-align: center; }
+.hero { position: relative; padding: var(--s7) 0 var(--s8); text-align: center; }
 .aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); will-change: transform; }
 .aurora .a1 {
-  width: 560px; height: 560px; background: #c3d2ef; opacity: .6;
+  width: 560px; height: 560px; background: #c3d2ef; opacity: .55;
   top: -200px; right: -100px;
   animation: drift1 18s ease-in-out infinite alternate;
 }
 .aurora .a2 {
-  width: 480px; height: 480px; background: #f2ddba; opacity: .65;
+  width: 480px; height: 480px; background: #f2ddba; opacity: .6;
   top: 100px; left: -180px;
   animation: drift2 23s ease-in-out infinite alternate;
 }
 .aurora .a3 {
-  width: 420px; height: 420px; background: #dfe4d2; opacity: .5;
+  width: 420px; height: 420px; background: #dfe4d2; opacity: .45;
   bottom: -260px; left: 38%;
   animation: drift3 20s ease-in-out infinite alternate;
 }
@@ -130,10 +137,11 @@ nav {
 @keyframes drift3 { to { transform: translate(-100px, -70px) scale(1.15); } }
 .hero .wrap { position: relative; }
 .hero-kicker {
-  display: inline-block; font-size: var(--fs-12); letter-spacing: .18em;
+  display: inline-block; font-family: "SF Mono", Menlo, monospace;
+  font-size: var(--fs-12); letter-spacing: .18em;
   color: var(--accent); background: var(--accent-soft);
   border: 1px solid rgb(71 96 140 / 25%);
-  padding: 6px var(--s3); border-radius: 999px; margin-bottom: var(--s4);
+  padding: 7px var(--s3); border-radius: 999px; margin-bottom: var(--s4);
 }
 .hero h1 {
   font-family: Georgia, "Times New Roman", "Songti SC", serif;
@@ -177,24 +185,48 @@ nav {
 }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .btn-ghost:active { transform: translateY(0) scale(.98); }
-.install-cmd {
-  margin: var(--s5) auto 0; display: inline-flex; align-items: center; gap: 14px;
-  max-width: calc(100vw - 48px);
-  background: var(--code-bg); color: var(--code-ink);
-  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: var(--fs-14);
-  padding: 12px 18px; border-radius: 12px;
-  box-shadow: var(--shadow-lg);
+
+/* ---------- terminal card（DSH 式） ---------- */
+.term {
+  margin: var(--s6) auto 0; max-width: 640px; text-align: left;
+  background: var(--code-bg); border-radius: 14px;
+  box-shadow: 0 24px 60px rgb(23 28 40 / 30%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  overflow: hidden;
   transition: transform .18s ease, box-shadow .18s ease;
 }
-.install-cmd:hover { transform: translateY(-2px); box-shadow: 0 26px 56px rgb(40 42 60 / 16%); }
-.install-cmd span { overflow-x: auto; white-space: nowrap; }
-.install-cmd .copy {
+.term:hover { transform: translateY(-2px); box-shadow: 0 30px 70px rgb(23 28 40 / 36%); }
+.term-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px var(--s3); border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+.term-dot { width: 11px; height: 11px; border-radius: 50%; }
+.term-dot.r { background: #ff5f57; } .term-dot.y { background: #febc2e; } .term-dot.g { background: #28c840; }
+.term-tabs { margin-left: var(--s3); display: flex; gap: var(--s1); }
+.term-tab {
+  border: none; background: transparent; cursor: pointer;
+  color: #8b96b3; font-size: var(--fs-12); font-family: inherit;
+  padding: 5px 12px; border-radius: 7px;
+  transition: color .15s ease, background .15s ease;
+}
+.term-tab:hover { color: #d7e0f4; }
+.term-tab.active { background: rgb(255 255 255 / 10%); color: #fff; }
+.term-body { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s3) 18px; }
+.term-body code {
+  flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: var(--fs-14);
+  color: var(--code-ink);
+  mask-image: linear-gradient(to right, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent);
+}
+.term-body code::before { content: "$ "; color: #6f8fc4; }
+.term-copy {
   flex-shrink: 0;
-  border: 1px solid rgb(255 255 255 / 20%); background: transparent; color: #aeb9d4;
-  font-size: var(--fs-12); padding: var(--s1) 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid rgb(255 255 255 / 18%); background: transparent; color: #aeb9d4;
+  font-size: var(--fs-12); padding: 5px 12px; border-radius: 7px; cursor: pointer;
   font-family: inherit; transition: color .15s ease, border-color .15s ease;
 }
-.install-cmd .copy:hover { color: #fff; border-color: rgb(255 255 255 / 45%); }
+.term-copy:hover { color: #fff; border-color: rgb(255 255 255 / 45%); }
 .hero-stats { margin-top: var(--s4); font-size: var(--fs-14); color: var(--faint); letter-spacing: .05em; }
 .hero-stats b { color: var(--ink-2); font-weight: 600; }
 .hero-shot { margin-top: var(--s7); position: relative; }
@@ -229,6 +261,7 @@ section { padding: var(--s8) 0; }
 .sec-head { text-align: center; margin-bottom: var(--s6); }
 .sec-kicker {
   display: inline-flex; align-items: center; gap: 10px;
+  font-family: "SF Mono", Menlo, monospace;
   font-size: var(--fs-12); letter-spacing: .22em;
   color: var(--accent); margin-bottom: var(--s3); font-weight: 600;
 }
@@ -241,14 +274,14 @@ section { padding: var(--s8) 0; }
 }
 .sec-head p { margin-top: 10px; color: var(--muted); font-size: var(--fs-16); max-width: 65ch; margin-inline: auto; }
 
-/* ---------- features ---------- */
+/* ---------- features（DSH 式卡片解剖） ---------- */
 .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
 @media (max-width: 900px) { .feat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .feat-grid { grid-template-columns: 1fr; } }
 .feat {
-  position: relative; overflow: hidden;
+  position: relative; overflow: hidden; text-align: center;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: var(--s4);
+  padding: var(--s5) var(--s4) var(--s4);
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 .feat::before {
@@ -259,18 +292,29 @@ section { padding: var(--s8) 0; }
 .feat:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: rgb(71 96 140 / 35%); }
 .feat:hover::before { opacity: 1; }
 .feat-icon {
-  width: 44px; height: 44px; border-radius: 12px;
+  width: 48px; height: 48px; border-radius: 14px;
   background: var(--accent-soft); color: var(--accent);
-  display: flex; align-items: center; justify-content: center; margin-bottom: var(--s3);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto var(--s3);
   transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), background .2s ease, color .2s ease;
 }
 .feat:hover .feat-icon { transform: translateY(-2px) rotate(-6deg) scale(1.06); background: var(--accent); color: #fff; }
-.feat-icon svg { width: 22px; height: 22px; }
-.feat h3 { font-size: var(--fs-20); font-weight: 600; margin-bottom: var(--s2); }
-.feat p { font-size: var(--fs-16); color: var(--muted); }
+.feat-icon svg { width: 23px; height: 23px; }
+.feat h3 { font-size: var(--fs-20); font-weight: 600; }
+.feat h3::after {
+  content: ""; display: block; width: 26px; height: 2px; border-radius: 2px;
+  background: var(--accent); opacity: .55; margin: 10px auto 0;
+  transition: width .25s cubic-bezier(.22, .8, .3, 1), opacity .2s ease;
+}
+.feat:hover h3::after { width: 44px; opacity: 1; }
+.feat-en {
+  font-family: "SF Mono", Menlo, monospace; font-size: 10px;
+  letter-spacing: .2em; color: var(--faint); margin-top: var(--s2);
+}
+.feat p { font-size: var(--fs-16); color: var(--muted); margin-top: var(--s3); }
 
-/* ---------- gallery ---------- */
-.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s4); }
+/* ---------- gallery（editorial plates） ---------- */
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s5) var(--s4); }
 @media (max-width: 700px) { .gallery { grid-template-columns: 1fr; } }
 .shot { cursor: zoom-in; position: relative; }
 .shot img {
@@ -289,11 +333,15 @@ section { padding: var(--s8) 0; }
   pointer-events: none;
 }
 .shot:hover .zoom-hint, .shot:focus-visible .zoom-hint { opacity: 1; transform: scale(1); }
-.shot figcaption { margin-top: 10px; font-size: var(--fs-14); color: var(--faint); text-align: center; }
+.shot figcaption { margin-top: 12px; font-size: var(--fs-14); color: var(--faint); text-align: center; }
+.plate {
+  display: block; font-family: "SF Mono", Menlo, monospace;
+  font-size: 10px; letter-spacing: .22em; color: var(--accent); margin-bottom: 3px;
+}
 
 /* ---------- lightbox ---------- */
 .lightbox {
-  position: fixed; inset: 0; z-index: 100; display: none;
+  position: fixed; inset: 0; z-index: 300; display: none;
   background: rgb(20 22 30 / 82%); backdrop-filter: blur(6px);
   align-items: center; justify-content: center; padding: 4vmin; cursor: zoom-out;
 }
@@ -373,9 +421,10 @@ footer a { color: var(--muted); }
 </head>
 <body>
 <nav>
-  <div class="wrap nav-inner">
+  <div class="nav-inner">
     <span class="logo-badge">M</span>
     <span class="nav-name serif">Mimir</span>
+    <span class="nav-tag">DSH PLUGIN</span>
     <div class="nav-links">
       <a href="#features">功能</a>
       <a href="#gallery">界面</a>
@@ -392,7 +441,7 @@ footer a { color: var(--muted); }
 <header class="hero">
   <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
   <div class="wrap">
-    <span class="hero-kicker rise">DEEPSEEK HARNESS 开源插件</span>
+    <span class="hero-kicker rise">DEEPSEEK HARNESS · 开源插件</span>
     <h1 class="rise" style="animation-delay:.08s">一站式智能<em>科研工作台</em></h1>
     <p class="hero-sub rise" style="animation-delay:.16s">论文 · 文献 · 实验 · 图表 · 组会 · 服务器——管理科研全周期</p>
     <p class="hero-sub-en rise" style="animation-delay:.22s">The whole research cycle, in one workbench.</p>
@@ -400,9 +449,19 @@ footer a { color: var(--muted); }
       <a class="btn-main" href="#quickstart">快速上手</a>
       <a class="btn-ghost" href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">查看源码</a>
     </div>
-    <div class="install-cmd rise" style="animation-delay:.38s">
-      <span>dsh plugin --profile web add dsh-mimir@latest</span>
-      <button class="copy" data-copy="dsh plugin --profile web add dsh-mimir@latest">复制</button>
+    <div class="term rise" style="animation-delay:.38s">
+      <div class="term-bar">
+        <i class="term-dot r"></i><i class="term-dot y"></i><i class="term-dot g"></i>
+        <div class="term-tabs">
+          <button class="term-tab active" data-tab="quick">一键使用</button>
+          <button class="term-tab" data-tab="source">源码构建</button>
+        </div>
+      </div>
+      <div class="term-body">
+        <code data-pane="quick">dsh plugin --profile web add dsh-mimir@latest</code>
+        <code data-pane="source" hidden>git clone https://github.com/1692775560/dsh-Mimir-Academic-research &amp;&amp; cd dsh-Mimir-Academic-research &amp;&amp; pnpm install &amp;&amp; pnpm build</code>
+        <button class="term-copy">复制</button>
+      </div>
     </div>
     <p class="hero-stats rise" style="animation-delay:.46s"><b>8</b> 个视图 · <b>652</b> 项自动化测试 · MIT 开源</p>
     <div class="hero-shot rise" style="animation-delay:.55s">
@@ -429,32 +488,38 @@ footer a { color: var(--muted); }
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
         <h3>LaTeX 论文写作</h3>
-        <p>大纲、源码、PDF 三栏同屏，边改边编译；编译成功自动存快照，随时回滚；支持会议模板一键排版。</p>
+        <div class="feat-en">LATEX STUDIO</div>
+        <p>大纲、源码、PDF 三栏同屏，边改边编译；编译成功自动存快照，随时回滚。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
         <h3>arXiv 文献管理</h3>
-        <p>关键词订阅自动追新，AI 按你的方向打分排序；PDF 全屏阅读，一键进参考文献库，支持 Zotero 同步。</p>
+        <div class="feat-en">ARXIV LIBRARY</div>
+        <p>关键词订阅自动追新，AI 按你的方向打分排序；PDF 全屏阅读，Zotero 同步。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6L4 18a2 2 0 0 0 1.8 3h12.4A2 2 0 0 0 20 18l-5-9V3"/><path d="M8 3h8"/></svg></div>
         <h3>实验追踪</h3>
-        <p>配置、指标、结论结构化记录，指标趋势图自动生成；会话里产出的实验数据自动入库，不再散落各处。</p>
+        <div class="feat-en">EXPERIMENT TRACKING</div>
+        <p>配置、指标、结论结构化记录，指标趋势图自动生成，会话产出自动入库。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></div>
         <h3>图表归纳</h3>
-        <p>agent 生成的图自动收进图表库，AI 归纳内容并命名；一键插进论文对应位置，图和文再也不脱节。</p>
+        <div class="feat-en">FIGURE STUDIO</div>
+        <p>agent 生成的图自动收进图表库，AI 归纳命名，一键插进论文对应位置。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"/><path d="M8 21h8M12 17v4"/></svg></div>
         <h3>组会 PPT</h3>
-        <p>选中文献和当前进展，一键生成组会汇报：保留论文原图，还能配置生图 API 自动配插画。</p>
+        <div class="feat-en">MEETING DECKS</div>
+        <p>选中文献和当前进展一键生成汇报：保留论文原图，可配生图 API 自动插画。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg></div>
         <h3>GPU 服务器编排</h3>
-        <p>SSH 直连 AutoDL 等算力机器，任务提交、状态轮询、日志回传都在面板里完成，训练进度一目了然。</p>
+        <div class="feat-en">GPU FLEET</div>
+        <p>SSH 直连 AutoDL 等算力机器，任务提交、状态轮询、日志回传都在面板里。</p>
       </div>
     </div>
   </div>
@@ -467,14 +532,14 @@ footer a { color: var(--muted); }
       <p>点击任意截图放大查看</p>
     </div>
     <div class="gallery">
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-paper.png" alt="论文视图" loading="lazy"><figcaption>论文：大纲 / 源码 / PDF 三栏，边改边编译</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-papers.png" alt="文献视图" loading="lazy"><figcaption>文献：arXiv 订阅 + AI 相关性评分 + 全屏阅读</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-experiments.png" alt="实验视图" loading="lazy"><figcaption>实验：结构化记录 + 指标趋势图</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-figures.png" alt="图表视图" loading="lazy"><figcaption>图表：AI 自动归纳命名，一键插入论文</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-meetings.png" alt="组会视图" loading="lazy"><figcaption>组会：文献 + 进展一键生成汇报 PPT</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-servers.png" alt="服务器视图" loading="lazy"><figcaption>服务器：GPU 任务提交与状态轮询</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-ledger.png" alt="记录视图" loading="lazy"><figcaption>记录：成长记录与进展报告，全程可追溯</figcaption></figure>
-      <figure class="shot reveal" tabindex="0"><img src="assets/tab-overview.png" alt="总览视图" loading="lazy"><figcaption>总览：项目管线进度与工件清单一览</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-paper.png" alt="论文视图" loading="lazy"><figcaption><span class="plate">PLATE 01</span>论文：大纲 / 源码 / PDF 三栏，边改边编译</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-papers.png" alt="文献视图" loading="lazy"><figcaption><span class="plate">PLATE 02</span>文献：arXiv 订阅 + AI 相关性评分 + 全屏阅读</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-experiments.png" alt="实验视图" loading="lazy"><figcaption><span class="plate">PLATE 03</span>实验：结构化记录 + 指标趋势图</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-figures.png" alt="图表视图" loading="lazy"><figcaption><span class="plate">PLATE 04</span>图表：AI 自动归纳命名，一键插入论文</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-meetings.png" alt="组会视图" loading="lazy"><figcaption><span class="plate">PLATE 05</span>组会：文献 + 进展一键生成汇报 PPT</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-servers.png" alt="服务器视图" loading="lazy"><figcaption><span class="plate">PLATE 06</span>服务器：GPU 任务提交与状态轮询</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-ledger.png" alt="记录视图" loading="lazy"><figcaption><span class="plate">PLATE 07</span>记录：成长记录与进展报告，全程可追溯</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-overview.png" alt="总览视图" loading="lazy"><figcaption><span class="plate">PLATE 08</span>总览：项目管线进度与工件清单一览</figcaption></figure>
     </div>
   </div>
 </section>
@@ -562,17 +627,27 @@ lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') lightbox.classList.remove('open');
 });
-document.querySelectorAll('.copy').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(btn.dataset.copy);
-      btn.textContent = '已复制';
-      setTimeout(() => { btn.textContent = '复制'; }, 1600);
-    } catch {
-      btn.textContent = btn.dataset.copy;
-    }
+
+// 终端卡片：tab 切换 + 复制
+const termTabs = document.querySelectorAll('.term-tab');
+const termPanes = document.querySelectorAll('[data-pane]');
+termTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    termTabs.forEach(t => t.classList.toggle('active', t === tab));
+    termPanes.forEach(p => { p.hidden = p.dataset.pane !== tab.dataset.tab; });
   });
 });
+document.querySelector('.term-copy').addEventListener('click', async function () {
+  const active = document.querySelector('[data-pane]:not([hidden])');
+  try {
+    await navigator.clipboard.writeText(active.textContent);
+    this.textContent = '已复制';
+    setTimeout(() => { this.textContent = '复制'; }, 1600);
+  } catch {
+    this.textContent = '复制失败';
+  }
+});
+
 const io = new IntersectionObserver(entries => {
   entries.forEach(entry => {
     if (entry.isIntersecting) {
