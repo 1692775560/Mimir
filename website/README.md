@@ -2,7 +2,7 @@
 
 纯静态站，无构建步骤，`website/` 目录即为站点根目录。
 
-线上地址：<http://mimir.smartlarkai.com>（服务器 39.107.80.207，Alibaba Cloud Linux 4）
+线上地址：<https://mimir.smartlarkai.com>（服务器 39.107.80.207，Alibaba Cloud Linux 4）
 
 ## 部署（已完成的环境）
 
@@ -27,7 +27,7 @@ bash website/deploy.sh root@39.107.80.207
    ```
 
 3. 本地推送站点：`bash website/deploy.sh root@39.107.80.207`
-4. HTTPS（DNS 生效后）：`dnf install -y certbot python3-certbot-nginx && certbot --nginx -d mimir.smartlarkai.com`
+4. HTTPS：服务器上用 acme.sh 签发（`~/.acme.sh/acme.sh --issue -d mimir.smartlarkai.com -w /var/www/mimir`），已配自动续期 cron
 
 ## 注意：ICP 备案
 
