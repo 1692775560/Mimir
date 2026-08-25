@@ -94,6 +94,12 @@ dsh web                                          # 然后打开 http://127.0.0.1
 
 现有贡献者：[@EriXPsy](https://github.com/EriXPsy)（记录视图）· [@hkwuks](https://github.com/hkwuks)（SearXNG Web 搜索、[sxng CLI](https://github.com/hkwuks/sxng-cli)）
 
+## 交流群
+
+有问题、想法或想围观开发进度，欢迎扫码进微信群（二维码过期后会更新）：
+
+<img src="docs/wechat-group.jpg" alt="Mimir 交流群" width="200">
+
 ## 致谢
 
 - 工作流灵感：[ARIS / Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)

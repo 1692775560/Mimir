@@ -94,6 +94,12 @@ Branch off `main` (`feature/<name>` / `fix/<name>`), keep `pnpm run build && pnp
 
 Contributors so far: [@EriXPsy](https://github.com/EriXPsy) (Ledger view) · [@hkwuks](https://github.com/hkwuks) (SearXNG web search, [sxng CLI](https://github.com/hkwuks/sxng-cli))
 
+## Community
+
+Questions, ideas, or show-and-tell — join the WeChat group (QR updated when it expires):
+
+<img src="docs/wechat-group.jpg" alt="Mimir WeChat group" width="200">
+
 ## Acknowledgments
 
 - Workflow inspiration: [ARIS / Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)
