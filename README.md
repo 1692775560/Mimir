@@ -10,10 +10,11 @@ literature · experiments &amp; remote GPUs · figures · LaTeX writing → comp
 <p>
 <a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
+<a href="https://mimir.smartlarkai.com"><img src="https://img.shields.io/badge/website-mimir.smartlarkai.com-47608c" alt="Website"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-<p><strong>English</strong> · <a href="README.zh.md">中文</a></p>
+<p><strong>English</strong> · <a href="README.zh.md">中文</a> · <a href="https://mimir.smartlarkai.com">Website</a></p>
 
 </div>
 
