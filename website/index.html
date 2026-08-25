@@ -361,6 +361,28 @@ section { padding: var(--s8) 0; }
   color: rgb(255 255 255 / 65%); font-size: var(--fs-12); letter-spacing: .06em;
 }
 
+/* ---------- why（初心） ---------- */
+.why { text-align: center; }
+.why .wrap { max-width: 760px; }
+.why-quote {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: clamp(24px, 3vw, 32px); font-weight: 700; line-height: 1.5;
+  letter-spacing: .01em;
+}
+.why-quote em {
+  font-style: normal; color: var(--accent);
+  background: linear-gradient(transparent 68%, rgb(71 96 140 / 16%) 68%);
+}
+.why-body {
+  margin-top: var(--s4); color: var(--muted); font-size: var(--fs-16);
+  line-height: 2; max-width: 58ch; margin-inline: auto;
+}
+.why-sign {
+  margin-top: var(--s4); font-family: "SF Mono", Menlo, monospace;
+  font-size: var(--fs-12); letter-spacing: .18em; color: var(--faint);
+}
+.why-sign::before { content: "—— "; color: var(--accent); }
+
 /* ---------- quickstart ---------- */
 .steps { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
 @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
@@ -435,6 +457,7 @@ footer a { color: var(--muted); }
     <div class="nav-links">
       <a href="#features">功能</a>
       <a href="#gallery">界面</a>
+      <a href="#why">初心</a>
       <a href="#quickstart">快速上手</a>
       <a href="#community">社区</a>
       <a class="nav-gh" href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">
@@ -549,6 +572,23 @@ footer a { color: var(--muted); }
       <figure class="shot reveal" tabindex="0"><img src="assets/tab-ledger.png" alt="记录视图" loading="lazy"><figcaption><span class="plate">PLATE 07</span>记录：成长记录与进展报告，全程可追溯</figcaption></figure>
       <figure class="shot reveal" tabindex="0"><img src="assets/tab-overview.png" alt="总览视图" loading="lazy"><figcaption><span class="plate">PLATE 08</span>总览：项目管线进度与工件清单一览</figcaption></figure>
     </div>
+  </div>
+</section>
+
+<section id="why" class="why">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-kicker">WHY WE BUILD</span>
+      <h2 class="serif">为什么做 Mimir</h2>
+    </div>
+    <p class="why-quote reveal">科研不该被琐事消耗。<br>把时间还给<em>真正的思考</em>。</p>
+    <p class="why-body reveal">
+      文献追新、实验记录、图表整理、论文排版、服务器任务——科研里太多重复、繁琐、容易出错的环节，本不该占用研究者的深夜。
+      我们做 Mimir，是想把这些交给机器，让 agent 替你盯 arXiv、记实验、归图表、排格式。
+      它是开源的，也是免费的——只希望帮到更多在路上的科研人，哪怕只是少熬一个夜、少踩一个坑。
+      如果它帮到了你，把它推荐给下一位同行者，就是最好的回响。
+    </p>
+    <p class="why-sign reveal">MIMIR 共创者</p>
   </div>
 </section>
 
