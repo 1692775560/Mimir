@@ -52,15 +52,15 @@ const RAIL_KEY_STEP = 16
 /** Keyboard-resize step of the editor/preview split handle (px per arrow press). */
 const SPLIT_KEY_STEP = 24
 
-/** 16×16 pane-fullscreen icons: diagonal arrows out (enter) / in (exit). */
+/** 16×16 pane-fullscreen icons: corner brackets out (enter) / in (exit). */
 const EXPAND_ICON: ReactNode = (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
+    <path d="M6.2 2.5H2.5v3.7M9.8 2.5h3.7v3.7M6.2 13.5H2.5V9.8M9.8 13.5h3.7V9.8" />
   </svg>
 )
 const COMPRESS_ICON: ReactNode = (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M13.5 9.5h-4v4M9.5 13.5 13 10M2.5 6.5h4v-4M6.5 2.5 3 6" />
+    <path d="M6.2 2.5v3.7H2.5M9.8 2.5v3.7h3.7M6.2 13.5V9.8H2.5M9.8 13.5V9.8h3.7" />
   </svg>
 )
 

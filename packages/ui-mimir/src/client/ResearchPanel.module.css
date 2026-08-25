@@ -1433,19 +1433,26 @@ li.dropIndicator {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
 }
 
 .editorHead .sectionTitle {
+  flex-shrink: 0;
   margin: 0;
+  white-space: nowrap;
 }
 
 .savePill {
+  flex-shrink: 0;
+  align-self: center;
   padding: 3px 12px;
   border: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
   border-radius: 999px;
   background: var(--dsw-alias-markdown-code-block, #f9fafb);
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .savePill[data-state='saved'] {
@@ -1610,6 +1617,7 @@ li.dropIndicator {
 }
 
 .compileButton {
+  flex-shrink: 0;
   height: 30px;
   padding: 0 16px;
   border: none;
@@ -1618,6 +1626,7 @@ li.dropIndicator {
   color: var(--dsw-alias-label-primary-foreground, #f6f1e6);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 1px 2px rgb(33 30 25 / 20%), var(--mimir-edge);
   transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -1639,8 +1648,10 @@ li.dropIndicator {
 }
 
 .compileStatus {
+  flex-shrink: 0;
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .compileStatus[data-state='ok'] {
@@ -3062,6 +3073,7 @@ li.dropIndicator {
   justify-content: center;
   height: 30px;
   margin-left: auto;
+  flex-shrink: 0;
   padding: 0 14px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
   border-radius: 9px;
@@ -3069,6 +3081,7 @@ li.dropIndicator {
   color: var(--dsw-alias-label-secondary, #3c4557);
   font-size: 12.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
