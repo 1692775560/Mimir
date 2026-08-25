@@ -115,6 +115,13 @@ nav {
 
 /* ---------- hero ---------- */
 .hero { position: relative; padding: var(--s7) 0 var(--s8); text-align: center; }
+.hero-drape {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  background: url('assets/drape.webp') center top / cover no-repeat;
+  opacity: .85;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 96%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 96%);
+}
 .aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); will-change: transform; }
 .aurora .a1 {
@@ -439,6 +446,7 @@ footer a { color: var(--muted); }
 </nav>
 
 <header class="hero">
+  <div class="hero-drape" aria-hidden="true"></div>
   <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
   <div class="wrap">
     <span class="hero-kicker rise">DEEPSEEK HARNESS · 开源插件</span>
