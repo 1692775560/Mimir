@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 把 Mimir 官网同步到阿里云服务器。用法：
-#   bash website/deploy.sh root@<服务器IP>
+# 把 Mimir 官网同步到阿里云服务器（mimir.smartlarkai.com）。用法：
+#   bash website/deploy.sh root@39.107.80.207
 # 首次使用前在服务器上：mkdir -p /var/www/mimir 并放好 nginx 配置（见 website/README.md）
 set -euo pipefail
 
