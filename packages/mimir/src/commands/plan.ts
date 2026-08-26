@@ -1,8 +1,9 @@
 /**
- * `/research-plan [projectId]`: scaffolds EXPERIMENT_PLAN.md from the recorded
- * idea and hands the model the planning instruction; every planned claim is
- * registered as a pending wiki claim so later experiments have something to
- * support or invalidate.
+ * `/research-plan [project id | instructions]`: scaffolds EXPERIMENT_PLAN.md
+ * from the recorded idea and hands the model the planning instruction
+ * (non-id argument text rides along as plan direction); every planned claim
+ * is registered as a pending wiki claim so later experiments have something
+ * to support or invalidate.
  * @module dsh-mimir/src/commands/plan
  */
 
@@ -10,15 +11,16 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { EXPERIMENT_PLAN_MD } from '../templates.ts'
-import { ensureWorkspace, followupInstruction, resolveProject, writeIfAbsent } from './common.ts'
+import { ensureWorkspace, followupInstruction, resolveProjectArg, writeIfAbsent } from './common.ts'
 import type { ResearchCommandDeps } from './common.ts'
 
-const USAGE = 'Usage: /research-plan [project id]'
+const USAGE = 'Usage: /research-plan [project id | instructions]'
 
 /** Build the planning instruction handed to the model. */
-function planInstruction(deps: ResearchCommandDeps, projectTitle: string): string {
+function planInstruction(deps: ResearchCommandDeps, projectTitle: string, guidance: string | undefined): string {
   return [
     `You are writing the experiment plan for research project "${projectTitle}".`,
+    ...guidance === undefined ? [] : [`The user adds this direction for the plan: ${guidance}`],
     'Do these steps in order:',
     `1. Read ${join(deps.workspaceDir, 'IDEA_REPORT.md')}. If it is still an unfilled skeleton or missing, say so and stop.`,
     `2. Fill every section of the skeleton at ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}. Each experiment must name the claim(s) it supports or invalidates, and success criteria must be decided now, before any experiment runs.`,
@@ -37,16 +39,13 @@ export function registerPlanCommand(ctx: Context, deps: ResearchCommandDeps): vo
   ctx.commands.register({
     name: 'research-plan',
     description: 'turn the current idea report into an experiment plan with registered claims',
-    input: { hint: '[project id]' },
+    input: { hint: '[project id | instructions]' },
     async handler(invocation): Promise<CommandResult> {
-      const id = invocation.rawInput.trim()
-      const project = resolveProject(deps.domain, id.length === 0 ? undefined : id)
+      const { project, guidance } = resolveProjectArg(deps.domain, invocation.rawInput)
       if (project === undefined) {
         return {
           kind: 'error',
-          text: id.length === 0
-            ? `No research project exists yet; run /research-idea first.\n${USAGE}`
-            : `No research project with id '${id}'.\n${USAGE}`,
+          text: `No research project exists yet; run /research-idea first.\n${USAGE}`,
         }
       }
       await ensureWorkspace(deps)
@@ -59,10 +58,11 @@ export function registerPlanCommand(ctx: Context, deps: ResearchCommandDeps): vo
           : [...current.artifacts, 'EXPERIMENT_PLAN.md'],
         updatedAt: new Date().toISOString(),
       }))
-      followupInstruction(invocation.agent, planInstruction(deps, project.title))
+      followupInstruction(invocation.agent, planInstruction(deps, project.title, guidance))
       return {
         kind: 'success',
-        text: `Planning started for project ${project.id} ("${project.title}"). The plan lands in ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}.`,
+        text: `Planning started for project ${project.id} ("${project.title}"). The plan lands in ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}.`
+          + (guidance === undefined ? '' : ` Direction: "${guidance}".`),
       }
     },
   })

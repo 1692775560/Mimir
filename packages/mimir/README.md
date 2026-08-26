@@ -39,9 +39,9 @@ The plugin also mounts the `research` Remote namespace (`ResearchService`) plus 
 ## Commands
 
 - `/research-idea <direction>` — registers a project, scaffolds `IDEA_REPORT.md`, and instructs the model to survey arXiv, check failed ideas first, and record the idea.
-- `/research-plan [project id]` — scaffolds `EXPERIMENT_PLAN.md` from the idea report; planned claims become pending wiki claims.
+- `/research-plan [project id | instructions]` — scaffolds `EXPERIMENT_PLAN.md` from the idea report; planned claims become pending wiki claims. An argument that is not an existing project id targets the most recent project and is handed to the model as plan direction.
 - `/research-review <scope> <paths...> [project id]` — one independent review round: a fresh reviewer subagent gets only absolute file paths (never the executor's summary) and returns a schema-validated PASS/WARN/FAIL verdict. WARN/FAIL is handed back to the agent as a revision follow-up.
-- `/paper-write [project id]` — scaffolds `paper/main.tex` + `references.bib` and instructs the model to draft and compile-fix until clean.
+- `/paper-write [project id | instructions]` — scaffolds `paper/main.tex` + `references.bib` and instructs the model to draft and compile-fix until clean. Non-id argument text is handed to the model as drafting direction.
 - `/paper-compile [dir]` — compiles once (default `<workspace>/paper`) and reports parsed diagnostics.
 
 ## Storage

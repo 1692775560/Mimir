@@ -67,6 +67,35 @@ export function resolveProject(domain: ResearchWikiDomain, id: string | undefine
   return latest
 }
 
+/** One command argument resolved into its target project plus leftover text. */
+export interface ProjectArgResolution {
+  /** The targeted project, or undefined when no project exists at all. */
+  readonly project: ProjectRecord | undefined
+  /** Free-form text that was not an existing project id; guidance for the model instruction. */
+  readonly guidance: string | undefined
+}
+
+/**
+ * Resolve a command's raw argument tolerantly: text exactly naming an
+ * existing project id selects that project; anything else (a natural-language
+ * request, a typo) targets the most recently updated project and rides along
+ * as guidance instead of failing the command outright.
+ * @param domain - Open research-wiki domain.
+ * @param raw - The invocation's raw input.
+ * @returns the target project and any non-id guidance text.
+ */
+export function resolveProjectArg(domain: ResearchWikiDomain, raw: string): ProjectArgResolution {
+  const input = raw.trim()
+  if (input.length > 0) {
+    const exact = domain.table('projects').get(input)
+    if (exact !== undefined) return { project: exact, guidance: undefined }
+  }
+  return {
+    project: resolveProject(domain, undefined),
+    guidance: input.length > 0 ? input : undefined,
+  }
+}
+
 /**
  * Create and register a new project at the `idea` stage.
  * @param domain - Open research-wiki domain.

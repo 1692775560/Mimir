@@ -39,9 +39,9 @@ Mimir 是 DeepSeek Harness 的科研助手插件套件：arXiv 文献检索、�
 ## 命令
 
 - `/research-idea <方向>` —— 注册项目、脚手架 `IDEA_REPORT.md`，并指示模型先查失败想法、再调研 arXiv、记录想法。
-- `/research-plan [项目 id]` —— 从想法报告脚手架 `EXPERIMENT_PLAN.md`；计划中的论断会成为 pending 的 wiki claim。
+- `/research-plan [项目 id | 说明]` —— 从想法报告脚手架 `EXPERIMENT_PLAN.md`；计划中的论断会成为 pending 的 wiki claim。参数若不是已存在的项目 id，则作用于最近更新的项目，并作为计划方向一并交给模型。
 - `/research-review <范围> <路径...> [项目 id]` —— 一轮独立评审：全新的 reviewer subagent 只拿到绝对文件路径（永远拿不到执行者的总结），返回 schema 校验过的 PASS/WARN/FAIL 结论。WARN/FAIL 会作为修订后续交还给 agent。
-- `/paper-write [项目 id]` —— 脚手架 `paper/main.tex` + `references.bib`，并指示模型起草、编译修复直至干净。
+- `/paper-write [项目 id | 说明]` —— 脚手架 `paper/main.tex` + `references.bib`，并指示模型起草、编译修复直至干净。非 id 参数文本会作为起草方向一并交给模型。
 - `/paper-compile [目录]` —— 编译一次（默认 `<workspace>/paper`）并报告解析出的诊断。
 
 ## 存储
