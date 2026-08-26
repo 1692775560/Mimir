@@ -24,6 +24,16 @@ import type {
 } from '../types.ts'
 import { resolvePaperDir } from '../paper-source.ts'
 import { listPaperFigures, type FigureFile } from '../artifacts.ts'
+import { extractPaperFigures, resolvePaperPdf } from './paper-figures.ts'
+import { fetchPaperPdf } from './library.ts'
+import {
+  IMAGE_GEN_MAX_PER_DECK,
+  coverPrompt,
+  generateImage,
+  paperArtPrompt,
+  readImageGenConfig,
+  saveDeckIllustration,
+} from './image-gen.ts'
 import { success, rejected } from './common.ts'
 import type { WikiAdminDeps } from './wiki-admin.ts'
 
@@ -71,6 +81,10 @@ export interface DeckModelInput {
   readonly papers: readonly PaperRecord[]
   /** Extracted figure crops per paper, keyed by arXiv id (missing = text-only paper slide). */
   readonly paperFigures: Readonly<Record<string, readonly PaperFigureAsset[]>>
+  /** AI cover illustration (absolute path), embedded on the title slide. */
+  readonly coverArt?: string | undefined
+  /** AI concept illustrations per paper, keyed by arXiv id (embedded on the paper's intro slide). */
+  readonly paperArt?: Readonly<Record<string, string>> | undefined
   readonly experiments: readonly ExperimentRecord[]
   readonly figures: readonly MeetingFigureInput[]
   readonly include: MeetingInclude
@@ -85,10 +99,10 @@ export interface DeckBullet {
 
 /** The pure slide plan: what each slide shows, before any pptxgenjs call. */
 export type DeckSlide =
-  | { readonly kind: 'title'; readonly title: string; readonly subtitle: string }
+  | { readonly kind: 'title'; readonly title: string; readonly subtitle: string; readonly imagePath?: string | undefined }
   | { readonly kind: 'agenda'; readonly sections: readonly string[] }
-  | { readonly kind: 'bullets'; readonly heading: string; readonly bullets: readonly DeckBullet[] }
-  | { readonly kind: 'figure'; readonly heading: string; readonly imagePath: string; readonly caption: string }
+  | { readonly kind: 'bullets'; readonly heading: string; readonly kicker?: string | undefined; readonly bullets: readonly DeckBullet[]; readonly imagePath?: string | undefined }
+  | { readonly kind: 'figure'; readonly heading: string; readonly kicker?: string | undefined; readonly imagePath: string; readonly caption: string }
   | { readonly kind: 'closing' }
 
 /** Format an ISO date (or raw string) as YYYY-MM-DD for the deck. */
@@ -122,7 +136,7 @@ export function buildDeckModel(input: DeckModelInput): readonly DeckSlide[] {
   const subtitleParts = [input.date]
   if (input.presenter !== undefined && input.presenter !== '') subtitleParts.push(`汇报人：${input.presenter}`)
   if (project.venue !== undefined) subtitleParts.push(`目标会议：${project.venue.name}`)
-  slides.push({ kind: 'title', title: input.title, subtitle: subtitleParts.join('  ·  ') })
+  slides.push({ kind: 'title', title: input.title, subtitle: subtitleParts.join('  ·  '), imagePath: input.coverArt })
 
   const sections: string[] = []
   if (include.progress) sections.push('项目进展')
@@ -157,6 +171,7 @@ export function buildDeckModel(input: DeckModelInput): readonly DeckSlide[] {
     for (const figure of input.figures) {
       slides.push({
         kind: 'figure',
+        kicker: '图表',
         heading: figure.record.relPath.replace(/^figures\//, '').replace(/\.[^.]+$/, ''),
         imagePath: figure.imagePath,
         caption: figure.record.caption,
@@ -178,15 +193,18 @@ export function buildDeckModel(input: DeckModelInput): readonly DeckSlide[] {
       if (paper.tags.length > 0) bullets.push({ text: `标签：${paper.tags.join(' / ')}` })
       slides.push({
         kind: 'bullets',
+        kicker: '文献分享',
         heading: paper.title,
         bullets: bullets.length > 0 ? bullets : [{ text: paper.summary.slice(0, 200) }],
+        imagePath: input.paperArt?.[paper.arxivId],
       })
       // 逐图 slides: extracted figure crops follow the paper's intro slide,
       // one figure per slide with its takeaway caption (the house layout).
       for (const asset of input.paperFigures[paper.arxivId] ?? []) {
         slides.push({
           kind: 'figure',
-          heading: `${asset.label} · ${paper.title}`,
+          kicker: paper.title,
+          heading: asset.label,
           imagePath: asset.imagePath,
           caption: asset.caption,
         })
@@ -236,74 +254,116 @@ type PptxDeckCtor = new () => PptxDeck
 const PAGE = { width: 10, height: 5.625 } as const
 const ACCENT = '4F7CFF'
 const INK = '17233D'
-const MUTED = '5B6472'
+const MUTED = '64748B'
+const BG = 'F7F9FC'
+const CARD = 'FFFFFF'
+const CARD_LINE = 'E2E8F0'
 
 /**
- * Render one slide plan to a pptx file via pptxgenjs.
+ * Render one slide plan to a pptx file via pptxgenjs. House style: light
+ * canvas, accent kicker + divider on content slides, images inside bordered
+ * cards, and a footer carrying the deck title + page number.
  * @param slides - the plan from {@link buildDeckModel}.
  * @param outPath - absolute target path (parent must exist).
+ * @param meta - footer metadata (deck title).
  * @returns resolution after the file is written.
  */
-export async function renderDeck(slides: readonly DeckSlide[], outPath: string): Promise<void> {
+export async function renderDeck(
+  slides: readonly DeckSlide[],
+  outPath: string,
+  meta: { readonly title?: string | undefined } = {},
+): Promise<void> {
   const { default: PptxGenJS } = (await import('pptxgenjs')) as unknown as { default: PptxDeckCtor }
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'W16x9', width: PAGE.width, height: PAGE.height })
   pptx.layout = 'W16x9'
 
-  for (const slide of slides) {
+  const footer = (page: PptxSlideSurface, index: number) => {
+    if (meta.title !== undefined && meta.title !== '') {
+      page.addText(meta.title, { x: 0.6, y: PAGE.height - 0.32, w: 6, h: 0.25, fontFace: DECK_FONT, fontSize: 8, color: MUTED })
+    }
+    page.addText(`${String(index + 1)} / ${String(slides.length)}`, {
+      x: PAGE.width - 1.4, y: PAGE.height - 0.32, w: 0.8, h: 0.25, fontFace: DECK_FONT, fontSize: 8, color: MUTED, align: 'right',
+    })
+  }
+  /** Kicker + heading + accent divider shared by content slides. */
+  const header = (page: PptxSlideSurface, kicker: string | undefined, heading: string) => {
+    if (kicker !== undefined && kicker !== '') {
+      page.addText(kicker, { x: 0.6, y: 0.24, w: PAGE.width - 1.2, h: 0.28, fontFace: DECK_FONT, fontSize: 10, bold: true, color: ACCENT, charSpacing: 2 })
+    }
+    page.addText(heading, {
+      x: 0.6, y: 0.52, w: PAGE.width - 1.2, h: 0.6, fontFace: DECK_FONT, fontSize: 21, bold: true, color: INK,
+    })
+    page.addShape('line', { x: 0.6, y: 1.14, w: PAGE.width - 1.2, h: 0, line: { color: ACCENT, width: 1.5 } })
+  }
+
+  for (const [index, slide] of slides.entries()) {
     const page = pptx.addSlide()
+    page.addShape('rect', { x: 0, y: 0, w: PAGE.width, h: PAGE.height, fill: { color: BG } })
+
     if (slide.kind === 'title') {
+      page.addShape('rect', { x: 0, y: 0, w: 0.22, h: PAGE.height, fill: { color: ACCENT } })
+      const hasArt = slide.imagePath !== undefined
       page.addText(slide.title, {
-        x: 0.6, y: 1.8, w: PAGE.width - 1.2, h: 1.2, fontFace: DECK_FONT,
-        fontSize: 30, bold: true, color: INK, align: 'center',
+        x: 0.9, y: 1.5, w: hasArt ? 4.9 : PAGE.width - 1.8, h: 1.6, fontFace: DECK_FONT,
+        fontSize: 30, bold: true, color: INK, align: hasArt ? 'left' : 'center', valign: 'middle',
       })
       page.addText(slide.subtitle, {
-        x: 0.6, y: 3.1, w: PAGE.width - 1.2, h: 0.5, fontFace: DECK_FONT,
-        fontSize: 14, color: MUTED, align: 'center',
+        x: 0.9, y: 3.25, w: hasArt ? 4.9 : PAGE.width - 1.8, h: 0.5, fontFace: DECK_FONT,
+        fontSize: 13, color: MUTED, align: hasArt ? 'left' : 'center',
       })
-      page.addShape('rect', { x: 0, y: 0, w: PAGE.width, h: 0.12, fill: { color: ACCENT } })
+      if (hasArt) {
+        page.addShape('rect', { x: 6.0, y: 0.6, w: 3.6, h: 4.4, fill: { color: CARD }, line: { color: CARD_LINE, width: 1 } })
+        page.addImage({ path: slide.imagePath!, x: 6.15, y: 0.75, w: 3.3, h: 4.1, sizing: { type: 'contain', w: 3.3, h: 4.1 } })
+      }
       continue
     }
     if (slide.kind === 'agenda') {
-      page.addText('目录', { x: 0.6, y: 0.4, w: 8.8, h: 0.6, fontFace: DECK_FONT, fontSize: 22, bold: true, color: INK })
+      header(page, 'AGENDA', '目录')
       page.addText(
-        slide.sections.map((section, index) => `${String(index + 1)}.  ${section}`).join('\n'),
-        { x: 1.0, y: 1.3, w: 8, h: 3.8, fontFace: DECK_FONT, fontSize: 18, color: INK, lineSpacing: 34 },
+        slide.sections.flatMap((section, row) => [
+          { text: `${String(row + 1).padStart(2, '0')}  `, options: { bold: true, color: ACCENT } },
+          { text: section, options: { color: INK, breakLine: true } },
+        ]),
+        { x: 1.0, y: 1.5, w: 8, h: 3.5, fontFace: DECK_FONT, fontSize: 19, lineSpacing: 40, valign: 'top' },
       )
+      footer(page, index)
       continue
     }
     if (slide.kind === 'bullets') {
-      page.addText(slide.heading, {
-        x: 0.6, y: 0.35, w: PAGE.width - 1.2, h: 0.7, fontFace: DECK_FONT,
-        fontSize: 20, bold: true, color: INK,
-      })
-      page.addShape('line', { x: 0.6, y: 1.05, w: PAGE.width - 1.2, h: 0, line: { color: ACCENT, width: 1.5 } })
+      header(page, slide.kicker, slide.heading)
+      const hasArt = slide.imagePath !== undefined
       page.addText(
         slide.bullets.map(bullet => ({
           text: bullet.text,
           options: { bullet: { code: '2022' }, bold: bullet.emph === true, color: bullet.emph === true ? ACCENT : INK, breakLine: true },
         })),
-        { x: 0.8, y: 1.3, w: PAGE.width - 1.6, h: 3.9, fontFace: DECK_FONT, fontSize: 14, lineSpacing: 24, valign: 'top' },
+        { x: 0.8, y: 1.4, w: hasArt ? 5.3 : PAGE.width - 1.6, h: 3.7, fontFace: DECK_FONT, fontSize: 14, lineSpacing: 24, valign: 'top' },
       )
+      if (hasArt) {
+        page.addShape('rect', { x: 6.3, y: 1.4, w: 3.3, h: 3.7, fill: { color: CARD }, line: { color: CARD_LINE, width: 1 } })
+        page.addImage({ path: slide.imagePath!, x: 6.45, y: 1.55, w: 3.0, h: 3.4, sizing: { type: 'contain', w: 3.0, h: 3.4 } })
+      }
+      footer(page, index)
       continue
     }
     if (slide.kind === 'figure') {
-      page.addText(slide.heading, {
-        x: 0.6, y: 0.3, w: PAGE.width - 1.2, h: 0.5, fontFace: DECK_FONT, fontSize: 18, bold: true, color: INK,
-      })
-      // Left image, right caption — the house layout; wide images stay within
-      // the left 60% so the caption column never overlaps.
-      page.addImage({ path: slide.imagePath, x: 0.6, y: 1.0, w: 5.6, h: 4.0, sizing: { type: 'contain', w: 5.6, h: 4.0 } })
+      header(page, slide.kicker, slide.heading)
+      page.addShape('rect', { x: 0.6, y: 1.35, w: 5.9, h: 3.8, fill: { color: CARD }, line: { color: CARD_LINE, width: 1 } })
+      page.addImage({ path: slide.imagePath, x: 0.78, y: 1.53, w: 5.54, h: 3.44, sizing: { type: 'contain', w: 5.54, h: 3.44 } })
       if (slide.caption !== '') {
+        page.addShape('rect', { x: 6.8, y: 1.42, w: 0.05, h: 0.5, fill: { color: ACCENT } })
         page.addText(slide.caption, {
-          x: 6.4, y: 1.0, w: 3.0, h: 4.0, fontFace: DECK_FONT, fontSize: 13, color: INK, valign: 'top', lineSpacing: 20,
+          x: 6.98, y: 1.35, w: 2.6, h: 3.8, fontFace: DECK_FONT, fontSize: 12.5, color: INK, valign: 'top', lineSpacing: 20,
         })
       }
+      footer(page, index)
       continue
     }
     // closing
-    page.addText('下一步计划', { x: 0.6, y: 0.4, w: 8.8, h: 0.6, fontFace: DECK_FONT, fontSize: 22, bold: true, color: INK })
-    page.addText('（现场讨论填充）', { x: 1.0, y: 1.5, w: 8, h: 0.6, fontFace: DECK_FONT, fontSize: 16, color: MUTED })
+    page.addShape('rect', { x: 0, y: 0, w: 0.22, h: PAGE.height, fill: { color: ACCENT } })
+    page.addText('下一步计划', { x: 0.9, y: 1.8, w: PAGE.width - 1.8, h: 0.8, fontFace: DECK_FONT, fontSize: 26, bold: true, color: INK, align: 'center' })
+    page.addText('（现场讨论填充）', { x: 0.9, y: 2.8, w: PAGE.width - 1.8, h: 0.5, fontFace: DECK_FONT, fontSize: 14, color: MUTED, align: 'center' })
   }
 
   await pptx.writeFile({ fileName: outPath })
@@ -322,10 +382,21 @@ export interface GenerateMeetingRequest {
   /** Selected figure relPaths; absent = every figure with a raster sibling. */
   readonly figureRelPaths?: readonly string[] | undefined
   readonly include?: Partial<MeetingInclude> | undefined
+  /** Embed AI-generated illustrations (cover + per-paper concept art); needs a configured image-gen API. */
+  readonly aiIllustrations?: boolean | undefined
 }
 
 /** Raster extensions a deck can embed (pptxgenjs has no svg-by-path). */
 const DECK_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg'])
+
+/** Injectable seams of {@link generateMeetingDeck}; absent outside tests. */
+export interface MeetingDeps {
+  /**
+   * PDF warm-up run before extraction when the paper has no cached PDF;
+   * defaults to the library's arXiv fetch (tests inject a no-op).
+   */
+  readonly fetchPdf?: (arxivId: string) => Promise<unknown>
+}
 
 /** Filesystem-safe slug of a display name, falling back to the project id. */
 function slugOf(title: string, fallback: string): string {
@@ -389,7 +460,7 @@ export async function loadPaperFigures(
  * @returns the produced file.
  */
 export async function generateMeetingDeck(
-  deps: WikiAdminDeps & { readonly workspaceDir: string },
+  deps: WikiAdminDeps & { readonly workspaceDir: string; readonly meetings?: MeetingDeps },
   request: GenerateMeetingRequest,
 ): Promise<ResearchGenerateMeetingResult> {
   const project = deps.domain.table('projects').get(request.projectId)
@@ -452,24 +523,63 @@ export async function generateMeetingDeck(
   const date = request.date?.trim() || dateOnly(new Date().toISOString())
   const title = request.title?.trim() || `${project.title} · 组会汇报`
 
-  // 逐图 assets of the selected papers (extraction ran → crops + manifest).
+  // 逐图 assets of the selected papers: reuse an existing manifest, else
+  // extract from the paper's PDF on first use — fetching the PDF from arXiv
+  // first when it was never cached (best-effort all the way down: no PDF or
+  // no extractor just means no figure slides).
   const paperFigures: Record<string, readonly PaperFigureAsset[]> = {}
   if (include.papers) {
+    const warmPdf = deps.meetings?.fetchPdf
+      ?? (async (arxivId: string) => { await fetchPaperPdf(deps, { arxivId }) })
     for (const paper of papers) {
-      const assets = await loadPaperFigures(deps.workspaceDir, paper.arxivId)
+      if ((await resolvePaperPdf(deps.workspaceDir, paper.arxivId)) === undefined) {
+        await warmPdf(paper.arxivId).catch(() => undefined)
+      }
+      const assets = await extractPaperFigures(deps.workspaceDir, paper.arxivId)
       if (assets.length > 0) paperFigures[paper.arxivId] = assets
     }
   }
 
+  // AI illustrations (opt-in): one cover image plus one concept art per
+  // selected paper, filed under figures/ai-deck/ so the Figures tab manages
+  // them. Every generation failure skips that one image — never the deck.
+  let coverArt: string | undefined
+  const paperArt: Record<string, string> = {}
+  let illustrations = 0
+  if (request.aiIllustrations === true && dir !== undefined) {
+    const imageGen = await readImageGenConfig(deps.workspaceDir)
+    if (imageGen.apiKey !== '') {
+      const paperDir = project.paperDir ?? 'paper'
+      const illustrate = async (stem: string, caption: string, prompt: string): Promise<string | undefined> => {
+        try {
+          const image = await generateImage(imageGen, prompt)
+          const relPath = await saveDeckIllustration(deps, project.id, paperDir, stem, caption, image)
+          illustrations += 1
+          return join(deps.workspaceDir, paperDir, relPath)
+        } catch {
+          return undefined
+        }
+      }
+      coverArt = await illustrate('cover', 'AI 配图 · 组会封面', coverPrompt(project.title))
+      if (include.papers) {
+        for (const paper of papers.slice(0, IMAGE_GEN_MAX_PER_DECK - 1)) {
+          const stem = `paper-${paper.arxivId.replace(/[^a-z0-9]+/gi, '-')}`
+          const art = await illustrate(stem, `AI 配图 · ${paper.title}`, paperArtPrompt(paper.title, paper.summary))
+          if (art !== undefined) paperArt[paper.arxivId] = art
+        }
+      }
+    }
+  }
+
   const slides = buildDeckModel({
-    project, title, date, presenter: request.presenter, paperCount: associated.length, papers, paperFigures, experiments, figures, include,
+    project, title, date, presenter: request.presenter, paperCount: associated.length, papers, paperFigures, coverArt, paperArt, experiments, figures, include,
   })
 
   const meetingsDir = join(deps.workspaceDir, MEETINGS_DIR_NAME, project.id)
   await mkdir(meetingsDir, { recursive: true })
   const file = `${slugOf(title, project.id)}-${date.replace(/[^0-9]/g, '')}.pptx`
-  await renderDeck(slides, join(meetingsDir, file))
-  return success({ file, slides: slides.length })
+  await renderDeck(slides, join(meetingsDir, file), { title })
+  return success({ file, slides: slides.length, illustrations })
 }
 
 /**

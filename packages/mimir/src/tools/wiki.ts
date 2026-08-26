@@ -10,7 +10,9 @@ import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { emitEvent, WIKI_AGENT_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
+import type { LedgerJsonValue } from '../types.ts'
 
 const ACTIONS = [
   'add_paper', 'set_paper', 'add_idea', 'fail_idea', 'add_claim', 'set_claim', 'set_project',
@@ -80,6 +82,16 @@ function requireExperimentStatus(value: string | undefined, action: Action): typ
   return status as typeof EXPERIMENT_STATUSES[number]
 }
 
+/**
+ * Append one decision-grade ledger event for an agent action. Awaited by the
+ * call site so the event is durable before the tool call acknowledges — and
+ * best-effort by the ledger's call-site contract: a trail failure warns and
+ * is swallowed, never failing the tool call itself.
+ */
+async function emit(domain: ResearchWikiDomain, action: string, refs: Record<string, string | undefined>, payload: Record<string, LedgerJsonValue>): Promise<void> {
+  await emitEvent(domain, { actor: WIKI_AGENT_ACTOR, action, refs, payload })
+}
+
 /** Execute one validated action against the domain. */
 async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<JsonValue> {
   switch (args.action) {
@@ -100,6 +112,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         addedAt: new Date().toISOString(),
       }
       await domain.table('papers').put(arxivId, record)
+      await emit(domain, 'literature.paper.imported', { paperId: arxivId }, { title: record.title, imported: existing === undefined })
       return { ok: true, table: 'papers', id: arxivId, record: record as unknown as JsonValue }
     }
     case 'set_paper': {
@@ -152,6 +165,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         createdAt: new Date().toISOString(),
       }
       await domain.table('ideas').put(id, record)
+      await emit(domain, 'knowledge.idea.added', { ideaId: id }, { title: record.title })
       return { ok: true, table: 'ideas', id, record: record as unknown as JsonValue }
     }
     case 'fail_idea': {
@@ -161,6 +175,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         throw new Error(`wiki_note: no idea with id '${id}'`)
       }
       await domain.table('ideas').update(id, current => ({ ...current, status: 'failed' as const, failureReason: reason }))
+      await emit(domain, 'knowledge.idea.failed', { ideaId: id }, { reason })
       return { ok: true, table: 'ideas', id, status: 'failed' }
     }
     case 'add_claim': {
@@ -172,6 +187,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         evidence: args.evidence ?? '',
       }
       await domain.table('claims').put(id, record)
+      await emit(domain, 'knowledge.claim.added', { claimId: id }, { text: record.text, evidence: record.evidence })
       return { ok: true, table: 'claims', id, record: record as unknown as JsonValue }
     }
     case 'set_claim': {
@@ -188,6 +204,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         status,
         evidence: args.evidence ?? current.evidence,
       }))
+      await emit(domain, 'knowledge.claim.set', { claimId: id }, { status, evidence: args.evidence ?? null })
       return { ok: true, table: 'claims', id, status }
     }
     case 'set_project': {
@@ -201,6 +218,7 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         paperDir,
         updatedAt: new Date().toISOString(),
       }))
+      await emit(domain, 'knowledge.project.paperdir', { projectId: id }, { paperDir })
       return { ok: true, table: 'projects', id, paperDir }
     }
     case 'add_experiment': {
@@ -219,22 +237,29 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
         updatedAt: new Date().toISOString(),
       }
       await domain.table('experiments').put(id, record)
+      await emit(domain, 'experiments.saved', { experimentId: id, projectId }, {
+        name: record.name, status: record.status, created: true, metricCount: Object.keys(record.metrics).length,
+      })
       return { ok: true, table: 'experiments', id, record: record as unknown as JsonValue }
     }
     case 'set_experiment': {
       const id = requireField(args.id, 'id', args.action)
-      if (domain.table('experiments').get(id) === undefined) {
+      const current = domain.table('experiments').get(id)
+      if (current === undefined) {
         throw new Error(`wiki_note: no experiment with id '${id}'`)
       }
       const metrics = metricsOf(args.metrics)
-      await domain.table('experiments').update(id, current => ({
-        ...current,
+      await domain.table('experiments').update(id, record => ({
+        ...record,
         ...(args.name === undefined ? {} : { name: args.name }),
         ...(args.status === undefined ? {} : { status: requireExperimentStatus(args.status, args.action) }),
         ...(metrics === undefined ? {} : { metrics }),
         ...(args.log_path === undefined ? {} : { logPath: args.log_path }),
         updatedAt: new Date().toISOString(),
       }))
+      await emit(domain, 'experiments.saved', { experimentId: id, projectId: current.projectId }, {
+        name: args.name ?? current.name, status: args.status ?? 'updated', created: false,
+      })
       return { ok: true, table: 'experiments', id, status: args.status ?? 'updated' }
     }
     case 'list': {

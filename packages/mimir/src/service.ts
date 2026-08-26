@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 59 `@Remote` signatures intact, and forwards every method body to a
+ * all 63 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -41,6 +41,7 @@ import type {
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
+  ResearchListEventsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
   ResearchListServersResult,
@@ -49,6 +50,7 @@ import type {
   ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
+  ResearchProgressReportResult,
   ResearchRemovePaperResult,
   ResearchRenameFigureResult,
   ResearchRevertPaperSnapshotResult,
@@ -69,7 +71,9 @@ import type {
   ResearchClearVenueResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
+  ResearchGetImageGenConfigResult,
   ResearchMeetingDecksResult,
+  ResearchSetImageGenConfigResult,
   MeetingInclude,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
@@ -92,6 +96,9 @@ import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
 import * as venue from './services/venue.ts'
 import * as meeting from './services/meeting.ts'
+import * as ledger from './services/ledger.ts'
+import type { MeetingDeps } from './services/meeting.ts'
+import * as imagegen from './services/image-gen.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -145,11 +152,16 @@ export interface ResearchServiceConfig {
     readonly apiKey: string
     readonly userId: string
   }
+  /**
+   * Meeting-deck seams (PDF warm-up override); absent outside tests, where
+   * the real arXiv fetch applies.
+   */
+  readonly meetings?: MeetingDeps
 }
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 59 `@Remote` signatures; every method
+ * `research` Remote namespace and all 63 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -175,6 +187,7 @@ export class ResearchService extends TypertRemoteService {
       ...(config.search === undefined ? {} : { search: config.search }),
       ...(config.svg === undefined ? {} : { svg: config.svg }),
       ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
+      ...(config.meetings === undefined ? {} : { meetings: config.meetings }),
     }
     this.state = { compileStatus: new Map(), jobSeq: 0 }
   }
@@ -487,8 +500,24 @@ export class ResearchService extends TypertRemoteService {
     paperIds?: readonly string[] | undefined
     figureRelPaths?: readonly string[] | undefined
     include?: Partial<MeetingInclude> | undefined
+    aiIllustrations?: boolean | undefined
   }): Promise<ResearchGenerateMeetingResult> {
     return meeting.generateMeetingDeck(this.deps, request)
+  }
+
+  @Remote('getImageGenConfig')
+  getImageGenConfig(): Promise<ResearchGetImageGenConfigResult> {
+    return imagegen.getImageGenConfig(this.deps.workspaceDir)
+  }
+
+  @Remote('setImageGenConfig')
+  setImageGenConfig(request: {
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    model?: string | undefined
+    size?: string | undefined
+  }): Promise<ResearchSetImageGenConfigResult> {
+    return imagegen.setImageGenConfig(this.deps.workspaceDir, request)
   }
 
   @Remote('listMeetingDecks')
@@ -560,6 +589,29 @@ export class ResearchService extends TypertRemoteService {
   @Remote('listBackups')
   listBackups(): Promise<ResearchListBackupsResult> {
     return wikiAdmin.listBackups(this.deps)
+  }
+
+  // ledger domain: the append-only growth record (query + progress report)
+  @Remote('listEvents')
+  listEvents(request: {
+    projectId?: string | undefined
+    actorKind?: string | undefined
+    actionPrefix?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+    limit?: number | undefined
+    order?: string | undefined
+  }): Promise<ResearchListEventsResult> {
+    return ledger.listEventsRemote(this.deps, request)
+  }
+
+  @Remote('generateProgressReport')
+  generateProgressReport(request: {
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchProgressReportResult> {
+    return ledger.generateProgressReportRemote(this.deps, request)
   }
 }
 

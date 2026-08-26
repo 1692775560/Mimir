@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { ClaimRecord, ExperimentRecord, FigureRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
+import type { ClaimRecord, EventRecord, ExperimentRecord, FigureRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord } from './types.ts'
 
 /** Durable shape of one remembered paper. */
 export const paperRecord = z.object({
@@ -142,16 +142,46 @@ export const figureRecord = z.object({
   createdAt: z.string(),
 })
 
+/** Durable shape of one append-only ledger event (see `./ledger.ts`). */
+export const eventRecord = z.object({
+  id: z.string(),
+  ts: z.string(),
+  actor: z.object({
+    kind: z.enum(['user', 'agent', 'subagent', 'module', 'system']),
+    id: z.string(),
+  }),
+  action: z.string(),
+  refs: z.object({
+    projectId: z.string().optional(),
+    experimentId: z.string().optional(),
+    runId: z.string().optional(),
+    serverId: z.string().optional(),
+    jobId: z.string().optional(),
+    artifactId: z.string().optional(),
+    figureId: z.string().optional(),
+    claimId: z.string().optional(),
+    ideaId: z.string().optional(),
+    paperId: z.string().optional(),
+  }).default({}),
+  // z.json() mirrors the `Record<string, JsonValue>` wire type: the event
+  // crosses the Remote boundary via `listEvents`, where unconstrained
+  // `unknown` is not representable, and the JSON check also hardens the
+  // durable boundary.
+  payload: z.record(z.string(), z.json()).default({}),
+})
+
 /**
- * The research wiki domain spec: eight tables, no global singleton. The spec
+ * The research wiki domain spec: nine tables, no global singleton. The spec
  * object is the single source of the domain's name, version, and schemas.
- * The `servers`, `jobs`, and `figures` tables were added WITHOUT a version
- * bump: the domain loader fills a table missing from a stored snapshot with
- * an empty map, so existing v2 JSON stores open with them empty, while a bump
- * would make the storage-json backend reject every existing file
- * (`version-mismatch`) with no migration path. `jobs` holds runtime state
- * rather than research data, so the wiki export/import snapshot (seven
- * tables) deliberately excludes it.
+ * The `servers`, `jobs`, `figures`, and `events` tables were added WITHOUT a
+ * version bump: the domain loader fills a table missing from a stored
+ * snapshot with an empty map, so existing v2 JSON stores open with them
+ * empty, while a bump would make the storage-json backend reject every
+ * existing file (`version-mismatch`) with no migration path. `jobs` holds
+ * runtime state rather than research data, so the wiki export/import
+ * snapshot (seven tables) deliberately excludes it; `events` is excluded
+ * for the same reason — the ledger is an audit trail, not research state to
+ * migrate between workspaces (the audit report is the export surface).
  */
 export const researchWikiDomainSpec = defineDomain({
   name: 'research_wiki',
@@ -165,6 +195,7 @@ export const researchWikiDomainSpec = defineDomain({
     servers: domainTable<string, ServerRecord>(serverRecord),
     jobs: domainTable<string, JobRecord>(jobRecord),
     figures: domainTable<string, FigureRecord>(figureRecord),
+    events: domainTable<string, EventRecord>(eventRecord),
   },
 })
 

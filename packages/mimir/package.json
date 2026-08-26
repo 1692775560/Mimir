@@ -1,7 +1,7 @@
 {
   "name": "dsh-mimir",
   "description": "Research-assistant plugin suite (literature search, research wiki, LaTeX compile, independent subagent review) for the DeepSeek Harness",
-  "version": "0.13.0",
+  "version": "0.14.1",
   "publishConfig": {
     "access": "public"
   },
@@ -51,7 +51,8 @@
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
     "lib/client.js",
-    "lib/client.js.map"
+    "lib/client.js.map",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "bundle": "tsdown",
@@ -62,6 +63,9 @@
     "@deepseek-ai/schemastery": "^3.18.1",
     "pptxgenjs": "^4.0.1",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "sxng-cli": "^1.2.9"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1",
@@ -110,6 +114,19 @@
         "@deepseek-ai/dsh-client-ui-theme"
       ],
       "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
-  }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "research",
+    "arxiv",
+    "latex",
+    "zotero",
+    "literature",
+    "experiment-tracking"
+  ]
 }

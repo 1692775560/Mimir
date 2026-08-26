@@ -1,10 +1,11 @@
 /**
- * The research workbench: a wide fixed overlay with a left rail (the seven
+ * The research workbench: a wide fixed overlay with a left rail (the eight
  * view tabs plus the project picker at the bottom) and a content area that
  * renders the active view — the project overview card, the Overleaf-style
  * paper editor, the literature library, the experiment records with the
- * experiment log, the paper-figure grid, the group-meeting deck builder, and
- * the compute-server board. All
+ * experiment log, the paper-figure grid, the group-meeting deck builder,
+ * the compute-server board, and the ledger (the transparent growth record:
+ * timeline + progress report). All
  * data arrives through the four props shares — the shared store carries
  * open/selection/active-tab, the `useResearch` hook carries the remote view,
  * and the inject face carries the verbs. The component owns no subscription
@@ -25,6 +26,7 @@ import { ExperimentsView } from './ExperimentsView.tsx'
 import { FiguresView } from './FiguresView.tsx'
 import { MeetingsView } from './MeetingsView.tsx'
 import { ServersView } from './ServersView.tsx'
+import { LedgerView } from './LedgerView.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import css from './ResearchPanel.module.css'
 
@@ -37,6 +39,7 @@ const TAB_KEYS: Record<ResearchTab, ResearchKey> = {
   figures: 'tab.figures',
   meetings: 'tab.meetings',
   servers: 'tab.servers',
+  ledger: 'tab.ledger',
 }
 
 /** One 16×16 stroke icon per tab, painted in the nav item's currentColor. */
@@ -75,6 +78,13 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
       <path d="M2 11.5 5.5 8l2.5 2.5L10.5 8 14 11.5" />
     </svg>
   ),
+  meetings: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="13" height="9" rx="1.5" />
+      <path d="M8 11v2.5M5.5 14.5h5" />
+      <path d="M4.5 8.5l2-2 2 1.5 3-3" />
+    </svg>
+  ),
   servers: (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2.5" y="2.5" width="11" height="4.5" rx="1" />
@@ -82,11 +92,10 @@ const TAB_ICONS: Record<ResearchTab, ReactNode> = {
       <path d="M5 4.75h.01M5 11.25h.01" />
     </svg>
   ),
-  meetings: (
+  ledger: (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1.5" y="2" width="13" height="9" rx="1.5" />
-      <path d="M8 11v2.5M5.5 14.5h5" />
-      <path d="M4.5 8.5l2-2 2 1.5 3-3" />
+      <rect x="2.5" y="1.5" width="11" height="13" rx="1.5" />
+      <path d="M5.5 5h5M5.5 8h5M5.5 11h3" />
     </svg>
   ),
 }
@@ -150,7 +159,8 @@ export function ResearchPanel({
   ensureBibliography, reloadBibliography, deleteBibEntry, updateBibEntry, importPapersToBib, reorderPaperSections, reorderPaperSubsections,
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
-  loadMeetings, generateMeetingDeck, deleteMeetingDeck,
+  loadMeetings, generateMeetingDeck, deleteMeetingDeck, getImageGenConfig, saveImageGenConfig,
+  loadLedger, generateReport,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -175,6 +185,7 @@ export function ResearchPanel({
   const artifact = useResearch(view => view.artifact)
   const figures = useResearch(view => view.figures)
   const meetings = useResearch(view => view.meetings)
+  const imageGen = useResearch(view => view.imageGen)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
@@ -182,6 +193,8 @@ export function ResearchPanel({
   const snapshots = useResearch(view => view.snapshots)
   const venueTemplates = useResearch(view => view.venueTemplates)
   const snapshotDetail = useResearch(view => view.snapshotDetail)
+  const ledger = useResearch(view => view.ledger)
+  const report = useResearch(view => view.report)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
@@ -450,7 +463,7 @@ export function ResearchPanel({
       </aside>
       <main className={css.content} role="tabpanel" aria-label={t(TAB_KEYS[activeTab])}>
         {activeTab === 'overview' && (
-          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} jobs={jobs} experiments={experiments} exportWiki={exportWiki} importWiki={importWiki} t={t} />
+          <OverviewView project={selectedProject} stats={overviewStats} backup={backup} jobs={jobs} experiments={experiments} openLedger={() => { actions.setTab('ledger') }} exportWiki={exportWiki} importWiki={importWiki} t={t} />
         )}
         {activeTab === 'paper' && (
           <PaperView
@@ -566,6 +579,7 @@ export function ResearchPanel({
             meetings={meetings}
             papers={papers}
             figures={figures}
+            imageGen={imageGen}
             projectId={selectedProjectId}
             dir={selectedProject?.paperDir}
             ensurePapers={ensurePapers}
@@ -573,6 +587,8 @@ export function ResearchPanel({
             loadMeetings={loadMeetings}
             generateMeetingDeck={generateMeetingDeck}
             deleteMeetingDeck={deleteMeetingDeck}
+            getImageGenConfig={getImageGenConfig}
+            saveImageGenConfig={saveImageGenConfig}
             t={t}
           />
         )}
@@ -591,6 +607,16 @@ export function ResearchPanel({
             refreshJobs={refreshJobs}
             submitJob={submitJob}
             deleteJob={deleteJob}
+            t={t}
+          />
+        )}
+        {activeTab === 'ledger' && (
+          <LedgerView
+            ledger={ledger}
+            report={report}
+            selectedProjectId={selectedProjectId}
+            loadLedger={loadLedger}
+            generateReport={generateReport}
             t={t}
           />
         )}

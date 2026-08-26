@@ -13,6 +13,7 @@ import { appendFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { emitEvent, PANEL_ACTOR, SERVICE_ACTOR } from '../ledger.ts'
 import type { ResearchWikiDomain } from '../store.ts'
 import type {
   ExperimentJobOutcome,
@@ -210,6 +211,12 @@ export async function saveServer(
       updatedAt: now,
     }
     await table.put(input.id, next)
+    await emitEvent(deps.domain, {
+      actor: PANEL_ACTOR,
+      action: 'compute.server.saved',
+      refs: { serverId: next.id },
+      payload: { name: next.name, host: next.host, created: false },
+    })
     return success({ server: next })
   }
   const created: ServerRecord = {
@@ -224,6 +231,12 @@ export async function saveServer(
     updatedAt: now,
   }
   await table.put(created.id, created)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'compute.server.saved',
+    refs: { serverId: created.id },
+    payload: { name: created.name, host: created.host, created: true },
+  })
   return success({ server: created })
 }
 
@@ -238,10 +251,17 @@ export async function deleteServer(
   request: { id: string },
 ): Promise<ResearchDeleteServerResult> {
   const table = deps.domain.table('servers')
-  if (table.get(request.id) === undefined) {
+  const removed = table.get(request.id)
+  if (removed === undefined) {
     return rejected({ code: 'server-not-found', id: request.id })
   }
   await table.delete(request.id)
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'compute.server.deleted',
+    refs: { serverId: removed.id },
+    payload: { name: removed.name, destructive: true },
+  })
   return success({ id: request.id })
 }
 
@@ -363,6 +383,16 @@ export async function submitJob(
   if (request.experimentId !== undefined) {
     await markExperiment(deps, request.experimentId, 'running', server.id)
   }
+  await emitEvent(deps.domain, {
+    actor: PANEL_ACTOR,
+    action: 'compute.job.submitted',
+    refs: {
+      jobId: job.id,
+      serverId: server.id,
+      ...(request.experimentId === undefined ? {} : { experimentId: request.experimentId }),
+    },
+    payload: { command: command.slice(0, 200) },
+  })
   // Fire-and-forget: runJob never rejects; the panel follows the
   // transitions through listJobs.
   void runJob(deps, job.id)
@@ -473,6 +503,26 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
   // command still finished, but nothing is written back.
   if (table.get(id) === undefined) return
   await table.put(id, settled)
+  const startedMs = settled.startedAt === undefined ? null : Date.parse(settled.startedAt)
+  const finishedMs = settled.finishedAt === undefined ? null : Date.parse(settled.finishedAt)
+  await emitEvent(deps.domain, {
+    actor: SERVICE_ACTOR,
+    action: 'compute.job.settled',
+    refs: {
+      jobId: settled.id,
+      serverId: settled.serverId,
+      ...(settled.experimentId === undefined ? {} : { experimentId: settled.experimentId }),
+    },
+    payload: {
+      status: settled.status,
+      exitCode: settled.exitCode,
+      durationMs: startedMs !== null && finishedMs !== null
+        && Number.isFinite(startedMs) && Number.isFinite(finishedMs)
+        ? Math.max(0, finishedMs - startedMs)
+        : null,
+      summary: jobSummaryOf(settled),
+    },
+  })
   await writeBackExperiment(deps, settled)
 }
 

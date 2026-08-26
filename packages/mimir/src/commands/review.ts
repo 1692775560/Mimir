@@ -10,6 +10,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
+import { emitEvent, REVIEWER_ACTOR } from '../ledger.ts'
 import { renderReviewRound, runReview } from '../reviewer.ts'
 import { resolveProject } from './common.ts'
 import type { ResearchCommandDeps } from './common.ts'
@@ -71,6 +72,16 @@ export function registerReviewCommand(ctx: Context, deps: ResearchCommandDeps): 
         scope,
         ...(project === undefined ? {} : { projectId: project.id }),
         signal: invocation.signal,
+      })
+      // The round's verdict joins the ledger as a subagent action — the
+      // claim-evidence trail needs to see who graded what and how. Awaited
+      // (best-effort inside): the verdict is durable before the command
+      // reports back.
+      await emitEvent(deps.domain, {
+        actor: REVIEWER_ACTOR,
+        action: 'review.round.settled',
+        refs: project === undefined ? {} : { projectId: project.id },
+        payload: { verdict: round.verdict, issues: round.issues.length, scope },
       })
       const counted = project === undefined ? '' : ` Round ${project.reviewRounds + 1}/${deps.reviewer.maxRounds} for project ${project.id}.`
       const followup = round.verdict === 'PASS' ? '' : ' A revision request was handed to the agent.'

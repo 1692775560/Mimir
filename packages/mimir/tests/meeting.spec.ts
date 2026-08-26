@@ -39,6 +39,8 @@ async function harness() {
     workspaceDir,
     domain,
     latex: { engine: 'auto', timeoutMs: 1000 },
+    // No network in tests: the PDF warm-up seam is a no-op here.
+    meetings: { fetchPdf: async () => undefined },
   })
   return { ctx, domain, workspaceDir, service }
 }
@@ -113,6 +115,32 @@ describe('buildDeckModel', () => {
     expect(slides.at(-1)?.kind).toBe('closing')
     const figureSlide = slides.find(slide => slide.kind === 'figure')
     expect(figureSlide?.kind === 'figure' ? figureSlide.caption : '').toContain('Fig.1')
+  })
+
+  it('embeds AI illustrations on the title and paper intro slides, with kickers', () => {
+    const slides = buildDeckModel({
+      project: PROJECT,
+      title: '组会汇报',
+      date: '2026-08-24',
+      paperCount: 1,
+      papers: [paperOf('2103.00020', 9)],
+      paperFigures: {
+        '2103.00020': [{ imagePath: '/tmp/fig1.png', label: 'Figure 1', caption: '首图要点' }],
+      },
+      coverArt: '/tmp/cover.png',
+      paperArt: { '2103.00020': '/tmp/paper-art.png' },
+      experiments: [],
+      figures: [],
+      include: { progress: true, experiments: true, figures: true, papers: true },
+    })
+    const title = slides[0]
+    expect(title?.kind === 'title' ? title.imagePath : undefined).toBe('/tmp/cover.png')
+    const paperSlide = slides.find(slide => slide.kind === 'bullets' && slide.heading !== '项目进展')
+    expect(paperSlide?.kind === 'bullets' ? paperSlide.imagePath : undefined).toBe('/tmp/paper-art.png')
+    expect(paperSlide?.kind === 'bullets' ? paperSlide.kicker : undefined).toBe('文献分享')
+    const figureSlide = slides.find(slide => slide.kind === 'figure')
+    expect(figureSlide?.kind === 'figure' ? figureSlide.kicker : undefined).toBe(paperOf('2103.00020', 9).title)
+    expect(figureSlide?.kind === 'figure' ? figureSlide.heading : undefined).toBe('Figure 1')
   })
 
   it('honors the include switches and drops empty sections from the agenda', () => {

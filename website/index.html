@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mimir — 一站式智能科研工作台</title>
+<meta name="description" content="Mimir 是 DeepSeek Harness 的开源科研工作台插件：LaTeX 论文边写边编译、arXiv 文献管理、实验追踪、图表归纳、组会 PPT、GPU 服务器编排，管理科研全周期。">
+<meta property="og:title" content="Mimir — 一站式智能科研工作台">
+<meta property="og:description" content="The whole research cycle, in one workbench. LaTeX · arXiv · 实验 · 图表 · 组会 PPT · GPU 服务器">
+<meta property="og:image" content="assets/social-preview.png">
+<meta property="og:type" content="website">
+<style>
+/* ================= design tokens =================
+   字号阶梯 1.25：12 / 14 / 16 / 20 / 24 / 32 / 40 / 64
+   间距阶梯 4pt：4 / 8 / 16 / 24 / 32 / 48 / 64 / 96
+   色板：暖米底 + 深墨蓝，次级文字对比度 ≥ 4.5:1 */
+:root {
+  --bg: #f6f2e9;
+  --surface: #fffdf8;
+  --ink: #1e2433;
+  --ink-2: #2c3550;
+  --muted: #6b6353;            /* 5.3:1 on --bg */
+  --faint: #6f685b;            /* 4.9:1 on --bg，AA 安全 */
+  --accent: #47608c;           /* 5.7:1 on --bg */
+  --accent-strong: #3a4f75;
+  --accent-soft: rgb(71 96 140 / 10%);
+  --line: #ddd4c0;
+  --code-bg: #1c2233;
+  --code-ink: #d7e0f4;
+
+  --fs-12: 12px; --fs-14: 14px; --fs-16: 16px;
+  --fs-20: 20px; --fs-24: 24px; --fs-32: 32px;
+
+  --s1: 4px;  --s2: 8px;  --s3: 16px; --s4: 24px;
+  --s5: 32px; --s6: 48px; --s7: 64px; --s8: 96px;
+
+  --radius: 16px;
+  --shadow-sm: 0 6px 18px rgb(40 42 60 / 8%);
+  --shadow-lg: 0 20px 50px rgb(40 42 60 / 12%);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: var(--fs-16);
+  background:
+    radial-gradient(1000px 560px at 88% -60px, #ece5d2 0%, rgb(236 229 210 / 0) 60%),
+    radial-gradient(800px 500px at -10% 30%, #e7dfcb 0%, rgb(231 223 203 / 0) 55%),
+    var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+.serif { font-family: Georgia, "Times New Roman", "Songti SC", serif; }
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--s4); }
+::selection { background: var(--accent); color: #fff; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+section { scroll-margin-top: var(--s7); }
+
+/* ---------- motion primitives ---------- */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+.reveal.in { opacity: 1; transform: none; }
+.rise { opacity: 0; animation: rise .8s cubic-bezier(.22, .8, .3, 1) forwards; }
+@keyframes rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+
+/* ---------- nav ---------- */
+nav {
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(14px);
+  background: rgb(246 242 233 / 78%);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner { display: flex; align-items: center; gap: 12px; height: var(--s7); }
+.logo-badge {
+  width: var(--s5); height: var(--s5); border-radius: 9px;
+  background: linear-gradient(145deg, #232b3d, #161c2a);
+  color: var(--bg); font-family: Georgia, serif; font-weight: 700; font-size: 19px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+.logo-badge:hover { transform: rotate(-8deg) scale(1.08); }
+.nav-name { font-family: Georgia, serif; font-weight: 700; font-size: var(--fs-20); }
+.nav-links { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+.nav-links a {
+  position: relative;
+  color: var(--muted); text-decoration: none; font-size: var(--fs-14);
+  padding: 12px var(--s2);   /* ≥44px 触控目标 */
+  border-radius: 8px;
+  transition: color .15s ease;
+}
+.nav-links a:not(.nav-gh)::after {
+  content: ""; position: absolute; left: var(--s2); right: var(--s2); bottom: 7px;
+  height: 2px; border-radius: 2px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .22s cubic-bezier(.22, .8, .3, 1);
+}
+.nav-links a:hover { color: var(--ink); }
+.nav-links a:not(.nav-gh):hover::after { transform: scaleX(1); }
+.nav-gh {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--ink); color: var(--bg) !important;
+  padding: 8px var(--s3) !important; border-radius: 999px; font-weight: 500;
+  transition: background .15s ease, transform .15s ease;
+}
+.nav-gh:hover { background: #323c55; transform: translateY(-1px); }
+@media (max-width: 760px) { .nav-links a:not(.nav-gh) { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding: var(--s8) 0 var(--s7); text-align: center; }
+.aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.aurora i { position: absolute; border-radius: 50%; filter: blur(90px); will-change: transform; }
+.aurora .a1 {
+  width: 560px; height: 560px; background: #c3d2ef; opacity: .6;
+  top: -200px; right: -100px;
+  animation: drift1 18s ease-in-out infinite alternate;
+}
+.aurora .a2 {
+  width: 480px; height: 480px; background: #f2ddba; opacity: .65;
+  top: 100px; left: -180px;
+  animation: drift2 23s ease-in-out infinite alternate;
+}
+.aurora .a3 {
+  width: 420px; height: 420px; background: #dfe4d2; opacity: .5;
+  bottom: -260px; left: 38%;
+  animation: drift3 20s ease-in-out infinite alternate;
+}
+@keyframes drift1 { to { transform: translate(-140px, 90px) scale(1.18); } }
+@keyframes drift2 { to { transform: translate(120px, 60px) scale(1.12); } }
+@keyframes drift3 { to { transform: translate(-100px, -70px) scale(1.15); } }
+.hero .wrap { position: relative; }
+.hero-kicker {
+  display: inline-block; font-size: var(--fs-12); letter-spacing: .18em;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid rgb(71 96 140 / 25%);
+  padding: 6px var(--s3); border-radius: 999px; margin-bottom: var(--s4);
+}
+.hero h1 {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: clamp(32px, 6vw, 64px); font-weight: 700; line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.hero h1 em {
+  font-style: normal;
+  background: linear-gradient(90deg, var(--accent) 0%, #6f8fc4 45%, var(--accent) 90%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: sheen 5.5s linear infinite;
+}
+@keyframes sheen { to { background-position: 220% 0; } }
+.hero-sub { margin-top: var(--s3); font-size: var(--fs-20); color: var(--muted); }
+.hero-sub-en { margin-top: var(--s2); font-size: var(--fs-14); color: var(--faint); letter-spacing: .04em; }
+.hero-cta { margin-top: var(--s5); display: flex; justify-content: center; gap: var(--s3); flex-wrap: wrap; }
+.btn-main {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: var(--s2);
+  background: var(--ink); color: var(--bg); text-decoration: none;
+  padding: 14px 28px; border-radius: 999px; font-size: var(--fs-16); font-weight: 500;
+  box-shadow: 0 10px 24px rgb(30 36 51 / 22%);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.btn-main::after {
+  content: ""; position: absolute; top: 0; left: -80%; width: 45%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 28%), transparent);
+  transform: skewX(-20deg);
+}
+.btn-main:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgb(30 36 51 / 26%); background: #323c55; }
+.btn-main:hover::after { animation: shine .85s ease; }
+@keyframes shine { to { left: 135%; } }
+.btn-main:active { transform: translateY(0) scale(.98); }
+.btn-ghost {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); text-decoration: none;
+  padding: 14px 28px; border-radius: 999px; font-size: var(--fs-16);
+  transition: border-color .15s ease, color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.btn-ghost:active { transform: translateY(0) scale(.98); }
+.install-cmd {
+  margin: var(--s5) auto 0; display: inline-flex; align-items: center; gap: 14px;
+  max-width: calc(100vw - 48px);
+  background: var(--code-bg); color: var(--code-ink);
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: var(--fs-14);
+  padding: 12px 18px; border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.install-cmd:hover { transform: translateY(-2px); box-shadow: 0 26px 56px rgb(40 42 60 / 16%); }
+.install-cmd span { overflow-x: auto; white-space: nowrap; }
+.install-cmd .copy {
+  flex-shrink: 0;
+  border: 1px solid rgb(255 255 255 / 20%); background: transparent; color: #aeb9d4;
+  font-size: var(--fs-12); padding: var(--s1) 10px; border-radius: 7px; cursor: pointer;
+  font-family: inherit; transition: color .15s ease, border-color .15s ease;
+}
+.install-cmd .copy:hover { color: #fff; border-color: rgb(255 255 255 / 45%); }
+.hero-stats { margin-top: var(--s4); font-size: var(--fs-14); color: var(--faint); letter-spacing: .05em; }
+.hero-stats b { color: var(--ink-2); font-weight: 600; }
+.hero-shot { margin-top: var(--s7); position: relative; }
+.hero-shot img {
+  width: 100%; border-radius: 18px; border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg); display: block; cursor: zoom-in;
+  transition: transform .25s ease-out, box-shadow .25s ease-out;
+  will-change: transform;
+}
+
+/* ---------- marquee ---------- */
+.marquee {
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: rgb(255 253 248 / 55%);
+  overflow: hidden; padding: 14px 0;
+}
+.marquee-track {
+  display: flex; align-items: center; gap: var(--s6);
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.marquee-track span {
+  font-family: Georgia, "Songti SC", serif; font-size: var(--fs-14);
+  color: var(--muted); letter-spacing: .1em; white-space: nowrap;
+}
+.marquee-track i { color: var(--accent); font-style: normal; font-size: var(--fs-12); }
+
+/* ---------- sections ---------- */
+section { padding: var(--s8) 0; }
+.sec-head { text-align: center; margin-bottom: var(--s6); }
+.sec-kicker {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: var(--fs-12); letter-spacing: .22em;
+  color: var(--accent); margin-bottom: var(--s3); font-weight: 600;
+}
+.sec-kicker::before, .sec-kicker::after {
+  content: ""; width: 22px; height: 1px; background: rgb(71 96 140 / 45%);
+}
+.sec-head h2 {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: clamp(32px, 4vw, 40px); font-weight: 700; letter-spacing: -0.01em;
+}
+.sec-head p { margin-top: 10px; color: var(--muted); font-size: var(--fs-16); max-width: 65ch; margin-inline: auto; }
+
+/* ---------- features ---------- */
+.feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
+@media (max-width: 900px) { .feat-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .feat-grid { grid-template-columns: 1fr; } }
+.feat {
+  position: relative; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s4);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.feat::before {
+  content: ""; position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), rgb(71 96 140 / 9%), transparent 65%);
+  transition: opacity .25s ease; pointer-events: none;
+}
+.feat:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: rgb(71 96 140 / 35%); }
+.feat:hover::before { opacity: 1; }
+.feat-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; margin-bottom: var(--s3);
+  transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), background .2s ease, color .2s ease;
+}
+.feat:hover .feat-icon { transform: translateY(-2px) rotate(-6deg) scale(1.06); background: var(--accent); color: #fff; }
+.feat-icon svg { width: 22px; height: 22px; }
+.feat h3 { font-size: var(--fs-20); font-weight: 600; margin-bottom: var(--s2); }
+.feat p { font-size: var(--fs-16); color: var(--muted); }
+
+/* ---------- gallery ---------- */
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s4); }
+@media (max-width: 700px) { .gallery { grid-template-columns: 1fr; } }
+.shot { cursor: zoom-in; position: relative; }
+.shot img {
+  width: 100%; display: block; border-radius: 14px;
+  border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.shot:hover img, .shot:focus-visible img { transform: translateY(-3px) scale(1.012); box-shadow: var(--shadow-lg); }
+.shot .zoom-hint {
+  position: absolute; top: 12px; right: 12px;
+  width: 32px; height: 32px; border-radius: 9px;
+  background: rgb(30 36 51 / 72%); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: scale(.85);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+}
+.shot:hover .zoom-hint, .shot:focus-visible .zoom-hint { opacity: 1; transform: scale(1); }
+.shot figcaption { margin-top: 10px; font-size: var(--fs-14); color: var(--faint); text-align: center; }
+
+/* ---------- lightbox ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 100; display: none;
+  background: rgb(20 22 30 / 82%); backdrop-filter: blur(6px);
+  align-items: center; justify-content: center; padding: 4vmin; cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox.open img { animation: zoomin .28s cubic-bezier(.22, .8, .3, 1); }
+@keyframes zoomin { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+.lightbox img { max-width: 100%; max-height: calc(100% - 40px); border-radius: 12px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+.lightbox .lightbox-hint {
+  position: absolute; bottom: 3vmin; left: 50%; transform: translateX(-50%);
+  color: rgb(255 255 255 / 65%); font-size: var(--fs-12); letter-spacing: .06em;
+}
+
+/* ---------- quickstart ---------- */
+.steps { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+@media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+.step {
+  position: relative; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.step::before {
+  content: ""; position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), rgb(71 96 140 / 9%), transparent 65%);
+  transition: opacity .25s ease; pointer-events: none;
+}
+.step:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: rgb(71 96 140 / 35%); }
+.step:hover::before { opacity: 1; }
+.step-num {
+  font-family: Georgia, serif; font-size: var(--fs-16); color: var(--accent);
+  border: 1px solid rgb(71 96 140 / 30%);
+  width: var(--s5); height: var(--s5); border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;
+  transition: background .2s ease, color .2s ease, transform .3s cubic-bezier(.34, 1.56, .64, 1);
+}
+.step:hover .step-num { background: var(--accent); color: #fff; transform: scale(1.1); }
+.step h3 { font-size: var(--fs-20); font-weight: 600; margin-bottom: var(--s2); }
+.step p { font-size: var(--fs-16); color: var(--muted); margin-bottom: var(--s3); }
+.code {
+  background: var(--code-bg); color: var(--code-ink); border-radius: 10px;
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+  padding: 14px var(--s3); overflow-x: auto; white-space: pre;
+}
+.optional { margin-top: var(--s4); text-align: center; color: var(--muted); font-size: var(--fs-14); max-width: 75ch; margin-inline: auto; }
+.optional code {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 2px var(--s2); border-radius: 6px; font-size: 13px;
+}
+
+/* ---------- community ---------- */
+.comm-grid { display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: center; }
+@media (max-width: 700px) { .comm-grid { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+.comm-grid img {
+  width: 220px; border-radius: 14px; border: 1px solid var(--line);
+  box-shadow: 0 8px 22px rgb(40 42 60 / 10%);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.comm-grid img:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.comm-list { list-style: none; display: flex; flex-direction: column; gap: var(--s3); }
+.comm-list a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.comm-list a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.comm-list li { font-size: var(--fs-16); color: var(--ink-2); }
+.comm-list .desc { color: var(--muted); font-size: var(--fs-14); }
+
+footer {
+  border-top: 1px solid var(--line); padding: var(--s5) 0 var(--s6);
+  color: var(--faint); font-size: var(--fs-14); text-align: center;
+}
+footer a { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .rise { opacity: 1; transform: none; transition: none; animation: none; }
+  .aurora i, .hero h1 em, .marquee-track, .btn-main:hover::after { animation: none !important; }
+  * { transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap nav-inner">
+    <span class="logo-badge">M</span>
+    <span class="nav-name serif">Mimir</span>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#gallery">界面</a>
+      <a href="#quickstart">快速上手</a>
+      <a href="#community">社区</a>
+      <a class="nav-gh" href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+  <div class="wrap">
+    <span class="hero-kicker rise">DEEPSEEK HARNESS 开源插件</span>
+    <h1 class="rise" style="animation-delay:.08s">一站式智能<em>科研工作台</em></h1>
+    <p class="hero-sub rise" style="animation-delay:.16s">论文 · 文献 · 实验 · 图表 · 组会 · 服务器——管理科研全周期</p>
+    <p class="hero-sub-en rise" style="animation-delay:.22s">The whole research cycle, in one workbench.</p>
+    <div class="hero-cta rise" style="animation-delay:.3s">
+      <a class="btn-main" href="#quickstart">快速上手</a>
+      <a class="btn-ghost" href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">查看源码</a>
+    </div>
+    <div class="install-cmd rise" style="animation-delay:.38s">
+      <span>dsh plugin --profile web add dsh-mimir@latest</span>
+      <button class="copy" data-copy="dsh plugin --profile web add dsh-mimir@latest">复制</button>
+    </div>
+    <p class="hero-stats rise" style="animation-delay:.46s"><b>8</b> 个视图 · <b>652</b> 项自动化测试 · MIT 开源</p>
+    <div class="hero-shot rise" style="animation-delay:.55s">
+      <img src="assets/tab-overview.png" alt="Mimir 总览：项目管线、统计与最近动态" loading="lazy">
+    </div>
+  </div>
+</header>
+
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-track">
+    <span>LaTeX 边写边编译</span><i>◆</i><span>arXiv 订阅追新</span><i>◆</i><span>AI 相关性评分</span><i>◆</i><span>实验追踪</span><i>◆</i><span>图表自动归纳</span><i>◆</i><span>组会 PPT 一键生成</span><i>◆</i><span>GPU 服务器编排</span><i>◆</i><span>Zotero 同步</span><i>◆</i><span>会议模板排版</span><i>◆</i><span>全程可追溯</span><i>◆</i>
+    <span>LaTeX 边写边编译</span><i>◆</i><span>arXiv 订阅追新</span><i>◆</i><span>AI 相关性评分</span><i>◆</i><span>实验追踪</span><i>◆</i><span>图表自动归纳</span><i>◆</i><span>组会 PPT 一键生成</span><i>◆</i><span>GPU 服务器编排</span><i>◆</i><span>Zotero 同步</span><i>◆</i><span>会议模板排版</span><i>◆</i><span>全程可追溯</span><i>◆</i>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-kicker">FEATURES</span>
+      <h2 class="serif">从选题到成稿，一个工作台</h2>
+      <p>八个视图覆盖科研的每个环节，数据都在同一个项目里流转</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+        <h3>LaTeX 论文写作</h3>
+        <p>大纲、源码、PDF 三栏同屏，边改边编译；编译成功自动存快照，随时回滚；支持会议模板一键排版。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+        <h3>arXiv 文献管理</h3>
+        <p>关键词订阅自动追新，AI 按你的方向打分排序；PDF 全屏阅读，一键进参考文献库，支持 Zotero 同步。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6L4 18a2 2 0 0 0 1.8 3h12.4A2 2 0 0 0 20 18l-5-9V3"/><path d="M8 3h8"/></svg></div>
+        <h3>实验追踪</h3>
+        <p>配置、指标、结论结构化记录，指标趋势图自动生成；会话里产出的实验数据自动入库，不再散落各处。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></div>
+        <h3>图表归纳</h3>
+        <p>agent 生成的图自动收进图表库，AI 归纳内容并命名；一键插进论文对应位置，图和文再也不脱节。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <h3>组会 PPT</h3>
+        <p>选中文献和当前进展，一键生成组会汇报：保留论文原图，还能配置生图 API 自动配插画。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg></div>
+        <h3>GPU 服务器编排</h3>
+        <p>SSH 直连 AutoDL 等算力机器，任务提交、状态轮询、日志回传都在面板里完成，训练进度一目了然。</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section id="gallery">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-kicker">SCREENSHOTS</span>
+      <h2 class="serif">界面一览</h2>
+      <p>点击任意截图放大查看</p>
+    </div>
+    <div class="gallery">
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-paper.png" alt="论文视图" loading="lazy"><figcaption>论文：大纲 / 源码 / PDF 三栏，边改边编译</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-papers.png" alt="文献视图" loading="lazy"><figcaption>文献：arXiv 订阅 + AI 相关性评分 + 全屏阅读</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-experiments.png" alt="实验视图" loading="lazy"><figcaption>实验：结构化记录 + 指标趋势图</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-figures.png" alt="图表视图" loading="lazy"><figcaption>图表：AI 自动归纳命名，一键插入论文</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-meetings.png" alt="组会视图" loading="lazy"><figcaption>组会：文献 + 进展一键生成汇报 PPT</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-servers.png" alt="服务器视图" loading="lazy"><figcaption>服务器：GPU 任务提交与状态轮询</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-ledger.png" alt="记录视图" loading="lazy"><figcaption>记录：成长记录与进展报告，全程可追溯</figcaption></figure>
+      <figure class="shot reveal" tabindex="0"><img src="assets/tab-overview.png" alt="总览视图" loading="lazy"><figcaption>总览：项目管线进度与工件清单一览</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-kicker">QUICKSTART</span>
+      <h2 class="serif">两分钟跑起来</h2>
+      <p>需要 Node.js ≥ 22、dsh CLI（<code class="mono">npm i -g @deepseek-ai/dsh</code>）和一个 DEEPSEEK_API_KEY</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <span class="step-num">1</span>
+        <h3>安装插件</h3>
+        <p>一条命令安装并自动激活，随包装好全部依赖（含 Web 搜索 CLI）。</p>
+        <div class="code">dsh plugin --profile web add dsh-mimir@latest</div>
+      </div>
+      <div class="step reveal">
+        <span class="step-num">2</span>
+        <h3>打开面板</h3>
+        <p>启动 web 界面，点左侧边栏底部的 <b>Mimir</b> 即可开始。</p>
+        <div class="code">dsh web
+# 打开 http://127.0.0.1:3080</div>
+      </div>
+    </div>
+    <p class="optional">
+      可选能力：论文编译装 <code>brew install tectonic</code> · Web 搜索跑 <code>bash scripts/setup-web-search.sh</code>（免 Docker 一键 SearXNG）· Zotero 在配置里填 API Key 即可
+    </p>
+    <p class="optional">
+      装到了旧版本？pnpm 会延迟加载刚发布的新版，用精确版本号重装：<code>dsh plugin --profile web remove dsh-mimir</code> 后 <code>dsh plugin --profile web add dsh-mimir@0.14.1</code>
+    </p>
+  </div>
+</section>
+
+<section id="community">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-kicker">COMMUNITY</span>
+      <h2 class="serif">加入社区</h2>
+      <p>有问题、想法或想一起共建，随时来聊</p>
+    </div>
+    <div class="comm-grid reveal">
+      <img src="assets/wechat-group.jpg" alt="Mimir 微信交流群二维码" width="220" height="337">
+      <ul class="comm-list">
+        <li><b>微信交流群</b><br><span class="desc">扫码进群，二维码过期后会更新</span></li>
+        <li><a href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">GitHub 仓库</a><br><span class="desc">提 issue、交 PR，共创者持续招募中</span></li>
+        <li><a href="https://github.com/Dominic789654/awesome-deepseek-harness" target="_blank" rel="noopener">Awesome DeepSeek Harness</a><br><span class="desc">已被社区精选列表收录</span></li>
+        <li><a href="https://github.com/deepseek-ai/deepseek-harness/discussions/4392" target="_blank" rel="noopener">官方插件展示帖</a><br><span class="desc">DeepSeek Harness 官方 Discussions 收录</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Mimir — 一站式智能科研工作台 · MIT License · 构建于 <a href="https://github.com/deepseek-ai/deepseek-harness" target="_blank" rel="noopener">DeepSeek Harness</a></p>
+  </div>
+</footer>
+
+<div class="lightbox" id="lightbox"><img alt="截图放大预览"><p class="lightbox-hint">Esc 或点击任意处关闭</p></div>
+<script>
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = lightbox.querySelector('img');
+const zoomSvg = '<span class="zoom-hint"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></span>';
+document.querySelectorAll('.shot').forEach(shot => {
+  shot.insertAdjacentHTML('beforeend', zoomSvg);
+});
+function openLightbox(src) {
+  lightboxImg.src = src;
+  lightbox.classList.add('open');
+}
+document.querySelectorAll('.shot img, .hero-shot img').forEach(img => {
+  img.addEventListener('click', () => openLightbox(img.src));
+});
+document.querySelectorAll('.shot').forEach(shot => {
+  shot.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openLightbox(shot.querySelector('img').src);
+    }
+  });
+});
+lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') lightbox.classList.remove('open');
+});
+document.querySelectorAll('.copy').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      btn.textContent = '已复制';
+      setTimeout(() => { btn.textContent = '复制'; }, 1600);
+    } catch {
+      btn.textContent = btn.dataset.copy;
+    }
+  });
+});
+const io = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('in');
+      io.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (!reduceMotion) {
+  // 卡片鼠标光斑
+  document.querySelectorAll('.feat, .step').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+  // hero 截图 3D 倾斜
+  const heroShot = document.querySelector('.hero-shot');
+  const heroImg = heroShot.querySelector('img');
+  heroShot.addEventListener('mousemove', e => {
+    const r = heroShot.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - .5;
+    const y = (e.clientY - r.top) / r.height - .5;
+    heroImg.style.transform = `perspective(1400px) rotateX(${(-y * 3).toFixed(2)}deg) rotateY(${(x * 4).toFixed(2)}deg)`;
+  });
+  heroShot.addEventListener('mouseleave', () => { heroImg.style.transform = ''; });
+}
+</script>
+</body>
+</html>

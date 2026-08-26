@@ -4,8 +4,9 @@
  * paper directory, artifact list, and the last-updated timestamp — preceded
  * by the stat chips (papers/experiments/figures counts gathered from the
  * other views), followed by the recent-activity card (the five latest remote
- * jobs and the five latest experiment runs of the project) and the data
- * section (scheduled-backup status, wiki export/import).
+ * jobs and the five latest experiment runs of the project), the growth-record
+ * entry link (the ledger tab), and the data section (scheduled-backup
+ * status, wiki export/import).
  * @module dsh-client-ui-mimir/client/OverviewView
  */
 
@@ -38,7 +39,7 @@ const ACTIVITY_LIMIT = 5
  * export/import verbs, and copy.
  * @returns the overview card, or the no-selection hint.
  */
-export function OverviewView({ project, stats, backup, jobs, experiments, exportWiki, importWiki, t }: {
+export function OverviewView({ project, stats, backup, jobs, experiments, openLedger, exportWiki, importWiki, t }: {
   readonly project: ResearchProjectView | undefined
   readonly stats: OverviewStats
   /** Scheduled-backup status line; null hides it (not loaded yet). */
@@ -47,6 +48,8 @@ export function OverviewView({ project, stats, backup, jobs, experiments, export
   readonly jobs: ResearchJobsView
   /** The selected project's experiments slice (the activity card's experiments column). */
   readonly experiments: ResearchProjectSlice<readonly ExperimentRecord[]> | null
+  /** Switch the workbench to the ledger (growth record) tab. */
+  readonly openLedger: () => void
   readonly exportWiki: () => Promise<ResearchWikiSnapshot | ResearchFailureView>
   readonly importWiki: (
     snapshot: unknown,
@@ -122,6 +125,9 @@ export function OverviewView({ project, stats, backup, jobs, experiments, export
               {project.artifacts.map(artifact => <li key={artifact}><code>{artifact}</code></li>)}
             </ul>
           )}
+        <button type="button" className={css.ledgerLink} onClick={openLedger}>
+          {t('overview.openLedger')} <span aria-hidden>→</span>
+        </button>
       </div>
       <div className={css.activitySection}>
         <h3 className={css.sectionTitle}>{t('overview.activity')}</h3>
