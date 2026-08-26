@@ -1,8 +1,9 @@
 /**
- * `/paper-write [projectId]` and `/paper-compile [dir]`: scaffold the paper
- * skeleton into `<workspace>/paper/`, hand the drafting instruction to the
- * model, and expose a direct compile-report command over the same engine the
- * `latex_compile` tool uses.
+ * `/paper-write [project id | instructions]` and `/paper-compile [dir]`:
+ * scaffold the paper skeleton into `<workspace>/paper/`, hand the drafting
+ * instruction to the model (non-id argument text rides along as drafting
+ * direction), and expose a direct compile-report command over the same
+ * engine the `latex_compile` tool uses.
  * @module dsh-mimir/src/commands/paper
  */
 
@@ -12,15 +13,16 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { compileLatex, renderLatexResult } from '../tools/latex.ts'
 import { PAPER_MAIN_TEX, PAPER_REFERENCES_BIB } from '../templates.ts'
-import { ensureWorkspace, followupInstruction, resolveProject, writeIfAbsent } from './common.ts'
+import { ensureWorkspace, followupInstruction, resolveProjectArg, writeIfAbsent } from './common.ts'
 import type { ResearchCommandDeps } from './common.ts'
 
-const WRITE_USAGE = 'Usage: /paper-write [project id]'
+const WRITE_USAGE = 'Usage: /paper-write [project id | instructions]'
 
 /** Build the drafting instruction handed to the model. */
-function writeInstruction(deps: ResearchCommandDeps, paperDir: string, projectTitle: string): string {
+function writeInstruction(deps: ResearchCommandDeps, paperDir: string, projectTitle: string, guidance: string | undefined): string {
   return [
     `You are drafting the paper for research project "${projectTitle}".`,
+    ...guidance === undefined ? [] : [`The user adds this direction for the draft: ${guidance}`],
     `1. Read ${join(deps.workspaceDir, 'IDEA_REPORT.md')} and ${join(deps.workspaceDir, 'EXPERIMENT_PLAN.md')}, and list the wiki's claims (wiki_note action=list, table=claims) and papers (table=papers).`,
     `2. Fill ${join(paperDir, 'main.tex')}: replace every <placeholder> with real content grounded in those sources. Keep the article-class skeleton; do not introduce packages beyond what it already loads.`,
     `3. Put real references into ${join(paperDir, 'references.bib')} from the wiki's papers, and cite them from the text.`,
@@ -39,16 +41,13 @@ export function registerPaperCommands(ctx: Context, deps: ResearchCommandDeps): 
   ctx.commands.register({
     name: 'paper-write',
     description: 'scaffold and draft the LaTeX paper for a research project, compiling until clean',
-    input: { hint: '[project id]' },
+    input: { hint: '[project id | instructions]' },
     async handler(invocation): Promise<CommandResult> {
-      const id = invocation.rawInput.trim()
-      const project = resolveProject(deps.domain, id.length === 0 ? undefined : id)
+      const { project, guidance } = resolveProjectArg(deps.domain, invocation.rawInput)
       if (project === undefined) {
         return {
           kind: 'error',
-          text: id.length === 0
-            ? `No research project exists yet; run /research-idea first.\n${WRITE_USAGE}`
-            : `No research project with id '${id}'.\n${WRITE_USAGE}`,
+          text: `No research project exists yet; run /research-idea first.\n${WRITE_USAGE}`,
         }
       }
       await ensureWorkspace(deps)
@@ -62,10 +61,11 @@ export function registerPaperCommands(ctx: Context, deps: ResearchCommandDeps): 
         artifacts: [...new Set([...current.artifacts, 'paper/main.tex', 'paper/references.bib'])],
         updatedAt: new Date().toISOString(),
       }))
-      followupInstruction(invocation.agent, writeInstruction(deps, paperDir, project.title))
+      followupInstruction(invocation.agent, writeInstruction(deps, paperDir, project.title, guidance))
       return {
         kind: 'success',
-        text: `Paper drafting started for project ${project.id}. The skeleton lives in ${paperDir}; the agent will compile and fix it until clean.`,
+        text: `Paper drafting started for project ${project.id}. The skeleton lives in ${paperDir}; the agent will compile and fix it until clean.`
+          + (guidance === undefined ? '' : ` Direction: "${guidance}".`),
       }
     },
   })

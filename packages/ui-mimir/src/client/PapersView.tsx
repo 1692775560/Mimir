@@ -21,6 +21,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ArxivEntry, PaperRecord, ResearchProjectView, WebSearchEntry } from 'dsh-mimir/types'
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView, ResearchWebSearchView,
@@ -56,7 +57,10 @@ const ADD_TO_BIB_RESET_MS = 2000
  * reader on the `/research/paper-pdf/<id>` route next to the reading-notes
  * side panel, plus a fullscreen button lifting the same reader into a
  * viewport-sized overlay (Esc or the header button exits). A successful fetch
- * bumps the cache-bust version and opens the reader.
+ * bumps the cache-bust version and opens the reader. The overlay is portaled
+ * to `document.body`: rendered inside the card, the card's `backdrop-filter`
+ * (and hover `transform`) would become its containing block and trap the
+ * `position: fixed` overlay inside the card's box.
  */
 function PaperPdfSection({ paper, fetchPaperPdf, updatePaper, onError, t }: {
   readonly paper: PaperRecord
@@ -129,7 +133,7 @@ function PaperPdfSection({ paper, fetchPaperPdf, updatePaper, onError, t }: {
           </button>
         )}
       </div>
-      {paper.pdfPath !== undefined && fullscreen && (
+      {paper.pdfPath !== undefined && fullscreen && createPortal(
         <div
           className={css.paperPdfOverlay}
           role="dialog"
@@ -163,7 +167,8 @@ function PaperPdfSection({ paper, fetchPaperPdf, updatePaper, onError, t }: {
             />
             <PaperNotesPanel paper={paper} updatePaper={updatePaper} onError={onError} t={t} />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
