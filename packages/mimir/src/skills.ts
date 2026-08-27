@@ -9,7 +9,11 @@
  * `research-idea` / `research-plan` / `research-review` / `paper-write` /
  * `paper-compile` commands, the workspace artifacts (IDEA_REPORT.md,
  * EXPERIMENT_PLAN.md, EXPERIMENT_LOG.md, NARRATIVE_REPORT.md), and the web
- * workbench tabs.
+ * workbench tabs. Web search (`web_search`, the 文献 tab's Web source) is
+ * treated as arXiv's peer: every skill that searches the literature runs
+ * arXiv for papers and `web_search` for non-arXiv sources (official docs,
+ * blog posts, code repositories, venue pages, 组会 material) — and only
+ * persists findings through the wiki, never the raw search.
  *
  * The content lives as template literals for the same reason templates.ts
  * cites: published packages ship `lib/` only, so runtime assets must ride the
@@ -45,6 +49,11 @@ const SHARED_RULES = String.raw`
   the work crosses each gate.
 - Prefer one verified fact over three plausible ones. Cite arXiv ids, file
   paths, and experiment ids as evidence pointers, never from memory alone.
+- Search with both hands: \`arxiv_search\` for papers, \`web_search\` for
+  non-arXiv sources (official docs, blog posts, code repositories, venue
+  pages). Run both when a stage says "search" — arXiv-only misses the
+  engineering landscape; web-only misses the paper record. Never persist raw
+  search output to the wiki; only curated \`wiki_note\` findings land there.
 `
 
 export const RESEARCH_PIPELINE = String.raw`
@@ -101,10 +110,13 @@ wiki's \`papers\` table (rendered in the workbench's 文献 / Literature tab).
 
 ## Loop
 
-1. **Search** with \`arxiv_search\`: start broad (the problem statement), then
-   narrow (the specific method family, the benchmark, the strongest
-   baseline). Rewrite the query at least twice — first-pass queries miss
-   half the field.
+1. **Search** — arXiv and Web in parallel:
+   - \`arxiv_search\`: start broad (the problem statement), then narrow (the
+     specific method family, the benchmark, the strongest baseline). Rewrite
+     the query at least twice — first-pass queries miss half the field.
+   - \`web_search\`: same angles, for non-arXiv sources — official
+     documentation, engineering blogs, code repositories, workshop/venue
+     pages. Academic claims still anchor on arXiv ids.
 2. **Triage** each result by title + abstract: defining works, must-beat
    baselines, and the evaluation suite. Skip anything you cannot state a
    concrete reason to keep.
@@ -112,7 +124,8 @@ wiki's \`papers\` table (rendered in the workbench's 文献 / Literature tab).
    \`wiki_note { action: 'add_paper', arxiv_id, title, authors, summary, url,
    notes }\` — \`notes\` carries YOUR one-paragraph read: what it does, what
    it leaves open, why it matters to this project. An entry without notes is
-   a bookmark, not a review.
+   a bookmark, not a review. A web-only source (no arXiv id) persists with
+   its URL and the same notes discipline — the wiki accepts it either way.
 4. **Fetch** the PDF with \`paper_fetch\` for any paper you will cite for a
    specific claim — the workbench's reader plus its note sidebar is the
    deep-reading surface.
@@ -145,11 +158,15 @@ proposed contribution. Run it BEFORE writing code or spending compute.
    (X), the application (Y), and the claimed result (Z). Use the search
    syntax the tool supports (field prefixes, \`AND\`/\`OR\`), and read
    abstracts of every plausible hit — title-level dismissal is how novelty
-   checks fail.
+   checks fail. For each direction, also run \`web_search\` — work that
+   never reached arXiv (a thesis, a company blog, a workshop report) is
+   exactly where an unpublished competitor hides.
 3. **Widen once**: if arXiv is thin, check the adjacent venues by name in
-   the query (the field knows its conferences).
+   the query (the field knows its conferences), and \`web_search\` the
+   venue's program pages and the lab sites of the active groups in X/Y/Z.
 4. **Judge** honestly:
-   - **Known** — a prior work does X for Y. Name it with its arXiv id.
+   - **Known** — a prior work does X for Y. Name it with its arXiv id (or its
+     URL when it never reached arXiv).
    - **Adjacent** — X exists but not for Y, or Y is addressed but not by X.
      The delta must be stated in one sentence; if that sentence is weak, the
      verdict is effectively known.
@@ -178,7 +195,12 @@ to move one claim out of \`pending\`; a run that maps to no claim is cut.
 1. **List the claims** from the wiki (\`wiki_note { action: 'list',
    table: 'claims' }\`). For each, name the single result that would support
    it and the single result that would kill it.
-2. **Sequence**: main result first (the table the paper lives or dies by),
+2. **Benchmark reality-check** — one pass before sequencing: \`arxiv_search\`
+   the strongest baselines the paper will be judged against (name them with
+   their result), and \`web_search\` the current state of the field (leaderboards,
+   official repos, released checkpoints) so the plan does not promise a run
+   that already exists. Findings persist as wiki notes, not raw search.
+3. **Sequence**: main result first (the table the paper lives or dies by),
    then ablations ordered by claim coverage per GPU-hour, then robustness
    (seeds, datasets). Baselines run before or alongside, never after.
 3. **Budget**: state the compute each run needs and where it runs — check
@@ -213,7 +235,10 @@ Verdict-bearing gate between experiments and writing. The question is never
    the experiments (\`action: 'list', table: 'experiments'\`).
 2. For each claim, lay the evidence beside it: which runs, which metrics,
    which baselines beaten (or not). Read EXPERIMENT_LOG.md, not summaries of
-   summaries.
+   summaries. If a claim hinges on the state of an external baseline or a
+   released artifact, \`web_search\` it (leaderboard row, official numbers,
+   repository) before judging — the comparison must be against what is
+   actually out there, not a remembered number.
 3. Judge each claim:
    - **Supported** — the named evidence directly shows it, including the
      comparison against the strongest baseline, not an easy one.
@@ -257,7 +282,10 @@ For each section, in paper order (abstract LAST, but keep a stub):
 1. Draft against the evidence: every number in the text traces to an
    experiment record; every \\cite{} key exists in the .bib (add missing
    entries from the wiki's papers — the 文献 tab can also export the wiki to
-   .bib).
+   .bib). When a paragraph cites a non-arXiv fact (a released checkpoint, a
+   benchmark's official numbers, an engineering claim), the source was found
+   with \`web_search\` during the lit-review stage and lives in the wiki — do
+   not re-google mid-draft and cite from a fresh tab.
 2. Compile with \`latex_compile\` immediately. Fix errors before writing the
    next section — LaTeX errors compound and the log parser pinpoints them
    one at a time.
@@ -287,14 +315,19 @@ exist as described, and does the citing sentence actually need it?
    parser keeps it structured) and list every \\cite{} in the .tex with its
    sentence.
 2. **Existence**: for each entry, verify against a live source —
-   \`arxiv_search\` by title (and author surname when the title is common).
+   \`arxiv_search\` by title (and author surname when the title is common),
+   and \`web_search\` for anything that never reached arXiv (a report, a
+   thesis, a company publication, a venue's proceedings page) so a title
+   fabricated from memory cannot pass on a missing arXiv id.
    Flag: hallucinated titles, wrong authors, wrong years, wrong venues,
    arXiv id pointing at a different paper (version drift counts).
 3. **Context**: for each citation sentence, read the cited abstract and
    judge whether the sentence's claim is one the cited work supports.
    Flag: citing a paper for something it explicitly does not do, citing a
    survey as if it were the original, citing a baseline's reimplementation
-   instead of the source.
+   instead of the source. When the cited fact is non-arXiv (a checkpoint's
+   license, an official benchmark number), \`web_search\` the current source
+   rather than trusting the .bib entry.
 4. **Coverage**: uncited entries in the .bib are either dead weight (remove)
    or a sign a related-work paragraph went missing (flag).
 5. **Fix or report**: mechanical fixes (wrong year, dead entries) apply
@@ -325,7 +358,9 @@ Draft a grounded, venue-limited response to external reviews.
      experiment-id pointers. Quote numbers exactly as logged.
    - *Needs new evidence* — scope the smallest experiment that answers it,
      check feasibility against the rebuttal window and the registered
-     servers, and only promise what can actually be run.
+     servers, and only promise what can actually be run. \`web_search\`
+     the cited works and the current field state before claiming a gap —
+     the reviewer may be pointing at something real that never hit arXiv.
    - *Misunderstanding* — correct it once, politely, with the exact quote
      from the paper that already addresses it.
 3. **Draft** response-first: every answer opens with the concession or the
@@ -358,7 +393,9 @@ Design and produce the paper's figures so each one earns its column width.
    mechanism/Architecture overview, then ablations.
 2. Write a one-line spec per figure: what varies on each axis, which
    baselines appear, what the reader should conclude. A figure without that
-   sentence is decoration — cut it.
+   sentence is decoration — cut it. When the figure compares against an
+   external result, \`web_search\` the authoritative number (leaderboard row,
+   official report) and spec it as the reference, not a remembered value.
 
 ## Produce
 
@@ -443,6 +480,11 @@ Meetings tab lists and downloads them.
 3. Call \`meeting_deck\` with \`project_id\` (plus optional \`title\`,
    \`presenter\`, \`date\`, \`paper_ids\`, \`include_*\` switches). The tool
    returns the deck path; the user downloads from the 组会 tab.
+4. **Framing research** — for a 组会 that discusses the surrounding field,
+   \`web_search\` for the current news, released checkpoints, and competing
+   results so the report's "state of the field" slide is current, then
+   fold those citations back into the wiki (as notes) rather than pasting
+   raw search output into the deck.
 
 ## Slide voice (both paths)
 
