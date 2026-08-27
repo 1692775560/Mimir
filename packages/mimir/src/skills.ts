@@ -54,6 +54,15 @@ const SHARED_RULES = String.raw`
   pages). Run both when a stage says "search" — arXiv-only misses the
   engineering landscape; web-only misses the paper record. Never persist raw
   search output to the wiki; only curated \`wiki_note\` findings land there.
+- Agent-driven web search is governed by the \`sxng\` skill: whenever a stage
+  calls for non-arXiv web search, load that skill and follow its L1/L2/L3
+  decision — a simple \`sxng\` query for a one-shot lookup, a \`--session\`
+  deep-search flow (extract → quality → approve → iterate) when the question
+  is multi-dimensional or the first round comes back incomplete. Run the
+  skill's commands through the bash tool with the \`sxng\` CLI; the
+  \`web_search\` tool remains the panel/UI quick path, not the agent's search
+  driver. The shared \`~/sxng-cli/sxng.config.json\` (editable in the Library
+  view's Web tab) feeds both.
 `
 
 export const RESEARCH_PIPELINE = String.raw`
