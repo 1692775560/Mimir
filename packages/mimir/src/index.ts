@@ -62,6 +62,8 @@ export type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFetchPaperPdfResult,
+  ResearchGetSxngConfigResult,
+  ResearchSetSxngConfigResult,
   ResearchFiguresResult,
   ResearchImportPaperResult,
   ResearchListBackupsResult,
@@ -158,6 +160,7 @@ export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLat
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
 export { createWebSearchTool, fetchWebSearch } from './tools/web-search.ts'
+export { getSxngConfig, readSxngConfig, setSxngConfig } from './services/sxng-config.ts'
 export type { WebSearchOptions, WebSearchRunner } from './tools/web-search.ts'
 export { registerSxngSkill } from './sxng-skill.ts'
 export { createZoteroClient } from './tools/zotero.ts'

@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ArxivEntry, PaperRecord, ResearchProjectView, WebSearchEntry } from 'dsh-mimir/types'
 import type {
   ResearchArxivSearchView, ResearchFailureView, ResearchImportCounts, ResearchPapersView, ResearchWebSearchView,
-  ResearchSubscriptionsView, ResearchZoteroSearchView, ResearchZoteroView,
+  ResearchSxngConfigView,  ResearchSubscriptionsView, ResearchZoteroSearchView, ResearchZoteroView,
 } from './controller.ts'
 import { arxivIdFromUrl, collectTags, failureCopy, filterPapers, paperPdfUrl, type ResearchT } from './view-common.ts'
 import { appendReadingNote, parseReadingNotes } from './paper-notes.ts'
@@ -332,6 +332,66 @@ function RelevanceChip({ paper, projectId, projects, t }: {
  * @param props - the web search slice, the imported-id set, the in-flight
  * import id, the import verb, the retry verb, and copy.
  */
+/** Collapsible editor for sxng-cli's global configuration. */
+function SxngConfigPanel({ config, getConfig, saveConfig, t }: {
+  readonly config: ResearchSxngConfigView
+  readonly getConfig: () => void
+  readonly saveConfig: (input: {
+    baseUrl?: string; defaultEngine?: string; allowedEngines?: readonly string[]; defaultLimit?: number
+    defaultFormat?: 'md' | 'json'; useProxy?: boolean; proxyUrl?: string; timeout?: number
+    ollamaApiKey?: string; redundancyThreshold?: number; redundancyBigramThreshold?: number
+  }) => Promise<ResearchFailureView | null>
+  readonly t: ResearchT
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<Partial<{
+    baseUrl: string; defaultEngine: string; allowedEngines: string; defaultLimit: string; defaultFormat: 'md' | 'json'
+    useProxy: boolean; proxyUrl: string; timeout: string; ollamaApiKey: string; redundancyThreshold: string; redundancyBigramThreshold: string
+  }>>({})
+  const [saving, setSaving] = useState(false)
+  const [failure, setFailure] = useState<ResearchFailureView | null>(null)
+  useEffect(() => { getConfig() }, [getConfig])
+  const toggle = (): void => {
+    if (!open) setDraft({ baseUrl: config.baseUrl, defaultEngine: config.defaultEngine, allowedEngines: config.allowedEngines.join(', '), defaultLimit: String(config.defaultLimit), defaultFormat: config.defaultFormat, useProxy: config.useProxy, proxyUrl: config.proxyUrl, timeout: String(config.timeout), ollamaApiKey: '', redundancyThreshold: String(config.redundancyThreshold), redundancyBigramThreshold: String(config.redundancyBigramThreshold) })
+    setFailure(null); setOpen(value => !value)
+  }
+  const save = (): void => {
+    if (saving) return
+    setSaving(true); setFailure(null)
+    void saveConfig({
+      ...(draft.baseUrl?.trim() === '' || draft.baseUrl === undefined ? {} : { baseUrl: draft.baseUrl.trim() }),
+      ...(draft.defaultEngine === undefined ? {} : { defaultEngine: draft.defaultEngine }),
+      ...(draft.allowedEngines === undefined ? {} : { allowedEngines: draft.allowedEngines.split(',').map(value => value.trim()).filter(Boolean) }),
+      ...(draft.defaultLimit === undefined ? {} : { defaultLimit: Number(draft.defaultLimit) }),
+      ...(draft.defaultFormat === undefined ? {} : { defaultFormat: draft.defaultFormat }),
+      ...(draft.useProxy === undefined ? {} : { useProxy: draft.useProxy }),
+      ...(draft.proxyUrl === undefined ? {} : { proxyUrl: draft.proxyUrl }),
+      ...(draft.timeout === undefined ? {} : { timeout: Number(draft.timeout) }),
+      ...(draft.ollamaApiKey === undefined || draft.ollamaApiKey === '' ? {} : { ollamaApiKey: draft.ollamaApiKey }),
+      ...(draft.redundancyThreshold === undefined ? {} : { redundancyThreshold: Number(draft.redundancyThreshold) }),
+      ...(draft.redundancyBigramThreshold === undefined ? {} : { redundancyBigramThreshold: Number(draft.redundancyBigramThreshold) }),
+    }).then(result => { if (result !== null) setFailure(result); else setOpen(false) }).finally(() => { setSaving(false) })
+  }
+  return <section className={css.imageGenPanel}>
+    <button type="button" className={css.imageGenToggle} aria-expanded={open} onClick={toggle}><span aria-hidden>{open ? '▾' : '▸'}</span>{t('papers.sxngConfig')}{config.configured && <span className={css.imageGenBadge}>{t('papers.sxngConfigured')}</span>}</button>
+    {open && <div className={css.meetingFormRow}>
+      <input className={css.input} value={draft.baseUrl ?? ''} placeholder="baseUrl" aria-label="baseUrl" onChange={e => setDraft({ ...draft, baseUrl: e.target.value })} />
+      <input className={css.input} value={draft.defaultEngine ?? ''} placeholder="defaultEngine" aria-label="defaultEngine" onChange={e => setDraft({ ...draft, defaultEngine: e.target.value })} />
+      <input className={css.input} value={draft.allowedEngines ?? ''} placeholder="allowedEngines (comma separated)" aria-label="allowedEngines" onChange={e => setDraft({ ...draft, allowedEngines: e.target.value })} />
+      <input className={css.input} type="number" value={draft.defaultLimit ?? ''} placeholder="defaultLimit" aria-label="defaultLimit" onChange={e => setDraft({ ...draft, defaultLimit: e.target.value })} />
+      <select className={css.input} value={draft.defaultFormat ?? 'md'} aria-label="defaultFormat" onChange={e => setDraft({ ...draft, defaultFormat: e.target.value as 'md' | 'json' })}><option value="md">md</option><option value="json">json</option></select>
+      <label><input type="checkbox" checked={draft.useProxy ?? false} onChange={e => setDraft({ ...draft, useProxy: e.target.checked })} /> useProxy</label>
+      <input className={css.input} value={draft.proxyUrl ?? ''} placeholder="proxyUrl" aria-label="proxyUrl" onChange={e => setDraft({ ...draft, proxyUrl: e.target.value })} />
+      <input className={css.input} type="number" value={draft.timeout ?? ''} placeholder="timeout (ms)" aria-label="timeout" onChange={e => setDraft({ ...draft, timeout: e.target.value })} />
+      <input className={css.input} type="password" value={draft.ollamaApiKey ?? ''} placeholder={config.ollamaApiKeyPreview || 'ollamaApiKey'} aria-label="ollamaApiKey" onChange={e => setDraft({ ...draft, ollamaApiKey: e.target.value })} />
+      <input className={css.input} type="number" step="0.01" value={draft.redundancyThreshold ?? ''} placeholder="redundancyThreshold" aria-label="redundancyThreshold" onChange={e => setDraft({ ...draft, redundancyThreshold: e.target.value })} />
+      <input className={css.input} type="number" step="0.01" value={draft.redundancyBigramThreshold ?? ''} placeholder="redundancyBigramThreshold" aria-label="redundancyBigramThreshold" onChange={e => setDraft({ ...draft, redundancyBigramThreshold: e.target.value })} />
+      <button type="button" className={css.btnPrimary} disabled={saving} onClick={save}>{saving ? t('papers.sxngSaving') : t('papers.sxngSave')}</button>
+      {failure !== null && <p className={css.failure} role="alert">{failure.message}</p>}
+    </div>}
+  </section>
+}
+
 function WebSearchPanel({
   webSearch, importedIds, importing, importEntry, searchWeb, t,
 }: {
@@ -440,7 +500,8 @@ function WebResultCard({ entry, imported, importing, importEntry, t }: {
  * @returns the search bar and results over the filterable library grid.
  */
 export function PapersView({
-  papers, arxivSearch, webSearch, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv, searchWeb,
+  papers, arxivSearch, webSearch, sxngConfig, arxivSubscriptions, projects, selectedProjectId, ensurePapers, searchArxiv, searchWeb,
+  getSxngConfig, saveSxngConfig,
   saveArxivSubscription, deleteArxivSubscription, checkArxivSubscriptions,
   importPaper, updatePaper, removePaper, importPapersToBib, fetchPaperPdf,
   zotero, zoteroSearch, recheckZotero, searchZotero, importZoteroItem, exportZoteroCollectionToBib,
@@ -449,6 +510,7 @@ export function PapersView({
   readonly papers: ResearchPapersView
   readonly arxivSearch: ResearchArxivSearchView | null
   readonly webSearch: ResearchWebSearchView | null
+  readonly sxngConfig: ResearchSxngConfigView
   readonly arxivSubscriptions: ResearchSubscriptionsView
   readonly projects: readonly ResearchProjectView[]
   readonly selectedProjectId: string | null
@@ -458,6 +520,12 @@ export function PapersView({
   readonly checkArxivSubscriptions: () => Promise<ResearchFailureView | null>
   readonly searchArxiv: (query: string) => void
   readonly searchWeb: (query: string) => void
+  readonly getSxngConfig: () => void
+  readonly saveSxngConfig: (input: {
+    baseUrl?: string; defaultEngine?: string; allowedEngines?: readonly string[]; defaultLimit?: number
+    defaultFormat?: 'md' | 'json'; useProxy?: boolean; proxyUrl?: string; timeout?: number
+    ollamaApiKey?: string; redundancyThreshold?: number; redundancyBigramThreshold?: number
+  }) => Promise<ResearchFailureView | null>
   readonly importPaper: (entry: ArxivEntry, projectId?: string) => Promise<ResearchFailureView | null>
   readonly updatePaper: (arxivId: string, patch: PaperPatch) => Promise<ResearchFailureView | null>
   readonly removePaper: (arxivId: string) => Promise<ResearchFailureView | null>
@@ -691,6 +759,7 @@ export function PapersView({
           {(source === 'arxiv' ? arxivSearch?.status : webSearch?.status) === 'loading' ? t('papers.searching') : t('papers.search')}
         </button>
       </form>
+      {source === 'web' && <SxngConfigPanel config={sxngConfig} getConfig={getSxngConfig} saveConfig={saveSxngConfig} t={t} />}
       {actionError !== null && (
         <p className={css.failure} role="alert">{actionError}</p>
       )}

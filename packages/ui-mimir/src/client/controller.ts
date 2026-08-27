@@ -66,6 +66,7 @@ import type {
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
   ResearchGetImageGenConfigResult,
+  ResearchGetSxngConfigResult,
   ResearchMeetingDecksResult,
   MeetingDeckView,
   MeetingInclude,
@@ -90,6 +91,7 @@ import type {
   ResearchSearchArxivResult,
   ResearchSearchWebResult,
   ResearchSetImageGenConfigResult,
+  ResearchSetSxngConfigResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -216,6 +218,20 @@ export interface ResearchRemote {
     model?: string | undefined
     size?: string | undefined
   }) => Promise<RemoteResult<ResearchSetImageGenConfigResult>>
+  getSxngConfig: () => Promise<RemoteResult<ResearchGetSxngConfigResult>>
+  setSxngConfig: (request: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }) => Promise<RemoteResult<ResearchSetSxngConfigResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -418,6 +434,24 @@ export interface ResearchImageGenView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The Papers view's native sxng-cli configuration. */
+export interface ResearchSxngConfigView {
+  readonly status: ResearchLoadStatus
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly defaultEngine: string
+  readonly allowedEngines: readonly string[]
+  readonly defaultLimit: number
+  readonly defaultFormat: 'md' | 'json'
+  readonly useProxy: boolean
+  readonly proxyUrl: string
+  readonly timeout: number
+  readonly ollamaApiKeyPreview: string
+  readonly redundancyThreshold: number
+  readonly redundancyBigramThreshold: number
+  readonly failure: ResearchFailureView | null
+}
+
 /** The markdown artifact viewer's load. */
 export interface ResearchArtifactView {
   readonly projectId: string
@@ -515,6 +549,8 @@ export interface ResearchView {
   readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
   /** The meetings view's image-generation config; `cold` until first fetched. */
   readonly imageGen: ResearchImageGenView
+  /** The Papers view's sxng-cli config; `cold` until its Web tab opens. */
+  readonly sxngConfig: ResearchSxngConfigView
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -563,6 +599,11 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   meetings: null,
   imageGen: Object.freeze({
     status: 'cold', configured: false, baseUrl: '', model: '', size: '', apiKeyPreview: '', failure: null,
+  }),
+  sxngConfig: Object.freeze({
+    status: 'cold', configured: false, baseUrl: '', defaultEngine: '', allowedEngines: Object.freeze([]), defaultLimit: 10,
+    defaultFormat: 'md', useProxy: false, proxyUrl: '', timeout: 30_000, ollamaApiKeyPreview: '',
+    redundancyThreshold: 0.7, redundancyBigramThreshold: 0.5, failure: null,
   }),
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
@@ -623,6 +664,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private meetingsGeneration = 0
   private meetingsInFlight = false
   private imageGenInFlight = false
+  private sxngConfigInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
@@ -1360,6 +1402,60 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!result.ok) return businessFailure(result.error)
       this.publish({ imageGen: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
       this.notify('success', 'meetings.imageGenSaved')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  getSxngConfig(): void {
+    if (this.sxngConfigInFlight || this.view.sxngConfig.status === 'ready') return
+    void this.loadSxngConfig()
+  }
+
+  private async loadSxngConfig(): Promise<void> {
+    this.sxngConfigInFlight = true
+    this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.getSxngConfig()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ sxngConfig: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+    } catch (error) {
+      if (!this.disposed) this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.sxngConfigInFlight = false
+    }
+  }
+
+  async saveSxngConfig(input: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setSxngConfig(input)
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.publish({ sxngConfig: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+      this.notify('success', 'papers.sxngConfigSaved')
       return null
     } catch (error) {
       return transportFailure(error)
