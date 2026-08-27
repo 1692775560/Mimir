@@ -4750,3 +4750,72 @@ li.dropIndicator {
 .zoteroSelect:focus-visible {   outline: 2px solid var(--dsw-alias-focus-border, #4f7cff);
   outline-offset: 1px;
 }
+
+/* Import-existing-project dialog: portaled to document.body, so the z-index
+   is relative to the root stacking context — it must clear the workbench
+   (1100) like the figure lightbox does. */
+.importOverlay {   position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 35%);
+}
+
+.importDialog {   width: min(480px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 14px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 24%);
+}
+
+.importDialogTitle {   margin: 0 0 10px;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.importForm {   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.importField {   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.importLabel {   color: var(--dsw-alias-label-secondary, #646a73);
+  font-size: 12px;
+}
+
+.importActions {   display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.importSummary {   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.importSuccessLine {   margin: 0;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.importWarnings {   margin: 0;
+  padding-left: 18px;
+  color: var(--dsw-alias-label-secondary, #646a73);
+  font-size: 12px;
+}
+
+.importWarnings li {   margin: 2px 0;
+}

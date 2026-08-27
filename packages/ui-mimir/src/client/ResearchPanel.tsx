@@ -28,6 +28,7 @@ import { MeetingsView } from './MeetingsView.tsx'
 import { ServersView } from './ServersView.tsx'
 import { LedgerView } from './LedgerView.tsx'
 import { ToastHost } from './ToastHost.tsx'
+import { ImportProjectDialog } from './ImportProjectDialog.tsx'
 import css from './ResearchPanel.module.css'
 
 /** Locale key of one tab label. */
@@ -147,7 +148,7 @@ const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled)
  */
 export function ResearchPanel({
   useStore, actions, useResearch, useChrome,
-  ensure, selectProject, compile, editSource, reloadSource, requestCompileFix,
+  ensure, selectProject, importProject, compile, editSource, reloadSource, requestCompileFix,
   requestRelatedWork, requestPaperScore, requestFigureOrganize,
   ensurePapers, refreshPapers, searchArxiv, searchWeb, importPaper, removePaper, updatePaper, fetchPaperPdf, loadArtifact, loadFigures, uploadFigures, deleteFigure,
   renameFigure, updateFigure,
@@ -205,6 +206,8 @@ export function ResearchPanel({
   const [projectsCollapsed, setProjectsCollapsed] = useState(
     () => localStorage.getItem(PROJECTS_COLLAPSED_STORAGE_KEY) === '1',
   )
+  // The "import existing project" dialog of the sidebar project list.
+  const [importOpen, setImportOpen] = useState(false)
   useEffect(() => {
     try {
       localStorage.setItem(PROJECTS_COLLAPSED_STORAGE_KEY, projectsCollapsed ? '1' : '0')
@@ -458,6 +461,11 @@ export function ResearchPanel({
               ))}
             </div>
           )}
+          {!projectsCollapsed && projectsStatus === 'ready' && (
+            <button type="button" className={css.btn} onClick={() => { setImportOpen(true) }}>
+              {t('projects.import')}
+            </button>
+          )}
         </div>
         <p className={css.sideFoot}>{t('shortcuts.hint')}</p>
       </aside>
@@ -622,6 +630,9 @@ export function ResearchPanel({
         )}
       </main>
       <ToastHost toasts={toasts} dismissToast={dismissToast} pruneToasts={pruneToasts} t={t} />
+      {importOpen && (
+        <ImportProjectDialog importProject={importProject} onClose={() => { setImportOpen(false) }} t={t} />
+      )}
     </div>
   )
 }

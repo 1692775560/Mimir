@@ -2,7 +2,7 @@
  * The `research` Remote namespace: the host half of the web research panel.
  * This file is a thin facade — it keeps the class, the `super(ctx,
  * 'research')` registration, the config type, the Context augmentation, and
- * all 63 `@Remote` signatures intact, and forwards every method body to a
+ * all 64 `@Remote` signatures intact, and forwards every method body to a
  * pure-function domain module under `./services`. It owns no domain logic:
  * the mutable instance state (`compileStatus` map, `jobSeq` counter) rides a
  * single {@link ServiceState} object created here, so every
@@ -38,6 +38,8 @@ import type {
   ResearchFiguresResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchImportProjectRequest,
+  ResearchImportProjectResult,
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
@@ -94,6 +96,7 @@ import * as subscriptions from './services/subscriptions.ts'
 import * as experiment from './services/experiment.ts'
 import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
+import * as importProject from './services/import-project.ts'
 import * as venue from './services/venue.ts'
 import * as meeting from './services/meeting.ts'
 import * as ledger from './services/ledger.ts'
@@ -161,7 +164,7 @@ export interface ResearchServiceConfig {
 
 /**
  * Host service behind the web research panel. Thin facade: keeps the
- * `research` Remote namespace and all 63 `@Remote` signatures; every method
+ * `research` Remote namespace and all 64 `@Remote` signatures; every method
  * body forwards to a domain module under `./services`. Owns no domain logic.
  */
 export class ResearchService extends TypertRemoteService {
@@ -196,6 +199,12 @@ export class ResearchService extends TypertRemoteService {
   @Remote('listProjects')
   listProjects(): Promise<ResearchListProjectsResult> {
     return wikiAdmin.listProjects(this.deps)
+  }
+
+  // import-project domain
+  @Remote('importProject')
+  importProject(request: ResearchImportProjectRequest): Promise<ResearchImportProjectResult> {
+    return importProject.importProject(this.deps, request)
   }
 
   // paper domain: outline / source / bibliography / compile

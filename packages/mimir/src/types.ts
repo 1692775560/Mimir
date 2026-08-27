@@ -288,6 +288,31 @@ export type ResearchResult<T> = ResearchSuccess<T> | ResearchRejected<ResearchFa
 /** `listProjects` result: every wiki project, most recently updated first. */
 export type ResearchListProjectsResult = ResearchResult<{ readonly projects: readonly ResearchProjectView[] }>
 
+/** `importProject` request: one existing local directory holding a LaTeX project. */
+export interface ResearchImportProjectRequest {
+  /** Absolute or `~`-prefixed path of the source directory (copied, never referenced). */
+  readonly path: string
+  /** Explicit project title; falls back to the entry file's `\title{...}`, then the directory name. */
+  readonly title?: string | undefined
+}
+
+/** `importProject` summary: what the copy-and-register pass produced. */
+export interface ResearchImportedProject {
+  readonly projectId: string
+  readonly title: string
+  /** The copied tree, relative to the workspace root (`imported/<slug>`). */
+  readonly paperDir: string
+  /** Entry .tex basename (the file carrying `\documentclass`). */
+  readonly entryTex: string
+  /** Image files detected (the `figures/` directory when present, else the whole tree). */
+  readonly figureCount: number
+  /** Non-fatal caveats (no figures/ directory, missing .bib, non-main entry file, …). */
+  readonly warnings: readonly string[]
+}
+
+/** `importProject` result: the created project's summary. */
+export type ResearchImportProjectResult = ResearchResult<ResearchImportedProject>
+
 /** One built-in venue template entry as the panel lists it. */
 export interface VenueTemplateView {
   readonly id: string

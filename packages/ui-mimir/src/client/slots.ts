@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from './locales.ts'
 import type {
   ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchEventFilter,
-  ResearchImportWikiMode, ResearchProgressReportOptions, ResearchWikiSnapshot, SectionMove,
+  ResearchImportWikiMode, ResearchImportedProject, ResearchProgressReportOptions, ResearchWikiSnapshot, SectionMove,
   SectionOutlineTitles, ServerInput, SubsectionMove,
 } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
@@ -51,6 +51,17 @@ export interface ResearchPanelInjected {
    * @param projectId - wiki project id.
    */
   selectProject: (projectId: string) => void
+  /**
+   * Import one existing local LaTeX project into the workspace (the project
+   * list's "import existing project" dialog): the host copies the tree into
+   * `imported/<slug>/` and registers the project; on success the list has
+   * already refreshed and the new project is selected before the summary
+   * resolves.
+   * @param path - absolute or `~`-prefixed source directory.
+   * @param title - the optional explicit title.
+   * @returns the import summary on success, the settled failure otherwise.
+   */
+  importProject: (path: string, title?: string) => Promise<ResearchImportedProject | ResearchFailureView>
   /**
    * Compile the paper for one project; while a run is in flight the request
    * is queued and fired when it settles.
