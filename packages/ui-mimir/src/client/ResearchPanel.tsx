@@ -161,6 +161,7 @@ export function ResearchPanel({
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
   loadMeetings, generateMeetingDeck, deleteMeetingDeck, getImageGenConfig, saveImageGenConfig,
+  getSxngConfig, saveSxngConfig,
   loadLedger, generateReport,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
@@ -187,6 +188,7 @@ export function ResearchPanel({
   const figures = useResearch(view => view.figures)
   const meetings = useResearch(view => view.meetings)
   const imageGen = useResearch(view => view.imageGen)
+  const sxngConfig = useResearch(view => view.sxngConfig)
   const servers = useResearch(view => view.servers)
   const serverChecks = useResearch(view => view.serverChecks)
   const jobs = useResearch(view => view.jobs)
@@ -520,6 +522,7 @@ export function ResearchPanel({
             papers={papers}
             arxivSearch={arxivSearch}
             webSearch={webSearch}
+            sxngConfig={sxngConfig}
             arxivSubscriptions={arxivSubscriptions}
             projects={projects}
             selectedProjectId={selectedProjectId}
@@ -529,6 +532,8 @@ export function ResearchPanel({
             checkArxivSubscriptions={checkArxivSubscriptions}
             searchArxiv={searchArxiv}
             searchWeb={searchWeb}
+            getSxngConfig={getSxngConfig}
+            saveSxngConfig={saveSxngConfig}
             importPaper={importPaper}
             updatePaper={updatePaper}
             removePaper={removePaper}

@@ -74,8 +74,10 @@ import type {
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
   ResearchGetImageGenConfigResult,
+  ResearchGetSxngConfigResult,
   ResearchMeetingDecksResult,
   ResearchSetImageGenConfigResult,
+  ResearchSetSxngConfigResult,
   MeetingInclude,
   ResearchWikiSnapshot,
   ResearchCheckZoteroResult,
@@ -102,6 +104,7 @@ import * as meeting from './services/meeting.ts'
 import * as ledger from './services/ledger.ts'
 import type { MeetingDeps } from './services/meeting.ts'
 import * as imagegen from './services/image-gen.ts'
+import * as sxngConfig from './services/sxng-config.ts'
 import type { ServiceState } from './services/common.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -527,6 +530,28 @@ export class ResearchService extends TypertRemoteService {
     size?: string | undefined
   }): Promise<ResearchSetImageGenConfigResult> {
     return imagegen.setImageGenConfig(this.deps.workspaceDir, request)
+  }
+
+  @Remote('getSxngConfig')
+  getSxngConfig(): Promise<ResearchGetSxngConfigResult> {
+    return sxngConfig.getSxngConfig()
+  }
+
+  @Remote('setSxngConfig')
+  setSxngConfig(request: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }): Promise<ResearchSetSxngConfigResult> {
+    return sxngConfig.setSxngConfig(request)
   }
 
   @Remote('listMeetingDecks')

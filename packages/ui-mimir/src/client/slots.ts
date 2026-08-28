@@ -272,6 +272,21 @@ export interface ResearchPanelInjected {
     model?: string | undefined
     size?: string | undefined
   }) => Promise<ResearchFailureView | null>
+  /** Fetch and save the native sxng-cli configuration used by Web search. */
+  getSxngConfig: () => void
+  saveSxngConfig: (input: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }) => Promise<ResearchFailureView | null>
   /**
    * Rename one figure of one project (same extension); the host moves the
    * metadata row along and rewrites the paper's `.tex` references. The

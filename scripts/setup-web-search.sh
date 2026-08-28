@@ -110,14 +110,23 @@ else
   sleep 6
 fi
 
-# 5. point the sxng CLI at it
+# 5. point the sxng CLI at it (schema mirrors sxng-cli's config file —
+#    ~/sxng-cli/sxng.config.json or ./sxng.config.json, first found wins;
+#    OLLAMA_API_KEY / SEARXNG_* env vars override at runtime).
 mkdir -p "$HOME/sxng-cli"
 cat > "$HOME/sxng-cli/sxng.config.json" <<JSON
 {
   "baseUrl": "${BASE_URL}",
+  "defaultEngine": "",
+  "allowedEngines": [],
   "defaultLimit": 10,
-  "defaultFormat": "json",
-  "timeout": 20000
+  "defaultFormat": "md",
+  "useProxy": false,
+  "proxyUrl": "",
+  "timeout": 30000,
+  "ollamaApiKey": "",
+  "redundancyThreshold": 0.7,
+  "redundancyBigramThreshold": 0.5
 }
 JSON
 

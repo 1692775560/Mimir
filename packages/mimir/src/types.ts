@@ -585,6 +585,25 @@ export type ResearchGetImageGenConfigResult = ResearchResult<{
 /** `setImageGenConfig` outcome: the fresh masked view. */
 export type ResearchSetImageGenConfigResult = ResearchGetImageGenConfigResult
 
+/** `getSxngConfig` outcome: sxng-cli's native global config (Ollama key masked). */
+export type ResearchGetSxngConfigResult = ResearchResult<{
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly defaultEngine: string
+  readonly allowedEngines: readonly string[]
+  readonly defaultLimit: number
+  readonly defaultFormat: 'md' | 'json'
+  readonly useProxy: boolean
+  readonly proxyUrl: string
+  readonly timeout: number
+  readonly ollamaApiKeyPreview: string
+  readonly redundancyThreshold: number
+  readonly redundancyBigramThreshold: number
+}>
+
+/** `setSxngConfig` outcome: the fresh masked sxng-cli config view. */
+export type ResearchSetSxngConfigResult = ResearchGetSxngConfigResult
+
 /** `listMeetingDecks` outcome, newest first. */
 export type ResearchMeetingDecksResult = ResearchResult<{ readonly decks: readonly MeetingDeckView[] }>
 
