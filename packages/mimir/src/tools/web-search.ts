@@ -21,6 +21,7 @@ export type WebSearchRunner = (
   command: string,
   args: readonly string[],
   timeoutMs: number,
+  signal?: AbortSignal,
 ) => Promise<string>
 
 /** Deployment knobs for the web search tool. */
@@ -56,14 +57,18 @@ interface RawSxngRow {
 }
 
 /** Real runner: resolve stdout or reject with a readable message. */
-const runOnPath: WebSearchRunner = (command, args, timeoutMs) => new Promise((resolve, reject) => {
+const runOnPath: WebSearchRunner = (command, args, timeoutMs, signal) => new Promise((resolve, reject) => {
   execFile(
     command,
     [...args],
-    { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+    { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', ...(signal === undefined ? {} : { signal }) },
     (error: ExecFileException | null, stdout: string) => {
       if (error !== null && error.code === 'ENOENT') {
         reject(new Error(`Web search command '${command}' was not found on PATH. ${INSTALL_GUIDANCE}`, { cause: error }))
+        return
+      }
+      if (error !== null && signal !== undefined && signal.aborted) {
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
         return
       }
       // The CLI reports its own failures in the JSON body with exit code 1;
@@ -98,6 +103,7 @@ interface WebSearchModifiers {
 export async function fetchWebSearch(
   query: string,
   options: WebSearchOptions & WebSearchModifiers,
+  signal?: AbortSignal,
 ): Promise<WebSearchEntry[]> {
   const args = ['-f', 'json']
   const maxResults = options.maxResults
@@ -109,7 +115,7 @@ export async function fetchWebSearch(
   // (commander would otherwise swallow it as an unknown flag).
   args.push('--', query)
   const run = options.run ?? runOnPath
-  const stdout = await run(options.command, args, options.timeoutMs)
+  const stdout = await run(options.command, args, options.timeoutMs, signal)
   let parsed: unknown
   try {
     parsed = JSON.parse(stdout)
@@ -202,7 +208,7 @@ export function createWebSearchTool(options: WebSearchOptions): ToolDefinition {
       },
       render: (_args, value) => [{ type: 'text', text: renderWebEntries(value.results) }],
     },
-    async execute(args: WebSearchArgs, _exec) {
+    async execute(args: WebSearchArgs, exec) {
       const query = args.query.trim()
       if (query.length === 0) throw new TypeError('query must be a non-empty string')
       if (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1)) {
@@ -217,7 +223,7 @@ export function createWebSearchTool(options: WebSearchOptions): ToolDefinition {
           lang: args.lang,
           timeRange: args.time_range,
           ...(options.run === undefined ? {} : { run: options.run }),
-        }),
+        }, exec.signal),
       }
     },
   })

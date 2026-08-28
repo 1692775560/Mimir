@@ -8,10 +8,10 @@ import { describe, expect, it } from 'vitest'
 import { createWebSearchTool, fetchWebSearch } from '../src/tools/web-search.ts'
 
 /** A runner capturing its argv and answering with one canned payload. */
-function runCapturing(stdout: string): { run: (command: string, args: readonly string[], timeoutMs: number) => Promise<string>; argv: () => readonly string[] } {
+function runCapturing(stdout: string): { run: (command: string, args: readonly string[], timeoutMs: number, _signal?: AbortSignal) => Promise<string>; argv: () => readonly string[] } {
   const seen: string[][] = []
   return {
-    run: (_command, args, _timeoutMs) => { seen.push([...args]); return Promise.resolve(stdout) },
+    run: (_command, args, _timeoutMs, _signal) => { seen.push([...args]); return Promise.resolve(stdout) },
     argv: () => seen[0] ?? [],
   }
 }
@@ -102,6 +102,16 @@ describe('fetchWebSearch', () => {
     })).rejects.toThrow(/sxng output was not valid JSON/)
   })
 
+  it('forwards the abort signal to the runner', async () => {
+    let seenSignal: AbortSignal | undefined
+    const controller = new AbortController()
+    await fetchWebSearch('q', {
+      command: 'sxng', timeoutMs: 1000, maxResults: 10,
+      run: (_command, _args, _timeoutMs, signal) => { seenSignal = signal; return Promise.resolve(SXNG_OK) },
+    }, controller.signal)
+    expect(seenSignal).toBe(controller.signal)
+  })
+
   it('rejects an unknown envelope shape', async () => {
     await expect(fetchWebSearch('q', {
       command: 'sxng', timeoutMs: 1000, maxResults: 10, run: () => Promise.resolve('{}'),
@@ -112,7 +122,7 @@ describe('fetchWebSearch', () => {
 describe('createWebSearchTool', () => {
   it('executes through the injected runner and renders entries as text', async () => {
     const tool = createWebSearchTool({ command: 'sxng', timeoutMs: 1000, maxResults: 10, run: runCapturing(SXNG_OK).run })
-    const value = await tool.execute({ query: 'attention', limit: 2 }, {} as never) as Record<string, unknown>
+    const value = await tool.execute({ query: 'attention', limit: 2 }, { signal: new AbortController().signal } as never) as Record<string, unknown>
     expect(value).toMatchObject({ results: [{ engine: 'arxiv' }, { engine: 'brave' }] })
     const rendered = tool.output?.render?.({}, value)
     expect(String(rendered?.[0]?.text)).toContain('Attention Is All You Need')
@@ -120,6 +130,6 @@ describe('createWebSearchTool', () => {
 
   it('rejects a non-positive limit', async () => {
     const tool = createWebSearchTool({ command: 'sxng', timeoutMs: 1000, maxResults: 10, run: runCapturing(SXNG_OK).run })
-    await expect(tool.execute({ query: 'q', limit: 0 }, {} as never)).rejects.toThrow('limit must be a positive integer')
+    await expect(tool.execute({ query: 'q', limit: 0 }, { signal: new AbortController().signal } as never)).rejects.toThrow('limit must be a positive integer')
   })
 })
