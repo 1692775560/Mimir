@@ -44,9 +44,11 @@ export type {
   ArxivSubscriptionView,
   FigureEntry,
   OutlineNode,
+  ResearchAddJournalEntryResult,
   ResearchArtifactResult,
   ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
+  ResearchBriefQuestion,
   ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
@@ -62,6 +64,8 @@ export type {
   ResearchFailure,
   ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
+  ResearchGenerateBriefOptions,
+  ResearchGenerateBriefResult,
   ResearchImportPaperResult,
   ResearchListBackupsResult,
   ResearchListJobsResult,
@@ -112,10 +116,104 @@ export {
   SERVICE_ACTOR,
   WIKI_AGENT_ACTOR,
   EVENT_PAYLOAD_MAX_CHARS,
+  JOURNAL_TEXT_MAX_CHARS,
   LIST_EVENTS_DEFAULT_LIMIT,
   LIST_EVENTS_MAX_LIMIT,
 } from './ledger.ts'
 export type { LedgerEventInput } from './ledger.ts'
+export {
+  deriveLines,
+  detectMoments,
+  deriveTransitions,
+  deriveOpenLoops,
+  deriveQuestions,
+  deriveBrief,
+  deriveNarrative,
+  lineInferenceCard,
+  renderBriefMarkdown,
+  signedWeight,
+  claimsOf,
+  LINE_WEIGHTS,
+  TERMINAL_ACTIONS,
+  CREATION_ACTIONS,
+  JOURNAL_ACTION,
+  QUESTION_SHOWED_ACTION,
+  QUESTION_ANSWERED_ACTION,
+  CBE_HALF_LIFE_DAYS,
+  CBE_SESSION_GAP_MINUTES,
+  CBE_DOMINANT_DRIFT,
+  CBE_STALLED_DRIFT,
+  CBE_EXPLORE_EVENTS,
+  CBE_RETURN_SESSIONS,
+  CBE_FOCUS_DISPERSION,
+  CBE_LINE_EVIDENCE_CAP,
+  CBE_QUESTION_CAP,
+  CBE_DERIVATION_VERSION,
+  CBE_TIER_SILENT_LINE_EVENTS,
+  CBE_TIER_E1_LINE_EVENTS,
+  CBE_TIER_E1_USER_EVENTS,
+} from './cognitive-map.ts'
+export type {
+  CbeBrief,
+  CbeBriefWindow,
+  CbeBoundaryQuestion,
+  CbeEvidenceTier,
+  CbeLine,
+  CbeLineState,
+  CbeMoment,
+  CbeNarrative,
+  CbeOpenLoop,
+  CbeOpenLoopKind,
+  CbeQuestionKind,
+  CbeTransition,
+  CbeWikiSnapshot,
+  InferenceCard,
+} from './cognitive-map.ts'
+export { PARAMETER_REGISTRY } from './registry.ts'
+export type { CbeParameterEntry, CbeParameterTrack } from './registry.ts'
+export {
+  deriveWorktree,
+  ideaParentEdges,
+  MAINLINE_ACTION,
+  IDEA_PARENT_ACTION,
+  IDEA_CLOSE_REASON_MAX_CHARS,
+} from './worktree.ts'
+export type {
+  CbeWorktree,
+  CbeWorktreeLane,
+  CbeWorktreeLaneStatus,
+  CbeMainlineDeclaration,
+} from './worktree.ts'
+export {
+  evidenceModelAt,
+  evidenceProfileOf,
+  effectiveValue,
+  initialModel,
+  terminalOutcome,
+  isTerminalOutcome,
+  updateOnTerminal,
+  CBE_ENGINE_ALPHA,
+  CBE_ENGINE_KAPPA,
+  CBE_ENGINE_N_FLIP,
+  CBE_ENGINE_FOLD_WINDOW_DAYS,
+} from './cbe-engine.ts'
+export type {
+  CbeEvidenceModel,
+  CbeActionValue,
+  CbeEvidenceActionRow,
+} from './cbe-engine.ts'
+export {
+  deriveForaging,
+  deriveTerritories,
+  deriveGutBaseline,
+  CBE_GUT_BASELINE_MIN_DEPARTURES,
+} from './foraging.ts'
+export type {
+  CbeForaging,
+  CbeTerritory,
+  CbeGutBaseline,
+  CbeGutCard,
+} from './foraging.ts'
 export { parseLatexErrors } from './latex-log.ts'
 export type { LatexIssue } from './latex-log.ts'
 export { parseTexOutline } from './outline.ts'
