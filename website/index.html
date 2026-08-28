@@ -282,7 +282,8 @@ section { padding: var(--s8) 0; }
 .sec-head p { margin-top: 10px; color: var(--muted); font-size: var(--fs-16); max-width: 65ch; margin-inline: auto; }
 
 /* ---------- features（DSH 式卡片解剖） ---------- */
-.feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
+.feat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s4); }
+@media (max-width: 1100px) { .feat-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .feat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .feat-grid { grid-template-columns: 1fr; } }
 .feat {
@@ -494,7 +495,7 @@ footer a { color: var(--muted); }
         <button class="term-copy">复制</button>
       </div>
     </div>
-    <p class="hero-stats rise" style="animation-delay:.46s"><b>8</b> 个视图 · <b>652</b> 项自动化测试 · MIT 开源</p>
+    <p class="hero-stats rise" style="animation-delay:.46s"><b>8</b> 个视图 · <b>669</b> 项自动化测试 · MIT 开源</p>
     <div class="hero-shot rise" style="animation-delay:.55s">
       <img src="assets/tab-overview.png" alt="Mimir 总览：项目管线、统计与最近动态" loading="lazy">
     </div>
@@ -520,13 +521,13 @@ footer a { color: var(--muted); }
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
         <h3>LaTeX 论文写作</h3>
         <div class="feat-en">LATEX STUDIO</div>
-        <p>大纲、源码、PDF 三栏同屏，边改边编译；编译成功自动存快照，随时回滚。</p>
+        <p>大纲、源码、PDF 三栏同屏，边改边编译；会议模板一键排版，编译成功自动存快照随时回滚。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
         <h3>arXiv 文献管理</h3>
         <div class="feat-en">ARXIV LIBRARY</div>
-        <p>关键词订阅自动追新，AI 按你的方向打分排序；PDF 全屏阅读，Zotero 同步。</p>
+        <p>关键词订阅自动追新，AI 按你的方向打分排序；PDF 全屏阅读，SearXNG 全网搜索面板可配，Zotero 同步。</p>
       </div>
       <div class="feat reveal">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6L4 18a2 2 0 0 0 1.8 3h12.4A2 2 0 0 0 20 18l-5-9V3"/><path d="M8 3h8"/></svg></div>
@@ -551,6 +552,18 @@ footer a { color: var(--muted); }
         <h3>GPU 服务器编排</h3>
         <div class="feat-en">GPU FLEET</div>
         <p>SSH 直连 AutoDL 等算力机器，任务提交、状态轮询、日志回传都在面板里。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5"/><path d="M12 3v12"/></svg></div>
+        <h3>已有项目导入</h3>
+        <div class="feat-en">PROJECT IMPORT</div>
+        <p>本地 LaTeX 工程一键导入：自动识别入口文件、标题与图片，复制进工作区，原目录不动。</p>
+      </div>
+      <div class="feat reveal">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>记录与进展报告</h3>
+        <div class="feat-en">LEDGER &amp; REPORTS</div>
+        <p>每个科研动作自动记账，成长时间线全程可追溯，一键生成周期进展报告。</p>
       </div>
     </div>
   </div>
