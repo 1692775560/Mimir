@@ -66,6 +66,13 @@ export interface IdeaRecord {
   readonly status: 'active' | 'failed' | 'adopted'
   /** Why the idea failed; present on records whose status is `failed`. */
   readonly failureReason?: string | undefined
+  /**
+   * Project this idea is registered into. Absent for standalone exploratory
+   * ideas. When present the idea is auto-adopted (status `adopted`) at
+   * creation, so it surfaces in the worktree and brief as part of that
+   * project's research process rather than waiting for a manual merge.
+   */
+  readonly projectId?: string | undefined
   /** ISO-8601 creation timestamp. */
   readonly createdAt: string
 }

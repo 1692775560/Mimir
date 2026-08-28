@@ -157,15 +157,28 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
     }
     case 'add_idea': {
       const id = randomUUID()
+      const projectId = args.project_id
+      if (projectId !== undefined && domain.table('projects').get(projectId) === undefined) {
+        throw new Error(`wiki_note: no project with id '${projectId}'`)
+      }
+      // An idea registered into a project is auto-adopted (status `adopted`)
+      // at creation — it is already part of that project's research process,
+      // so the worktree and brief surface it without a separate manual merge.
+      // A standalone idea stays `active` for the user to adopt later.
       const record = {
         id,
         title: requireField(args.title, 'title', args.action),
         hypothesis: requireField(args.hypothesis, 'hypothesis', args.action),
-        status: 'active' as const,
+        status: (projectId !== undefined ? 'adopted' : 'active') as const,
+        projectId: projectId ?? undefined,
         createdAt: new Date().toISOString(),
       }
       await domain.table('ideas').put(id, record)
-      await emit(domain, 'knowledge.idea.added', { ideaId: id }, { title: record.title })
+      if (projectId !== undefined) {
+        await emit(domain, 'knowledge.idea.adopted', { ideaId: id, projectId }, { title: record.title })
+      } else {
+        await emit(domain, 'knowledge.idea.added', { ideaId: id }, { title: record.title })
+      }
       return { ok: true, table: 'ideas', id, record: record as unknown as JsonValue }
     }
     case 'fail_idea': {
@@ -332,7 +345,7 @@ export function createWikiNoteTool(domain: ResearchWikiDomain): ToolDefinition {
       status: { type: 'string', description: 'New status for set_claim (supported|invalidated|pending) or add_experiment/set_experiment (running|success|failed).' },
       evidence: { type: 'string', description: 'Evidence pointer for add_claim/set_claim.' },
       paper_dir: { type: 'string', description: "Paper directory for set_project, relative to the research workspace (default 'paper')." },
-      project_id: { type: 'string', description: 'Owning project id for add_experiment.' },
+      project_id: { type: 'string', description: 'Owning project id for add_experiment; for add_idea it registers the idea into that project and auto-adopts it into the worktree (omit it to keep the idea standalone and active).' },
       name: { type: 'string', description: 'Experiment name for add_experiment/set_experiment.' },
       metrics: { type: 'object', additionalProperties: true, description: 'Scalar metrics for add_experiment/set_experiment (string/number values).' },
       log_path: { type: 'string', description: 'Log path relative to the workspace for add_experiment/set_experiment.' },
