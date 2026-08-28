@@ -890,3 +890,210 @@ export type ResearchProgressReportResult = ResearchResult<{
   readonly generatedAt: string
   readonly eventCount: number
 }>
+
+/**
+ * `generateBrief` options: a project filter plus ISO-8601 bounds (`since`
+ * inclusive, `until` exclusive), the same window contract as the progress
+ * report — the cognitive brief reads the window's DDM-lite map plus the
+ * user's L2 journal lines.
+ */
+export interface ResearchGenerateBriefOptions {
+  readonly projectId?: string | undefined
+  readonly since?: string | undefined
+  readonly until?: string | undefined
+}
+
+/**
+ * One interactive boundary question of the brief, label-resolved for the
+ * view: the engine's abstract `CbeBoundaryQuestion` joined with the wiki
+ * records so the card can name the line it asks about.
+ */
+export interface ResearchBriefQuestion {
+  readonly kind: 'returning-branch' | 'pending-claim'
+  readonly lineId: string
+  /** The line's human label (idea/project title, or a claim-text excerpt). */
+  readonly label: string
+}
+
+/**
+ * The boundary question a journal entry answers (I4): rides the
+ * `addJournalEntry` request when the entry was written from a question
+ * card, and lands as a `cbe.question.answered` meta event.
+ */
+export interface ResearchJournalQuestionRef {
+  readonly kind: 'returning-branch' | 'pending-claim'
+  readonly lineId: string
+}
+
+/** `generateBrief` result: the rendered brief plus its interactive questions. */
+export type ResearchGenerateBriefResult = ResearchResult<{
+  readonly markdown: string
+  readonly generatedAt: string
+  readonly eventCount: number
+  /** The derivation version the brief was rendered under (I5). */
+  readonly derivationVersion: number
+  readonly questions: readonly ResearchBriefQuestion[]
+}>
+
+/** `addJournalEntry` result: the stored journal event (the L2 write). */
+export type ResearchAddJournalEntryResult = ResearchResult<{ readonly event: EventRecord }>
+
+/* ── Worktree (S2) wire payloads — the research process as a working tree ── */
+
+/** Lane lifecycle as the worktree renders it (idea records are the state). */
+export type ResearchWorktreeLaneStatus = 'open' | 'failed' | 'adopted'
+
+/** How one touch reads on the branch graph's bead scale. */
+export type ResearchWorktreeTouchKind = 'create' | 'work' | 'meta' | 'terminal'
+
+/** One work node on a lane: a timestamp, its bead class, and the action. */
+export interface ResearchWorktreeTouchView {
+  readonly at: string
+  readonly kind: ResearchWorktreeTouchKind
+  /** The ledger action name (labels resolve client-side). */
+  readonly action: string
+}
+
+/**
+ * One lane of the research worktree, label-resolved for the view: a research
+ * line (idea, or `project:<id>`) wearing branch semantics — status, declared
+ * parent, activity dates, and the documented-No numbers. E0 by construction:
+ * numbers, dates, and user-declared edges only, no inferred genealogy.
+ */
+export interface ResearchWorktreeLaneView {
+  readonly lineId: string
+  readonly label: string
+  readonly status: ResearchWorktreeLaneStatus
+  /** The lane's brief state vocabulary (`settled` once terminal). */
+  readonly state: 'settled' | 'dominant' | 'stalled' | 'converging' | 'returning-side' | 'exploring'
+  /** The user-declared parent line, or null for a root branch. */
+  readonly parentLineId: string | null
+  /** The parent line's label (the declaring user's own landmark name). */
+  readonly parentLabel: string | null
+  readonly firstSeen: string
+  readonly lastSeen: string
+  readonly eventCount: number
+  readonly drift: number
+  /** The close adjudication's timestamp; null while open. */
+  readonly closedAt: string | null
+  /** The wiki record's failure reason — the documented No's own words. */
+  readonly closeReason: string | null
+  /** Failed lanes: days from the lane's last touch to its close (the GUT number). */
+  readonly gutDays: number | null
+  /** Open lanes: days since the lane's last touch to the derivation time. */
+  readonly idleDays: number | null
+  /** The lane's work nodes (timestamped touches), ts ascending — the beads. */
+  readonly touches: readonly ResearchWorktreeTouchView[]
+}
+
+/** One mainline declaration (one ref move), label-resolved. */
+export interface ResearchWorktreeMainlineView {
+  readonly lineId: string
+  readonly label: string
+  readonly declaredAt: string
+}
+
+/** `getWorktree` payload: the whole derived worktree (a pure L0 projection). */
+export interface ResearchWorktreeView {
+  readonly derivedAt: string
+  readonly lanes: readonly ResearchWorktreeLaneView[]
+  /** The current mainline ref, or null before the first declaration. */
+  readonly mainline: ResearchWorktreeMainlineView | null
+  /** Every declaration in order — the mainline reflog (the 大改变 record). */
+  readonly mainlineHistory: readonly ResearchWorktreeMainlineView[]
+  readonly counts: {
+    readonly open: number
+    readonly failed: number
+    readonly adopted: number
+  }
+}
+
+/** `getWorktree` result: the derived worktree (a pure query, writes nothing). */
+export type ResearchGetWorktreeResult = ResearchResult<{ readonly worktree: ResearchWorktreeView }>
+
+/** `setMainline` result: the stored `cbe.mainline.set` event (one ref move). */
+export type ResearchSetMainlineResult = ResearchResult<{ readonly event: EventRecord }>
+
+/** `setIdeaParent` result: the stored `cbe.idea.parent.set` event (a declared edge). */
+export type ResearchSetIdeaParentResult = ResearchResult<{ readonly event: EventRecord }>
+
+/** `closeIdea` result: the stored `knowledge.idea.failed` event (a documented No). */
+export type ResearchCloseIdeaResult = ResearchResult<{ readonly event: EventRecord }>
+
+/** `adoptIdea` result: the stored `knowledge.idea.adopted` event (a declared merge). */
+export type ResearchAdoptIdeaResult = ResearchResult<{ readonly event: EventRecord }>
+
+/* ── Evidence engine (S3) wire payloads — E1, read-only until G1 ────────── */
+
+/** One action's learned row of the evidence profile. */
+export interface ResearchEvidenceActionView {
+  readonly action: string
+  /** The hand prior (LINE_WEIGHTS) — today's map value. */
+  readonly prior: number
+  /** The learned, share-accumulated mean of terminal outcomes. */
+  readonly mean: number
+  /** Accumulated eligibility share (evidence mass). */
+  readonly mass: number
+  /** The κ-shrunk effective value: `(mass·mean + κ·prior)/(mass + κ)`. */
+  readonly effectiveValue: number
+}
+
+/** `getEvidenceProfile` payload: the folded profile, E1 instrumentation. */
+export interface ResearchEvidenceProfileView {
+  readonly derivationVersion: number
+  readonly terminalsFolded: number
+  readonly actions: readonly ResearchEvidenceActionView[]
+}
+
+/** `getEvidenceProfile` result: read-only; consumed by no UI until G1. */
+export type ResearchGetEvidenceProfileResult = ResearchResult<{
+  readonly profile: ResearchEvidenceProfileView
+}>
+
+/* ── Foraging (S4) wire payloads — the territory ledger and GUT cards ──── */
+
+/** One research territory's E0 ledger row (label-resolved for the view). */
+export interface ResearchTerritoryView {
+  readonly projectId: string
+  readonly label: string
+  readonly eventCount: number
+  readonly firstSeen: string
+  readonly lastSeen: string
+  /** Kernel-decayed |weight| mass — attention, sign-blind. */
+  readonly activityMass: number
+  /** Clean compiles — the v1 harvest proxy (claim/job terminals carry no project ref yet). */
+  readonly harvestCount: number
+  readonly lastHarvestAt: string | null
+  readonly daysSinceHarvest: number | null
+  readonly daysSinceActivity: number
+}
+
+/** The personal giving-up-time baseline (silent below its floor). */
+export interface ResearchGutBaselineView {
+  readonly samples: number
+  readonly medianDays: number | null
+  readonly iqrDays: number | null
+  readonly minSamples: number
+  readonly speaks: boolean
+}
+
+/** The GUT card's data: two numbers, zero verbs. */
+export interface ResearchGutCardView {
+  readonly projectId: string
+  readonly label: string
+  readonly daysSinceHarvest: number | null
+  readonly daysSinceActivity: number
+  readonly baselineMedianDays: number | null
+}
+
+/** `getForaging` payload: the whole foraging layer, E0 by construction. */
+export interface ResearchForagingView {
+  readonly derivedAt: string
+  readonly territories: readonly ResearchTerritoryView[]
+  readonly baseline: ResearchGutBaselineView
+  readonly cards: readonly ResearchGutCardView[]
+}
+
+/** `getForaging` result: a pure query, writes nothing. */
+export type ResearchGetForagingResult = ResearchResult<{ readonly foraging: ResearchForagingView }>
+

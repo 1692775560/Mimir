@@ -38,6 +38,9 @@ import type { ClaimRecord, ExperimentRecord, JobRecord, ProjectRecord } from './
 /** Hard cap of one event's serialized payload (the security-style invariant of the ledger). */
 export const EVENT_PAYLOAD_MAX_CHARS = 2048
 
+/** Hard cap of one journal entry's text (the L2 layer stays one handwritten line). */
+export const JOURNAL_TEXT_MAX_CHARS = 1024
+
 /** Default and hard cap of `listEvents` results. */
 export const LIST_EVENTS_DEFAULT_LIMIT = 200
 export const LIST_EVENTS_MAX_LIMIT = 1000

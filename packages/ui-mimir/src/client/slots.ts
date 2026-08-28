@@ -20,8 +20,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from './locales.ts'
 import type {
   ArxivEntry, BibEntry, ExperimentInput, FigureEntry, MeetingInclude, ResearchEventFilter,
-  ResearchImportWikiMode, ResearchProgressReportOptions, ResearchWikiSnapshot, SectionMove,
-  SectionOutlineTitles, ServerInput, SubsectionMove,
+  ResearchGenerateBriefOptions, ResearchImportWikiMode, ResearchJournalQuestionRef, ResearchProgressReportOptions,
+  ResearchWikiSnapshot, SectionMove, SectionOutlineTitles, ServerInput, SubsectionMove,
 } from 'dsh-mimir/types'
 import type { ResearchFailureView, ResearchImportCounts, ResearchView } from './controller.ts'
 import type { MetricChartRow } from './view-common.ts'
@@ -495,6 +495,67 @@ export interface ResearchPanelInjected {
    * @returns null on success, the settled failure view otherwise.
    */
   generateReport: (options: ResearchProgressReportOptions) => Promise<ResearchFailureView | null>
+  /**
+   * Generate the cognitive brief (CBE roadbook) of one window (the brief
+   * card's button): the DDM-lite map plus the user's L2 journal lines.
+   * @param options - the window/scope options the view assembled.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  generateBrief: (options: ResearchGenerateBriefOptions) => Promise<ResearchFailureView | null>
+  /**
+   * Write one L2 journal line into the ledger (the journal box's submit) —
+   * the user's own words, read back by the brief, never weighed as evidence.
+   * @param text - the entry's text (non-blank, capped server-side).
+   * @param projectId - the project scope, or null for an unscoped entry.
+   * @param refs - optional line ref (`ideaId`, the boundary-question answer
+   * path) and 1–5 self-reported `valence`/`arousal` ratings.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  addJournal: (
+    text: string,
+    projectId: string | null,
+    refs?: { ideaId?: string | undefined; valence?: number | undefined; arousal?: number | undefined; question?: ResearchJournalQuestionRef | undefined },
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Load the worktree (S2) once, on the ledger view's first open: the
+   * research process as branches, dead ends, and the mainline ref.
+   */
+  ensureWorktree: () => void
+  /** Re-fetch the worktree (the card's refresh button, or after a write). */
+  refreshWorktree: () => void
+  /**
+   * Move the mainline ref — the user's explicit declaration of the current
+   * mainline (the system never ranks lines into it).
+   * @param lineId - idea id or `project:<id>`.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  setMainline: (lineId: string) => Promise<ResearchFailureView | null>
+  /**
+   * Declare (or clear, with null) one derivation edge — a branch point in
+   * the surveyor's own words; never inferred.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  setIdeaParent: (ideaId: string, parentIdeaId: string | null) => Promise<ResearchFailureView | null>
+  /**
+   * Declare the merge — adopt one idea line (✓); only an active line can
+   * be merged, and a merge is written once.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  adoptIdea: (ideaId: string) => Promise<ResearchFailureView | null>
+  /**
+   * Close one idea lane as a dead end — a documented No with its one-line
+   * lesson; dead ends are never pruned from the tree.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  closeIdea: (ideaId: string, reason: string) => Promise<ResearchFailureView | null>
+  /**
+   * Load the foraging layer (S4) once, on the ledger view's first open.
+   */
+  ensureForaging: () => void
+  /**
+   * Re-fetch the foraging layer (the card's refresh button).
+   */
+  refreshForaging: () => void
   /**
    * Export the whole wiki as one snapshot (the download button).
    * @returns the snapshot, or the settled failure view.

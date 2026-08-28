@@ -13,6 +13,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ResearchKey } from './locales.ts'
 import { figureBlockOf, findFigureReferenceLine, insertFigureBlock, isSvgFigure, svgConvertedRelPaths } from './figure-insert.ts'
+import { WORKTREE_REASON_MAX_CHARS } from './worktree-view.ts'
 import { anySubscriptionDue } from './subscriptions.ts'
 import { metricFigureCaption, metricFigureFileName, metricFigureSvg } from './metric-figure.ts'
 import type { MetricChartRow } from './view-common.ts'
@@ -31,6 +32,16 @@ import type {
   PaperSnapshotView,
   ResearchArtifactResult,
   ResearchArxivSubscriptionsResult,
+  ResearchAddJournalEntryResult,
+  ResearchCloseIdeaResult,
+  ResearchAdoptIdeaResult,
+  ResearchGetForagingResult,
+  ResearchGetWorktreeResult,
+  ResearchForagingView,
+  ResearchSetIdeaParentResult,
+  ResearchSetMainlineResult,
+  ResearchWorktreeView,
+  ResearchBriefQuestion,
   ResearchBackupStatusView,
   ResearchBibliographyResult,
   ResearchCheckArxivSubscriptionsResult,
@@ -51,6 +62,9 @@ import type {
   ResearchFailure,
   ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
+  ResearchGenerateBriefOptions,
+  ResearchGenerateBriefResult,
+  ResearchJournalQuestionRef,
   ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchImportWikiMode,
@@ -111,7 +125,7 @@ import type {
 } from 'dsh-mimir/types'
 
 /**
- * The fifty-eight Remote calls this controller needs, exactly as the
+ * The sixty-three Remote calls this controller needs, exactly as the
  * generated `research` namespace types them. The ledger remotes keep
  * `actorKind`/`order` as widened `string` (the generated face elides the
  * literal unions across the boundary).
@@ -279,6 +293,34 @@ export interface ResearchRemote {
     since?: string | undefined
     until?: string | undefined
   }) => Promise<RemoteResult<ResearchProgressReportResult>>
+  generateBrief: (request: {
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }) => Promise<RemoteResult<ResearchGenerateBriefResult>>
+  addJournalEntry: (request: {
+    text: string
+    projectId?: string | undefined
+    ideaId?: string | undefined
+    valence?: number | undefined
+    arousal?: number | undefined
+    question?: ResearchJournalQuestionRef | undefined
+  }) => Promise<RemoteResult<ResearchAddJournalEntryResult>>
+  getForaging: () => Promise<RemoteResult<ResearchGetForagingResult>>
+  getWorktree: () => Promise<RemoteResult<ResearchGetWorktreeResult>>
+  setMainline: (request: {
+    ideaId?: string | undefined
+    projectId?: string | undefined
+  }) => Promise<RemoteResult<ResearchSetMainlineResult>>
+  setIdeaParent: (request: {
+    ideaId: string
+    parentIdeaId: string | null
+  }) => Promise<RemoteResult<ResearchSetIdeaParentResult>>
+  adoptIdea: (request: { ideaId: string }) => Promise<RemoteResult<ResearchAdoptIdeaResult>>
+  closeIdea: (request: {
+    ideaId: string
+    reason: string
+  }) => Promise<RemoteResult<ResearchCloseIdeaResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -464,6 +506,35 @@ export interface ResearchReportView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The last cognitive brief the ledger view generated (null fields while none). */
+export interface ResearchBriefView {
+  readonly status: 'idle' | 'loading' | 'ready' | 'error'
+  readonly markdown: string
+  readonly generatedAt: string | null
+  readonly eventCount: number | null
+  /** The derivation version the brief was rendered under (I5). */
+  readonly derivationVersion: number | null
+  /** True when this version differs from the last one seen (I5: the map re-calibrated). */
+  readonly recalibrated: boolean
+  /** Label-resolved boundary questions (the confirmation cards' data). */
+  readonly questions: readonly ResearchBriefQuestion[]
+  readonly failure: ResearchFailureView | null
+}
+
+/** The worktree (S2) slice: the derived working tree, cold until first opened. */
+export interface ResearchWorktreeSlice {
+  readonly status: ResearchLoadStatus
+  readonly view: ResearchWorktreeView | null
+  readonly failure: ResearchFailureView | null
+}
+
+/** The foraging (S4) slice: the territory ledger + GUT baseline, cold until opened. */
+export interface ResearchForagingSlice {
+  readonly status: ResearchLoadStatus
+  readonly view: ResearchForagingView | null
+  readonly failure: ResearchFailureView | null
+}
+
 /** The selected project's `references.bib` view, edited entry-wise through the panel. */
 export interface ResearchBibView {
   readonly projectId: string
@@ -532,6 +603,12 @@ export interface ResearchView {
   readonly ledger: ResearchLedgerView
   /** The ledger view's progress report; `idle` before the first generation. */
   readonly report: ResearchReportView
+  /** The ledger view's cognitive brief (CBE roadbook); `idle` before the first generation. */
+  readonly brief: ResearchBriefView
+  /** The ledger view's worktree (S2): the process as branches, dead ends, and the mainline ref. */
+  readonly worktree: ResearchWorktreeSlice
+  /** The ledger view's foraging layer (S4): territories, the GUT baseline, the GUT cards. */
+  readonly foraging: ResearchForagingSlice
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
@@ -573,6 +650,9 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   venueTemplates: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   ledger: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   report: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, failure: null }),
+  brief: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, derivationVersion: null, recalibrated: false, questions: Object.freeze([]), failure: null }),
+  worktree: Object.freeze({ status: 'cold', view: null, failure: null }),
+  foraging: Object.freeze({ status: 'cold', view: null, failure: null }),
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -619,6 +699,11 @@ export class ResearchController implements HostObservable<ResearchView> {
   private snapshotDetailGeneration = 0
   private ledgerGeneration = 0
   private reportGeneration = 0
+  private briefGeneration = 0
+  /** In-flight worktree load guard (the ensure/refresh contract). */
+  private worktreePromise: Promise<void> | null = null
+  /** In-flight foraging load guard (the ensure/refresh contract). */
+  private foragingPromise: Promise<void> | null = null
   private figuresInFlight = false
   private meetingsGeneration = 0
   private meetingsInFlight = false
@@ -851,6 +936,314 @@ export class ResearchController implements HostObservable<ResearchView> {
         this.publish({ report: Object.freeze({ ...this.view.report, status: 'error', failure }) })
       }
       return failure
+    }
+  }
+
+  /** localStorage key of the last-seen derivation version (I5 notice). */
+  private static readonly DERIVATION_STORAGE_KEY = 'mimir:cbe-derivation-version'
+
+  /**
+   * I5: remember the derivation version the user last saw; a changed
+   * version returns true so the brief view can show the re-calibration
+   * notice. Persistence is best-effort — a blocked storage just drops the
+   * cross-session comparison, never the brief.
+   */
+  private derivationRecalibrated(version: number): boolean {
+    let previous: string | null = null
+    try {
+      previous = localStorage.getItem(ResearchController.DERIVATION_STORAGE_KEY)
+      localStorage.setItem(ResearchController.DERIVATION_STORAGE_KEY, String(version))
+    } catch {
+      previous = null
+    }
+    return previous !== null && previous !== String(version)
+  }
+
+  /**
+   * Generate the cognitive brief (CBE roadbook) of one window (the brief
+   * card's button): the same publish/supersede contract as
+   * {@link generateReport}. A success toasts once.
+   * @param options - the window/scope options the view assembled.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async generateBrief(options: ResearchGenerateBriefOptions): Promise<ResearchFailureView | null> {
+    this.briefGeneration += 1
+    const generation = this.briefGeneration
+    this.publish({
+      brief: Object.freeze({
+        status: 'loading',
+        markdown: '',
+        generatedAt: null,
+        eventCount: null,
+        derivationVersion: null,
+        recalibrated: false,
+        questions: Object.freeze([]),
+        failure: null,
+      }),
+    })
+    try {
+      const carried = await this.remote.generateBrief({ ...options })
+      if (this.disposed || generation !== this.briefGeneration) return null
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ brief: Object.freeze({ ...this.view.brief, status: 'error', failure }) })
+        return failure
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({ brief: Object.freeze({ ...this.view.brief, status: 'error', failure }) })
+        return failure
+      }
+      this.publish({
+        brief: Object.freeze({
+          status: 'ready',
+          markdown: result.value.markdown,
+          generatedAt: result.value.generatedAt,
+          eventCount: result.value.eventCount,
+          derivationVersion: result.value.derivationVersion,
+          recalibrated: this.derivationRecalibrated(result.value.derivationVersion),
+          questions: Object.freeze(result.value.questions),
+          failure: null,
+        }),
+      })
+      this.notify('success', 'brief.ready')
+      return null
+    } catch (error) {
+      const failure = transportFailure(error)
+      if (!this.disposed && generation === this.briefGeneration) {
+        this.publish({ brief: Object.freeze({ ...this.view.brief, status: 'error', failure }) })
+      }
+      return failure
+    }
+  }
+
+  /**
+   * Write one L2 journal line (the journal box's submit): the text plus the
+   * project scope the view assembled, and optional refs — an `ideaId` writes
+   * the entry against one line (the boundary-question cards' answer path),
+   * `valence`/`arousal` are 1–5 self-report ratings that ride the payload.
+   * A success toasts once and returns null; a failure returns the failure
+   * view WITHOUT a toast — the journal box surfaces it inline.
+   * @param text - the user's words (validated client-side, capped server-side).
+   * @param projectId - the project scope, or null for an unscoped entry.
+   * @param refs - optional line ref and self-reported mood ratings.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async addJournal(
+    text: string,
+    projectId: string | null,
+    refs?: { ideaId?: string | undefined; valence?: number | undefined; arousal?: number | undefined; question?: ResearchJournalQuestionRef | undefined },
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.addJournalEntry({
+        text,
+        ...(projectId === null ? {} : { projectId }),
+        ...(refs?.ideaId === undefined ? {} : { ideaId: refs.ideaId }),
+        ...(refs?.valence === undefined ? {} : { valence: refs.valence }),
+        ...(refs?.arousal === undefined ? {} : { arousal: refs.arousal }),
+        ...(refs?.question === undefined ? {} : { question: refs.question }),
+      })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'journal.added')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Load the worktree (S2) slice: the derived working tree over the full
+   * ledger — lanes with their statuses and documented-No numbers, the
+   * declared parent edges, the mainline ref and its reflog. Publishing
+   * contract mirrors {@link generateBrief}: loading → ready/error, the
+   * previous view kept while loading.
+   */
+  private async loadWorktree(): Promise<void> {
+    this.publish({
+      worktree: Object.freeze({ status: 'loading', view: this.view.worktree.view, failure: null }),
+    })
+    try {
+      const carried = await this.remote.getWorktree()
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ worktree: Object.freeze({ status: 'error', view: null, failure }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({ worktree: Object.freeze({ status: 'error', view: null, failure }) })
+        return
+      }
+      this.publish({
+        worktree: Object.freeze({ status: 'ready', view: result.value.worktree, failure: null }),
+      })
+    } catch (error) {
+      const failure = transportFailure(error)
+      this.publish({ worktree: Object.freeze({ status: 'error', view: null, failure }) })
+    }
+  }
+
+  /**
+   * Load the foraging (S4) slice: the territory ledger, the GUT baseline,
+   * and the GUT cards — the same publish contract as the worktree slice.
+   */
+  private async loadForaging(): Promise<void> {
+    this.publish({
+      foraging: Object.freeze({ status: 'loading', view: this.view.foraging.view, failure: null }),
+    })
+    try {
+      const carried = await this.remote.getForaging()
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ foraging: Object.freeze({ status: 'error', view: null, failure }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({ foraging: Object.freeze({ status: 'error', view: null, failure }) })
+        return
+      }
+      this.publish({
+        foraging: Object.freeze({ status: 'ready', view: result.value.foraging, failure: null }),
+      })
+    } catch (error) {
+      const failure = transportFailure(error)
+      this.publish({ foraging: Object.freeze({ status: 'error', view: null, failure }) })
+    }
+  }
+
+  /** Load the foraging layer once, on the ledger view's first open. */
+  ensureForaging(): void {
+    if (this.view.foraging.status === 'ready' || this.foragingPromise !== null) return
+    this.foragingPromise = this.loadForaging().finally(() => { this.foragingPromise = null })
+  }
+
+  /** Re-fetch the foraging layer (the card's refresh button). */
+  refreshForaging(): void {
+    if (this.foragingPromise !== null) return
+    this.foragingPromise = this.loadForaging().finally(() => { this.foragingPromise = null })
+  }
+
+  /** Refresh the foraging layer behind an in-flight guard (write paths). */
+  private requeueForaging(): void {
+    if (this.foragingPromise !== null) return
+    this.foragingPromise = this.loadForaging().finally(() => { this.foragingPromise = null })
+  }
+
+  /** Load the worktree once, on the ledger view's first open. */
+  ensureWorktree(): void {
+    if (this.view.worktree.status === 'ready' || this.worktreePromise !== null) return
+    this.worktreePromise = this.loadWorktree().finally(() => { this.worktreePromise = null })
+  }
+
+  /** Re-fetch the worktree (after a structural write, or the refresh button). */
+  refreshWorktree(): void {
+    if (this.worktreePromise !== null) return
+    this.worktreePromise = this.loadWorktree().finally(() => { this.worktreePromise = null })
+  }
+
+  /** Refresh the worktree behind an in-flight guard, used by the write verbs. */
+  private requeueWorktree(): void {
+    if (this.worktreePromise !== null) return
+    this.worktreePromise = this.loadWorktree().finally(() => { this.worktreePromise = null })
+  }
+
+  /**
+   * Move the mainline ref (one explicit user declaration; the system never
+   * ranks lines into it). A success toasts once and refreshes the tree so
+   * the new ref renders immediately.
+   * @param lineId - the lane to declare (idea id or `project:<id>`).
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async setMainline(lineId: string): Promise<ResearchFailureView | null> {
+    const request = lineId.startsWith('project:')
+      ? { projectId: lineId.slice('project:'.length) }
+      : { ideaId: lineId }
+    try {
+      const carried = await this.remote.setMainline(request)
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'worktree.mainline.ready')
+      this.requeueWorktree()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Declare (or clear, with null) one derivation edge — a branch point in
+   * the surveyor's own words; never inferred. A success toasts once and
+   * refreshes the tree.
+   * @param ideaId - the child idea lane.
+   * @param parentIdeaId - the parent idea lane, or null to clear.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async setIdeaParent(ideaId: string, parentIdeaId: string | null): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setIdeaParent({ ideaId, parentIdeaId })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'worktree.parent.ready')
+      this.requeueWorktree()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Close one idea lane as a dead end — a documented No: the reason is
+   * required, capped at {@link WORKTREE_REASON_MAX_CHARS} characters, and
+   * re-validated server-side. A success toasts once and refreshes the tree;
+   * the caller refreshes the ledger timeline so the event lands there too.
+   * @param ideaId - the idea lane to close.
+   * @param reason - the one-line lesson (what this No taught).
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async closeIdea(ideaId: string, reason: string): Promise<ResearchFailureView | null> {
+    if (reason.trim() === '') return failureOf('invalid-input', 'close reason must not be empty')
+    if (reason.length > WORKTREE_REASON_MAX_CHARS) {
+      return failureOf('invalid-input', `close reason is capped at ${WORKTREE_REASON_MAX_CHARS} characters`)
+    }
+    try {
+      const carried = await this.remote.closeIdea({ ideaId, reason })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'worktree.closed')
+      this.requeueWorktree()
+      // A documented close is a new GUT sample — the baseline refreshes too.
+      this.requeueForaging()
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Declare the merge: one idea line adopted (✓). A merge refreshes the
+   * worktree; it is NOT a GUT departure, so the foraging baseline stays
+   * put (giving-up time is measured on documented closes only).
+   */
+  async adoptIdea(ideaId: string): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.adoptIdea({ ideaId })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.notify('success', 'worktree.adopted')
+      this.requeueWorktree()
+      return null
+    } catch (error) {
+      return transportFailure(error)
     }
   }
 

@@ -20,7 +20,15 @@ import type {
   BibEntry,
   ExperimentInput,
   ResearchArtifactResult,
+  ResearchAddJournalEntryResult,
   ResearchArxivSubscriptionsResult,
+  ResearchCloseIdeaResult,
+  ResearchAdoptIdeaResult,
+  ResearchGetEvidenceProfileResult,
+  ResearchGetForagingResult,
+  ResearchGetWorktreeResult,
+  ResearchSetIdeaParentResult,
+  ResearchSetMainlineResult,
   ResearchBibliographyResult,
   ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
@@ -36,6 +44,7 @@ import type {
   ResearchExportWikiResult,
   ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
+  ResearchGenerateBriefResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchImportWikiMode,
@@ -612,6 +621,76 @@ export class ResearchService extends TypertRemoteService {
     until?: string | undefined
   }): Promise<ResearchProgressReportResult> {
     return ledger.generateProgressReportRemote(this.deps, request)
+  }
+
+  @Remote('generateBrief')
+  generateBrief(request: {
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchGenerateBriefResult> {
+    return ledger.generateBriefRemote(this.deps, request)
+  }
+
+  @Remote('addJournalEntry')
+  addJournalEntry(request: {
+    text: string
+    projectId?: string | undefined
+    ideaId?: string | undefined
+    valence?: number | undefined
+    arousal?: number | undefined
+    question?: { kind: string; lineId: string } | undefined
+  }): Promise<ResearchAddJournalEntryResult> {
+    return ledger.addJournalEntryRemote(this.deps, request)
+  }
+
+  // worktree domain (S2): the research process as a git-like working tree
+  @Remote('getWorktree')
+  getWorktree(): Promise<ResearchGetWorktreeResult> {
+    return ledger.getWorktreeRemote(this.deps)
+  }
+
+  @Remote('setMainline')
+  setMainline(request: {
+    ideaId?: string | undefined
+    projectId?: string | undefined
+  }): Promise<ResearchSetMainlineResult> {
+    return ledger.setMainlineRemote(this.deps, request)
+  }
+
+  @Remote('setIdeaParent')
+  setIdeaParent(request: {
+    ideaId: string
+    parentIdeaId: string | null
+  }): Promise<ResearchSetIdeaParentResult> {
+    return ledger.setIdeaParentRemote(this.deps, request)
+  }
+
+  @Remote('adoptIdea')
+  adoptIdea(request: {
+    ideaId: string
+  }): Promise<ResearchAdoptIdeaResult> {
+    return ledger.adoptIdeaRemote(this.deps, request)
+  }
+
+  @Remote('closeIdea')
+  closeIdea(request: {
+    ideaId: string
+    reason: string
+  }): Promise<ResearchCloseIdeaResult> {
+    return ledger.closeIdeaRemote(this.deps, request)
+  }
+
+  // evidence engine (S3): read-only E1 instrumentation, no UI until G1
+  @Remote('getEvidenceProfile')
+  getEvidenceProfile(): Promise<ResearchGetEvidenceProfileResult> {
+    return ledger.getEvidenceProfileRemote(this.deps)
+  }
+
+  // foraging layer (S4): territory ledger + GUT baseline + cards (E0)
+  @Remote('getForaging')
+  getForaging(): Promise<ResearchGetForagingResult> {
+    return ledger.getForagingRemote(this.deps)
   }
 }
 

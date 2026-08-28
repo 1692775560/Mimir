@@ -23,7 +23,7 @@
 Mimir 是单个 npm 包（`dsh-mimir`），装进 dsh 即可获得：
 
 - **八视图 Web 工作台**（侧栏开关呼出浮层，深色/浅色、中/EN）：
-  **总览** 管线进度与统计 · **论文** Overleaf 式 LaTeX 工作室（编辑 → 编译 → PDF 预览，每条报错可一键让 AI 修） · **文献** arXiv + Web 搜索、AI 相关度评分、全屏 PDF 阅读 · **实验** 指标对比图、一键生成论文图 · **图表** 上传/归纳命名/插入论文 · **组会** 一键生成组会 PPT（论文原图 + 可选 AI 配图） · **服务器** GPU 集群探测 + 远程任务 · **记录** 成长时间线 + 一键进展报告
+  **总览** 管线进度与统计 · **论文** Overleaf 式 LaTeX 工作室（编辑 → 编译 → PDF 预览，每条报错可一键让 AI 修） · **文献** arXiv + Web 搜索、AI 相关度评分、全屏 PDF 阅读 · **实验** 指标对比图、一键生成论文图 · **图表** 上传/归纳命名/插入论文 · **组会** 一键生成组会 PPT（论文原图 + 可选 AI 配图） · **服务器** GPU 集群探测 + 远程任务 · **记录** 成长时间线 + 进展报告 + 认知简报
 - **Agent 工具与斜杠命令**：`/research-idea` `/research-plan` `/research-review` `/paper-write` `/paper-compile`，以及 `arxiv_search`、`web_search`、`wiki_note`、`figure_save`、`latex_compile`、`meeting_deck`
 - **九个内置科研技能**（文献综述、 novelty 检查、实验规划、引用审计、rebuttal……），直接教 agent 走流程，零配置
 
