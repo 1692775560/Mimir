@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import type { EventRecord, ResearchEventFilter, ResearchGenerateBriefOptions, ResearchProgressReportOptions } from 'dsh-mimir/types'
-import type { ResearchBriefView, ResearchFailureView, ResearchForagingSlice, ResearchLedgerView, ResearchReportView, ResearchWorktreeSlice } from './controller.ts'
+import type { ResearchBriefView, ResearchDigestSlice, ResearchFailureView, ResearchForagingSlice, ResearchLedgerView, ResearchReportView, ResearchWorktreeSlice } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 import type { ResearchT } from './view-common.ts'
 import { renderMarkdown } from './MarkdownView.tsx'
@@ -20,6 +20,7 @@ import { ViewHead } from './ViewHead.tsx'
 import { CognitiveBriefView } from './CognitiveBriefView.tsx'
 import { WorktreeView } from './WorktreeView.tsx'
 import { ForagingView } from './ForagingView.tsx'
+import { DigestView } from './DigestView.tsx'
 import {
   ACTOR_KEYS, LEDGER_LIST_LIMIT, LEDGER_WINDOWS,
   ledgerIsDestructive, ledgerPayloadLine, ledgerTimeParts, ledgerWindowFilter,
@@ -72,15 +73,18 @@ function LedgerRow({ event, t }: {
  * @returns the ledger view.
  */
 export function LedgerView({
-  ledger, report, brief, worktree, foraging, selectedProjectId, loadLedger, generateReport, generateBrief, addJournal,
+  ledger, report, brief, worktree, foraging, digest, selectedProjectId, loadLedger, generateReport, generateBrief, addJournal,
   ensureWorktree, refreshWorktree, setMainline, setIdeaParent, adoptIdea, closeIdea,
-  ensureForaging, refreshForaging, t,
+  ensureForaging, refreshForaging,
+  ensureDigest, refreshDigest, generateDigest, setEureka, pinMoment,
+  t,
 }: {
   readonly ledger: ResearchLedgerView
   readonly report: ResearchReportView
   readonly brief: ResearchBriefView
   readonly worktree: ResearchWorktreeSlice
   readonly foraging: ResearchForagingSlice
+  readonly digest: ResearchDigestSlice
   readonly selectedProjectId: string | null
   readonly loadLedger: (filter: ResearchEventFilter) => void
   readonly generateReport: (options: ResearchProgressReportOptions) => Promise<ResearchFailureView | null>
@@ -105,6 +109,20 @@ export function LedgerView({
   readonly ensureForaging: () => void
   /** Re-fetch the foraging layer (the card's refresh button). */
   readonly refreshForaging: () => void
+  /** Load the digest once, on the ledger view's first open (active push). */
+  readonly ensureDigest: () => void
+  /** Re-fetch the digest at its current tier/lang. */
+  readonly refreshDigest: () => void
+  /** Generate the digest at one tier/language. */
+  readonly generateDigest: (tier: 'weekly' | 'monthly' | 'project', lang: 'zh' | 'en') => Promise<ResearchFailureView | null>
+  /** Declare one Eureka (the researcher's own named milestone). */
+  readonly setEureka: (
+    ideaId: string | undefined,
+    projectId: string | undefined,
+    title: string,
+  ) => Promise<ResearchFailureView | null>
+  /** Pin (or unpin) one moment. */
+  readonly pinMoment: (targetEventId: string, note?: string | undefined) => Promise<ResearchFailureView | null>
   readonly t: ResearchT
 }) {
   // Named ledgerWindow (not `window`): the global window (timers, clipboard)
@@ -126,6 +144,10 @@ export function LedgerView({
   useEffect(() => {
     ensureForaging()
   }, [ensureForaging])
+  // The digest (B–F) pushes on the ledger view's first open.
+  useEffect(() => {
+    ensureDigest()
+  }, [ensureDigest])
 
   const refresh = (): void => {
     loadLedger(ledgerWindowFilter(ledgerWindow, scopedProjectId, Date.now()))
@@ -228,6 +250,18 @@ export function LedgerView({
       <ForagingView
         foraging={foraging}
         refreshForaging={refreshForaging}
+        t={t}
+      />
+
+      {/* The digest (B–F): six-perspective capsules + Eureka EWS, pushed on
+          open, switched by tier/language, rendered as the model itself. */}
+      <DigestView
+        digest={digest}
+        selectedProjectId={selectedProjectId}
+        refreshDigest={refreshDigest}
+        generateDigest={generateDigest}
+        setEureka={setEureka}
+        pinMoment={pinMoment}
         t={t}
       />
 

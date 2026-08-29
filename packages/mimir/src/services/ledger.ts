@@ -12,6 +12,7 @@ import {
   appendEvent,
   buildProgressReport,
   emitEvent,
+  EVENT_PAYLOAD_MAX_CHARS,
   JOURNAL_TEXT_MAX_CHARS,
   LIST_EVENTS_MAX_LIMIT,
   listEvents,
@@ -21,6 +22,10 @@ import { deriveBrief, JOURNAL_ACTION, QUESTION_ANSWERED_ACTION, QUESTION_SHOWED_
 import type { CbeBriefWindow, CbeWikiSnapshot } from '../cognitive-map.ts'
 import { evidenceModelAt, evidenceProfileOf } from '../cbe-engine.ts'
 import { deriveForaging } from '../foraging.ts'
+import { deriveLibraryThemes } from '../library-themes.ts'
+import { deriveHabits } from '../habits.ts'
+import { renderJournalDraft } from '../journal-draft.ts'
+import type { JournalDraftKind } from '../journal-draft.ts'
 import {
   deriveWorktree,
   ideaParentEdges,
@@ -32,6 +37,11 @@ import type {
   CbeMainlineDeclaration,
   CbeWorktreeLane,
 } from '../worktree.ts'
+import { EUREKA_ACTION } from '../eureka.ts'
+import { MOMENT_PIN_ACTION } from '../moment-index.ts'
+import { assembleDigest } from '../report-tier.ts'
+import type { CbeDigestTier } from '../report-tier.ts'
+import { renderDigest } from '../render-digest.ts'
 import type {
   EventRefs,
   LedgerActorKind,
@@ -41,8 +51,11 @@ import type {
   ResearchAdoptIdeaResult,
   ResearchGenerateBriefOptions,
   ResearchGenerateBriefResult,
+  ResearchGenerateJournalDraftResult,
   ResearchGetEvidenceProfileResult,
   ResearchGetForagingResult,
+  ResearchGetHabitsResult,
+  ResearchGetLibraryThemesResult,
   ResearchGetWorktreeResult,
   ResearchListEventsResult,
   ResearchProgressReportOptions,
@@ -51,6 +64,10 @@ import type {
   ResearchSetMainlineResult,
   ResearchWorktreeMainlineView,
   ResearchWorktreeView,
+  ResearchSetEurekaResult,
+  ResearchPinMomentResult,
+  ResearchGenerateDigestResult,
+  ResearchGenerateDigestOptions,
 } from '../types.ts'
 import { rejected, success } from './common.ts'
 
@@ -58,6 +75,42 @@ import { rejected, success } from './common.ts'
 export interface LedgerDeps {
   /** Open research-wiki domain (the ledger's events table lives here). */
   readonly domain: ResearchWikiDomain
+}
+
+/** The default comparison span every window-bounded organ falls back to. */
+const DEFAULT_SPAN_DAYS = 30
+
+const MS_PER_DAY = 86_400_000
+
+/**
+ * Snapshot the wiki tables the cognitive layer reads. The library is
+ * deliberately NOT part of this snapshot: the shelf is not a line, carries
+ * no drift, and is read directly by {@link module:dsh-mimir/src/library-themes}.
+ */
+function wikiSnapshot(domain: ResearchWikiDomain): CbeWikiSnapshot {
+  return {
+    ideas: [...domain.table('ideas').entries()].map(([, record]) => record),
+    claims: [...domain.table('claims').entries()].map(([, record]) => record),
+    projects: [...domain.table('projects').entries()].map(([, record]) => record),
+  }
+}
+
+/**
+ * Resolve one window's bounds: an explicit `since` wins, otherwise the
+ * caller's span (or {@link DEFAULT_SPAN_DAYS}) is counted back from `until`
+ * — so an unbounded call compares like with like instead of against all of
+ * history.
+ */
+function resolveWindow(
+  since: string | undefined,
+  until: string | undefined,
+  spanDays: number,
+): { readonly since: string; readonly until: string } {
+  const untilIso = until ?? new Date().toISOString()
+  if (since !== undefined) return { since, until: untilIso }
+  const parsed = Date.parse(untilIso)
+  const anchor = Number.isNaN(parsed) ? Date.now() : parsed
+  return { since: new Date(anchor - spanDays * MS_PER_DAY).toISOString(), until: untilIso }
 }
 
 /**
@@ -206,11 +259,7 @@ export async function generateBriefRemote(
       ...(options.until === undefined ? {} : { until: options.until }),
       limit: LIST_EVENTS_MAX_LIMIT,
     })
-    const wiki: CbeWikiSnapshot = {
-      ideas: [...deps.domain.table('ideas').entries()].map(([, record]) => record),
-      claims: [...deps.domain.table('claims').entries()].map(([, record]) => record),
-      projects: [...deps.domain.table('projects').entries()].map(([, record]) => record),
-    }
+    const wiki = wikiSnapshot(deps.domain)
     const brief = deriveBrief(events, wiki, window, Date.now())
     const questions = briefQuestions(brief, wiki)
     // I4 instrumentation: the map records that it asked — the meta event is
@@ -404,11 +453,7 @@ export async function getEvidenceProfileRemote(deps: LedgerDeps): Promise<Resear
 export async function getForagingRemote(deps: LedgerDeps): Promise<ResearchGetForagingResult> {
   try {
     const events = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
-    const wiki: CbeWikiSnapshot = {
-      ideas: [...deps.domain.table('ideas').entries()].map(([, record]) => record),
-      claims: [...deps.domain.table('claims').entries()].map(([, record]) => record),
-      projects: [...deps.domain.table('projects').entries()].map(([, record]) => record),
-    }
+    const wiki = wikiSnapshot(deps.domain)
     const layer = deriveForaging(events, wiki, Date.now())
     return success({
       foraging: {
@@ -468,11 +513,7 @@ function declaredView(
 export async function getWorktreeRemote(deps: LedgerDeps): Promise<ResearchGetWorktreeResult> {
   try {
     const events = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
-    const wiki: CbeWikiSnapshot = {
-      ideas: [...deps.domain.table('ideas').entries()].map(([, record]) => record),
-      claims: [...deps.domain.table('claims').entries()].map(([, record]) => record),
-      projects: [...deps.domain.table('projects').entries()].map(([, record]) => record),
-    }
+    const wiki = wikiSnapshot(deps.domain)
     const tree = deriveWorktree(events, wiki, Date.now())
     const labels = worktreeLabels(wiki)
     const lanes = tree.lanes.map((lane: CbeWorktreeLane) => Object.freeze({
@@ -722,5 +763,354 @@ export async function adoptIdeaRemote(
     return success({ event })
   } catch {
     return rejected({ code: 'operation-failed', message: 'the adoption could not be written' })
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Library themes (S5): the shelf's own drift. Pure E0 counts over the
+ * `papers` table — no inference, and never a reading recommendation.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Read the library's theme drift: the theme mix of the papers collected in
+ * one window against the equal-length window before it. `tag` themes are
+ * the researcher's own words; `keyword` themes are repeated strings over
+ * title+summary and are DESCRIPTIVE only. Below the floor the comparison
+ * stays silent (I2's rule) while the bare counts still render. Omitted
+ * bounds fall back to the last {@link DEFAULT_SPAN_DAYS} days.
+ * @param deps - open wiki domain.
+ * @param request - the optional window bounds.
+ * @returns the derived theme layer.
+ */
+export async function getLibraryThemesRemote(
+  deps: LedgerDeps,
+  request: {
+    since?: string | undefined
+    until?: string | undefined
+  },
+): Promise<ResearchGetLibraryThemesResult> {
+  try {
+    const window = resolveWindow(request.since, request.until, DEFAULT_SPAN_DAYS)
+    const papers = [...deps.domain.table('papers').entries()].map(([, record]) => record)
+    const layer = deriveLibraryThemes(papers, window.since, window.until, Date.now())
+    return success({
+      themes: {
+        derivedAt: layer.asOf,
+        current: layer.current,
+        previous: layer.previous,
+        drift: layer.drift,
+        newThemes: layer.newThemes,
+        departedThemes: layer.departedThemes,
+        speaks: layer.speaks,
+      },
+    })
+  } catch {
+    return rejected({ code: 'operation-failed', message: 'the library themes could not be derived' })
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Habits (S6): the researcher's own rhythm. Description only — the origin
+ * rule forbids telling a researcher when to sit down.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Read the habit profile: sittings (cut at the map's own session gap),
+ * their median and longest length, the local hours and weekdays that carry
+ * the load, and the consecutive-day streak. Hours and weekdays are LOCAL —
+ * "late evening" must mean the evening the researcher lived. Silent below
+ * {@link CBE_HABIT_MIN_SESSIONS}; a pure query that writes nothing.
+ * @param deps - open wiki domain.
+ * @param request - the optional window bounds.
+ * @returns the derived habit profile.
+ */
+export async function getHabitsRemote(
+  deps: LedgerDeps,
+  request: {
+    since?: string | undefined
+    until?: string | undefined
+  },
+): Promise<ResearchGetHabitsResult> {
+  try {
+    const window = resolveWindow(request.since, request.until, DEFAULT_SPAN_DAYS)
+    const events = await listEvents(deps.domain, {
+      since: window.since,
+      until: window.until,
+      limit: LIST_EVENTS_MAX_LIMIT,
+    })
+    const profile = deriveHabits(events, window.since, window.until, Date.now())
+    return success({
+      habits: {
+        derivedAt: profile.asOf,
+        eventCount: profile.eventCount,
+        sessionCount: profile.sessionCount,
+        medianSessionMinutes: profile.medianSessionMinutes,
+        longestSessionMinutes: profile.longestSessionMinutes,
+        activeHours: profile.activeHours,
+        weekdayHistogram: profile.weekdayHistogram,
+        activeDays: profile.activeDays,
+        currentStreakDays: profile.currentStreakDays,
+        speaks: profile.speaks,
+      },
+    })
+  } catch {
+    return rejected({ code: 'operation-failed', message: 'the habit profile could not be derived' })
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Journal draft (S7): the day already written out. This is the organ that
+ * answers "why not Notion" — the researcher edits a draft, not a blank page.
+ * ------------------------------------------------------------------------ */
+
+/** Calendar days each draft kind covers (a month is 30 for a like-for-like span). */
+const DRAFT_SPAN_DAYS: Readonly<Record<JournalDraftKind, number>> = {
+  day: 1,
+  week: 7,
+  month: 30,
+}
+
+/**
+ * Render the pre-filled journal draft: every section is a machine fact
+ * written out as a sentence, and only the final bracketed slot is left for
+ * words a person must supply. A pure query — it writes nothing (saving the
+ * draft is {@link addJournalEntryRemote}'s job).
+ * @param deps - open wiki domain.
+ * @param request - the draft kind, language, and optional scope.
+ * @returns the Markdown draft plus the event count it covered.
+ */
+export async function generateJournalDraftRemote(
+  deps: LedgerDeps,
+  request: {
+    kind?: string | undefined
+    lang?: string | undefined
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  },
+): Promise<ResearchGenerateJournalDraftResult> {
+  const kind = request.kind ?? 'day'
+  if (kind !== 'day' && kind !== 'week' && kind !== 'month') {
+    return rejected({ code: 'invalid-input', message: `kind must be 'day', 'week' or 'month', got '${kind}'` })
+  }
+  const lang = request.lang ?? 'zh'
+  if (lang !== 'zh' && lang !== 'en') {
+    return rejected({ code: 'invalid-input', message: `lang must be 'zh' or 'en', got '${lang}'` })
+  }
+  if (request.projectId !== undefined
+    && deps.domain.table('projects').get(request.projectId) === undefined) {
+    return rejected({ code: 'project-not-found', projectId: request.projectId })
+  }
+  try {
+    const nowMs = Date.now()
+    const window = resolveWindow(request.since, request.until, DRAFT_SPAN_DAYS[kind])
+    const events = await listEvents(deps.domain, {
+      ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+      since: window.since,
+      until: window.until,
+      limit: LIST_EVENTS_MAX_LIMIT,
+    })
+    const wiki = wikiSnapshot(deps.domain)
+    const papers = [...deps.domain.table('papers').entries()].map(([, record]) => record)
+    const briefWindow: CbeBriefWindow = {
+      since: window.since,
+      until: window.until,
+      projectId: request.projectId ?? null,
+    }
+    const brief = deriveBrief(events, wiki, briefWindow, nowMs)
+    const markdown = renderJournalDraft({
+      kind,
+      brief,
+      themes: deriveLibraryThemes(papers, window.since, window.until, nowMs),
+      habits: deriveHabits(events, window.since, window.until, nowMs),
+      lang,
+    })
+    return success({
+      markdown,
+      generatedAt: new Date(nowMs).toISOString(),
+      kind,
+      eventCount: events.length,
+    })
+  } catch (error) {
+    return rejected({
+      code: 'invalid-input',
+      message: error instanceof RangeError ? error.message : 'journal draft options are invalid',
+    })
+  }
+}
+
+/** Report depths map to a default look-back span (days) when no bounds given. */
+const DIGEST_SPAN_DAYS: Readonly<Record<CbeDigestTier, number>> = {
+  weekly: 7,
+  monthly: 30,
+  // Project summaries default to the whole ledger (resolved from the earliest
+  // event) rather than a fixed span; this value only applies when `since` is
+  // supplied explicitly, in which case it is ignored.
+  project: 30,
+}
+
+/**
+ * Declare one Eureka — a milestone the researcher names themselves (the
+ * system never declares one; it only describes the entropy a declared
+ * Eureka led in with, long after the fact). Exactly one ref is required
+ * (an idea or a project), the title is required and payload-capped, and the
+ * event lands under the PANEL actor. No prediction is made and no
+ * "you are approaching an insight" prompt is ever emitted — the EWS layers
+ * only read back the lead-in window of *already declared* Eurekas.
+ * @param deps - open wiki domain.
+ * @param request - the ref plus the human-given title.
+ * @returns the stored eureka declaration event.
+ */
+export async function setEurekaRemote(
+  deps: LedgerDeps,
+  request: {
+    ideaId?: string | undefined
+    projectId?: string | undefined
+    title: string
+  },
+): Promise<ResearchSetEurekaResult> {
+  const { ideaId, projectId, title } = request
+  if ((ideaId === undefined) === (projectId === undefined)) {
+    return rejected({
+      code: 'invalid-input',
+      message: 'setEureka takes exactly one of ideaId or projectId',
+    })
+  }
+  if (typeof title !== 'string' || title.trim() === '') {
+    return rejected({ code: 'invalid-input', message: 'eureka title must not be empty' })
+  }
+  if (title.length > EVENT_PAYLOAD_MAX_CHARS) {
+    return rejected({
+      code: 'invalid-input',
+      message: `eureka title is capped at ${EVENT_PAYLOAD_MAX_CHARS} characters`,
+    })
+  }
+  try {
+    const event = await appendEvent(deps.domain, {
+      actor: PANEL_ACTOR,
+      action: EUREKA_ACTION,
+      refs: ideaId !== undefined ? { ideaId } : { projectId: projectId as string },
+      payload: { title },
+    })
+    return success({ event })
+  } catch {
+    return rejected({ code: 'operation-failed', message: 'the eureka declaration could not be written' })
+  }
+}
+
+/**
+ * Pin (or unpin) one moment — the explicit, user-refusable bookmark of a
+ * curated instant. The target is a prior event id carried in the payload
+ * (the moment index reads `payload.targetEventId`); `pinned` defaults to
+ * `true`. An unpin is a declaration too (a new event with `pinned: false`),
+ * never a deletion — the stream stays append-only.
+ * @param deps - open wiki domain.
+ * @param request - the target event, optional note, and pin state.
+ * @returns the stored pin event.
+ */
+export async function pinMomentRemote(
+  deps: LedgerDeps,
+  request: {
+    targetEventId: string
+    note?: string | undefined
+    pinned?: boolean | undefined
+  },
+): Promise<ResearchPinMomentResult> {
+  const { targetEventId, note, pinned } = request
+  if (typeof targetEventId !== 'string' || targetEventId === '') {
+    return rejected({ code: 'invalid-input', message: 'targetEventId must be a non-empty string' })
+  }
+  if (note !== undefined && note.length > EVENT_PAYLOAD_MAX_CHARS) {
+    return rejected({
+      code: 'invalid-input',
+      message: `moment note is capped at ${EVENT_PAYLOAD_MAX_CHARS} characters`,
+    })
+  }
+  try {
+    const event = await appendEvent(deps.domain, {
+      actor: PANEL_ACTOR,
+      action: MOMENT_PIN_ACTION,
+      refs: {},
+      payload: { targetEventId, note: note ?? null, pinned: pinned ?? true },
+    })
+    return success({ event })
+  } catch {
+    return rejected({ code: 'operation-failed', message: 'the moment pin could not be written' })
+  }
+}
+
+/**
+ * Assemble one digest (weekly / monthly / project) as a pure fold over the
+ * ledger, the wiki, and the papers table, then render it as MMS. The tier
+ * decides depth — a weekly report is light, a project summary is heavy (it
+ * adds the Eureka EWS table and the Mermaid worktree). When no `since` is
+ * given, weekly/monthly fall back to their span; the project tier falls back
+ * to the earliest event in the ledger so the whole history is in scope. The
+ * assembled model is a plain data object — no prediction, no prompt.
+ * @param deps - open wiki domain.
+ * @param request - tier, window bounds, and language.
+ * @returns the report model, its MMS string, and the resolved tier/lang.
+ */
+export async function generateDigestRemote(
+  deps: LedgerDeps,
+  request: ResearchGenerateDigestOptions,
+): Promise<ResearchGenerateDigestResult> {
+  const tier = request.tier ?? 'weekly'
+  if (!(['weekly', 'monthly', 'project'] as const).includes(tier as CbeDigestTier)) {
+    return rejected({
+      code: 'invalid-input',
+      message: `tier must be 'weekly', 'monthly' or 'project', got '${tier}'`,
+    })
+  }
+  const safeTier = tier as CbeDigestTier
+  const lang = request.lang ?? 'zh'
+  if (lang !== 'zh' && lang !== 'en') {
+    return rejected({ code: 'invalid-input', message: `lang must be 'zh' or 'en', got '${lang}'` })
+  }
+  const nowMs = Date.now()
+  let window: { readonly since: string; readonly until: string }
+  if (safeTier === 'project' && request.since === undefined) {
+    const all = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
+    const earliestMs = all.reduce((min, event) => {
+      const ms = Date.parse(event.ts)
+      return Number.isNaN(ms) ? min : Math.min(min, ms)
+    }, nowMs)
+    window = {
+      since: new Date(earliestMs).toISOString(),
+      until: request.until ?? new Date(nowMs).toISOString(),
+    }
+  } else {
+    window = resolveWindow(request.since, request.until, DIGEST_SPAN_DAYS[safeTier])
+  }
+  try {
+    const events = await listEvents(deps.domain, {
+      since: window.since,
+      until: window.until,
+      limit: LIST_EVENTS_MAX_LIMIT,
+    })
+    const wiki = wikiSnapshot(deps.domain)
+    const papers = [...deps.domain.table('papers').entries()].map(([, record]) => record)
+    const digest = assembleDigest({
+      events,
+      wiki,
+      papers,
+      since: window.since,
+      until: window.until,
+      tier: safeTier,
+      nowMs,
+    })
+    const markdown = renderDigest(digest, lang as 'zh' | 'en')
+    return success({
+      digest,
+      markdown,
+      tier: safeTier,
+      lang,
+      generatedAt: new Date(nowMs).toISOString(),
+    })
+  } catch (error) {
+    return rejected({
+      code: 'invalid-input',
+      message: error instanceof RangeError ? error.message : 'digest options are invalid',
+    })
   }
 }

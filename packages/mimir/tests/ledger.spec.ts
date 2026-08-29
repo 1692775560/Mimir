@@ -731,7 +731,9 @@ describe('worktree remotes (S2 service wiring)', () => {
   })
 
   it('closeIdea writes the documented No end to end: record, event, origin, GUT', async () => {
-    const now = Date.parse('2026-08-27T00:00:00.000Z')
+    // The close below rides the REAL clock, so the anchor must too — a
+    // hardcoded date makes GUT drift by however many days have passed since.
+    const now = Date.now()
     const { domain, service } = await serviceHarness()
     await domain.table('ideas').put(SIDE.id, SIDE)
     await appendEvent(domain, {
@@ -773,8 +775,10 @@ describe('worktree remotes (S2 service wiring)', () => {
     const lane = tree.value.worktree.lanes.find(item => item.lineId === 'i2')
     expect(lane?.status).toBe('failed')
     expect(lane?.closeReason).toBe('no effect under load')
-    // GUT: last touch 6 days before the close (the close rides the real clock).
-    expect(lane?.gutDays).toBeGreaterThan(6)
+    // GUT: last touch 6 days before the close (the close rides the real
+    // clock). The derivation rounds to 3 decimals, so "6 days plus the
+    // milliseconds it takes to close" reads as exactly 6 — hence >= not >.
+    expect(lane?.gutDays).toBeGreaterThanOrEqual(6)
     expect(lane?.gutDays).toBeLessThan(7)
   })
 

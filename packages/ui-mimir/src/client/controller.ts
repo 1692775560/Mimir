@@ -64,6 +64,11 @@ import type {
   ResearchFiguresResult,
   ResearchGenerateBriefOptions,
   ResearchGenerateBriefResult,
+  ResearchGenerateDigestResult,
+  ResearchDigestView,
+  ResearchDigestTier,
+  ResearchSetEurekaResult,
+  ResearchPinMomentResult,
   ResearchJournalQuestionRef,
   ResearchImportBibResult,
   ResearchImportPaperResult,
@@ -122,6 +127,15 @@ import type {
   WebSearchEntry,
   ZoteroCollectionView,
   ZoteroItemView,
+} from 'dsh-mimir/types'
+
+// Re-exported so view components (DigestView) can import these model types
+// from the controller module rather than reaching into the package directly.
+export type {
+  ResearchDigestView,
+  ResearchDigestTier,
+  ResearchExperienceCapsule,
+  ResearchCapsulePerspective,
 } from 'dsh-mimir/types'
 
 /**
@@ -321,6 +335,25 @@ export interface ResearchRemote {
     ideaId: string
     reason: string
   }) => Promise<RemoteResult<ResearchCloseIdeaResult>>
+  /** Assemble one digest (weekly / monthly / project) as a pure fold, rendered as MMS. */
+  generateDigest: (request: {
+    tier?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+    lang?: string | undefined
+  }) => Promise<RemoteResult<ResearchGenerateDigestResult>>
+  /** Declare one Eureka — the researcher's own named milestone (never system-declared). */
+  setEureka: (request: {
+    ideaId?: string | undefined
+    projectId?: string | undefined
+    title: string
+  }) => Promise<RemoteResult<ResearchSetEurekaResult>>
+  /** Pin (or unpin) one moment — the explicit bookmark of a curated instant. */
+  pinMoment: (request: {
+    targetEventId: string
+    note?: string | undefined
+    pinned?: boolean | undefined
+  }) => Promise<RemoteResult<ResearchPinMomentResult>>
 }
 
 /** Quiet period after the last keystroke before the draft autosaves. */
@@ -528,6 +561,26 @@ export interface ResearchWorktreeSlice {
   readonly failure: ResearchFailureView | null
 }
 
+/**
+ * The digest (B–F) slice: the weekly / monthly / project report as a
+ * generated model. It is generation-driven (like the brief) but pushed
+ * proactively when the ledger view first opens. The model is a plain data
+ * object — no prediction, no "you are near an insight" prompt.
+ */
+export interface ResearchDigestSlice {
+  readonly status: 'idle' | 'loading' | 'ready' | 'error'
+  /** The depth last requested (or `weekly` before the first generation). */
+  readonly tier: ResearchDigestTier
+  /** The language the report model + MMS were rendered in. */
+  readonly lang: 'zh' | 'en'
+  /** The assembled report model (rendered directly by DigestView); null until ready. */
+  readonly report: ResearchDigestView | null
+  /** The MMS string for copy / download into a wiki, Obsidian, or GitHub. */
+  readonly markdown: string
+  readonly generatedAt: string | null
+  readonly failure: ResearchFailureView | null
+}
+
 /** The foraging (S4) slice: the territory ledger + GUT baseline, cold until opened. */
 export interface ResearchForagingSlice {
   readonly status: ResearchLoadStatus
@@ -609,6 +662,8 @@ export interface ResearchView {
   readonly worktree: ResearchWorktreeSlice
   /** The ledger view's foraging layer (S4): territories, the GUT baseline, the GUT cards. */
   readonly foraging: ResearchForagingSlice
+  /** The ledger view's digest (B–F): six-perspective capsules + Eureka EWS, pushed on open. */
+  readonly digest: ResearchDigestSlice
   /** The corner toast queue (oldest first); the host component sweeps expiries. */
   readonly toasts: readonly ResearchToast[]
   /** Scheduled-backup status for the overview; null until loaded (or on failure). */
@@ -653,6 +708,7 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   brief: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, derivationVersion: null, recalibrated: false, questions: Object.freeze([]), failure: null }),
   worktree: Object.freeze({ status: 'cold', view: null, failure: null }),
   foraging: Object.freeze({ status: 'cold', view: null, failure: null }),
+  digest: Object.freeze({ status: 'idle', tier: 'weekly', lang: 'zh', report: null, markdown: '', generatedAt: null, failure: null }),
   toasts: Object.freeze([]),
   backup: null,
   paperJump: null,
@@ -700,6 +756,10 @@ export class ResearchController implements HostObservable<ResearchView> {
   private ledgerGeneration = 0
   private reportGeneration = 0
   private briefGeneration = 0
+  /** In-flight digest generation counter (the supersede contract). */
+  private digestGeneration = 0
+  /** In-flight digest load guard (the ensure contract). */
+  private digestPromise: Promise<ResearchFailureView | null> | null = null
   /** In-flight worktree load guard (the ensure/refresh contract). */
   private worktreePromise: Promise<void> | null = null
   /** In-flight foraging load guard (the ensure/refresh contract). */
@@ -1015,6 +1075,115 @@ export class ResearchController implements HostObservable<ResearchView> {
         this.publish({ brief: Object.freeze({ ...this.view.brief, status: 'error', failure }) })
       }
       return failure
+    }
+  }
+
+  /**
+   * Generate the digest (B–F) of one tier (the digest card's tier switch, or
+   * the proactive first-open push): publish `loading`, then the assembled
+   * report model + MMS string, or the settled failure. A newer generation
+   * supersedes an in-flight one.
+   * @param tier - weekly / monthly / project.
+   * @param lang - zh / en.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async generateDigest(tier: ResearchDigestTier, lang: 'zh' | 'en'): Promise<ResearchFailureView | null> {
+    this.digestGeneration += 1
+    const generation = this.digestGeneration
+    this.publish({
+      digest: Object.freeze({ ...this.view.digest, status: 'loading', tier, lang }),
+    })
+    try {
+      const carried = await this.remote.generateDigest({ tier, lang })
+      if (this.disposed || generation !== this.digestGeneration) return null
+      if (!carried.ok) {
+        const failure = failureOf(carried.error.code, carried.error.message)
+        this.publish({ digest: Object.freeze({ ...this.view.digest, status: 'error', failure }) })
+        return failure
+      }
+      const result = carried.value
+      if (!result.ok) {
+        const failure = businessFailure(result.error)
+        this.publish({ digest: Object.freeze({ ...this.view.digest, status: 'error', failure }) })
+        return failure
+      }
+      this.publish({
+        digest: Object.freeze({
+          status: 'ready',
+          tier: result.value.tier,
+          lang: result.value.lang,
+          report: result.value.digest,
+          markdown: result.value.markdown,
+          generatedAt: result.value.generatedAt,
+          failure: null,
+        }),
+      })
+      return null
+    } catch (error) {
+      const failure = transportFailure(error)
+      if (!this.disposed && generation === this.digestGeneration) {
+        this.publish({ digest: Object.freeze({ ...this.view.digest, status: 'error', failure }) })
+      }
+      return failure
+    }
+  }
+
+  /** Load the digest once, on the ledger view's first open (active push). */
+  ensureDigest(): void {
+    if (this.view.digest.status !== 'idle' || this.digestPromise !== null) return
+    this.digestPromise = this.generateDigest('weekly', 'zh').finally(() => { this.digestPromise = null })
+  }
+
+  /** Re-fetch the digest at its current tier/lang (the card's refresh button). */
+  refreshDigest(): void {
+    if (this.digestPromise !== null) return
+    void this.generateDigest(this.view.digest.tier, this.view.digest.lang)
+  }
+
+  /**
+   * Declare one Eureka (the digest card's "name a milestone" form) — the
+   * researcher's own words; the system never declares one and never prompts
+   * "you are near an insight". A success toasts once and refreshes the digest
+   * so the new milestone's lead-in EWS appears.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async setEureka(
+    ideaId: string | undefined,
+    projectId: string | undefined,
+    title: string,
+  ): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setEureka({ ideaId, projectId, title })
+      if (!carried.ok) { this.notify('error', 'eureka.failed'); return failureOf(carried.error.code, carried.error.message) }
+      const result = carried.value
+      if (!result.ok) { this.notify('error', 'eureka.failed'); return businessFailure(result.error) }
+      this.notify('success', 'eureka.ready')
+      if (this.view.digest.status === 'ready') void this.generateDigest(this.view.digest.tier, this.view.digest.lang)
+      return null
+    } catch (error) {
+      this.notify('error', 'eureka.failed')
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Pin one moment (a capsule's pin affordance) — the explicit bookmark of a
+   * curated instant. A success toasts once and refreshes the digest so the
+   * pinned moment's capsule updates.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  async pinMoment(targetEventId: string, note?: string | undefined): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.pinMoment({ targetEventId, note, pinned: true })
+      if (!carried.ok) { this.notify('error', 'moment.failed'); return failureOf(carried.error.code, carried.error.message) }
+      const result = carried.value
+      if (!result.ok) { this.notify('error', 'moment.failed'); return businessFailure(result.error) }
+      this.notify('success', 'moment.pinned')
+      if (this.view.digest.status === 'ready') void this.generateDigest(this.view.digest.tier, this.view.digest.lang)
+      return null
+    } catch (error) {
+      this.notify('error', 'moment.failed')
+      return transportFailure(error)
     }
   }
 

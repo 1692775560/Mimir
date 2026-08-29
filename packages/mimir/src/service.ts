@@ -26,9 +26,15 @@ import type {
   ResearchAdoptIdeaResult,
   ResearchGetEvidenceProfileResult,
   ResearchGetForagingResult,
+  ResearchGetHabitsResult,
+  ResearchGetLibraryThemesResult,
+  ResearchGenerateJournalDraftResult,
   ResearchGetWorktreeResult,
   ResearchSetIdeaParentResult,
   ResearchSetMainlineResult,
+  ResearchSetEurekaResult,
+  ResearchPinMomentResult,
+  ResearchGenerateDigestResult,
   ResearchBibliographyResult,
   ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
@@ -642,6 +648,68 @@ export class ResearchService extends TypertRemoteService {
     question?: { kind: string; lineId: string } | undefined
   }): Promise<ResearchAddJournalEntryResult> {
     return ledger.addJournalEntryRemote(this.deps, request)
+  }
+
+  // library themes (S5): the shelf's own drift — no inference, no advice
+  @Remote('getLibraryThemes')
+  getLibraryThemes(request: {
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchGetLibraryThemesResult> {
+    return ledger.getLibraryThemesRemote(this.deps, request)
+  }
+
+  // habits (S6): the researcher's own rhythm — description only
+  @Remote('getHabits')
+  getHabits(request: {
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchGetHabitsResult> {
+    return ledger.getHabitsRemote(this.deps, request)
+  }
+
+  // journal draft (S7): the day already written out, not a blank page
+  @Remote('generateJournalDraft')
+  generateJournalDraft(request: {
+    kind?: string | undefined
+    lang?: string | undefined
+    projectId?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+  }): Promise<ResearchGenerateJournalDraftResult> {
+    return ledger.generateJournalDraftRemote(this.deps, request)
+  }
+
+  // humanized ledger (B–F): eureka declaration, moment pins, digest report.
+  // The system never declares an insight and never prompts "you are near one";
+  // these verbs only record the researcher's own declarations and fold the
+  // already-written record into a description.
+  @Remote('setEureka')
+  setEureka(request: {
+    ideaId?: string | undefined
+    projectId?: string | undefined
+    title: string
+  }): Promise<ResearchSetEurekaResult> {
+    return ledger.setEurekaRemote(this.deps, request)
+  }
+
+  @Remote('pinMoment')
+  pinMoment(request: {
+    targetEventId: string
+    note?: string | undefined
+    pinned?: boolean | undefined
+  }): Promise<ResearchPinMomentResult> {
+    return ledger.pinMomentRemote(this.deps, request)
+  }
+
+  @Remote('generateDigest')
+  generateDigest(request: {
+    tier?: string | undefined
+    since?: string | undefined
+    until?: string | undefined
+    lang?: string | undefined
+  }): Promise<ResearchGenerateDigestResult> {
+    return ledger.generateDigestRemote(this.deps, request)
   }
 
   // worktree domain (S2): the research process as a git-like working tree

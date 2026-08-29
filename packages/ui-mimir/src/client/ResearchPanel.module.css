@@ -5344,18 +5344,16 @@ li.dropIndicator {
 
 .ledger .retry { color: var(--clay-accent); }
 
-/* ── Branch flow (git-workflow illustration form, clay skin) ───────────── */
+/* ── Branch flow (clean branch-graph vocabulary: white canvas, light grey
+      connectors, bright white-ringed nodes) ───────────────────────────── */
 
 .worktreeFlowBox {
   position: relative;
   margin: 0 0 12px;
-  border-radius: 18px;
-  background: var(--clay-tray, #e9dcd1);
-  box-shadow:
-    inset 0 7px 14px rgba(var(--clay-sh, 92, 72, 58), 0.18),
-    inset 0 -5px 10px rgba(255, 255, 255, 0.4),
-    0 1px 0 rgba(255, 255, 255, 0.5);
-  padding: 6px 4px 2px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #EFEFF2;
+  padding: 10px 6px 4px;
   overflow: auto;
 }
 
@@ -5366,51 +5364,111 @@ li.dropIndicator {
   height: auto;
 }
 
-/* Fat matte strokes = clay rolls. */
+/* Flat connectors on the light grey rail — the lane's own colour lives on
+   its pill and its nodes, so the graph stays calm with many lanes. */
 .worktreeFlowCurve,
 .worktreeFlowMain,
 .worktreeFlowAdopted,
 .worktreeFlowDead {
   fill: none;
   stroke-linecap: round;
-  filter: drop-shadow(0 2px 2px rgba(92, 72, 58, 0.22));
 }
 
-.worktreeFlowCurve { stroke-width: 7; }
-.worktreeFlowMain { stroke-width: 10; }
-.worktreeFlowAdopted { stroke-width: 7.5; }
-.worktreeFlowDead { stroke-width: 5; opacity: 0.5; }
+.worktreeFlowCurve { stroke-width: 4; }
+.worktreeFlowMain { stroke-width: 6; }
+.worktreeFlowAdopted { stroke-width: 4.5; }
+.worktreeFlowDead { stroke-width: 3; opacity: 0.6; stroke-dasharray: 5 4; }
 
+/* White ring + saturated fill: the node reads as a bead, not a blob. */
 .worktreeFlowBead,
 .worktreeFlowBeadMeta,
 .worktreeFlowBeadTerminal {
-  stroke: rgba(255, 255, 255, 0.75);
-  stroke-width: 1.4;
-  filter: drop-shadow(0 1.5px 1.5px rgba(92, 72, 58, 0.3));
+  stroke: #ffffff;
+  stroke-width: 2.2;
 }
 
-.worktreeFlowBeadMeta { stroke: rgba(255, 255, 255, 0.5); opacity: 0.85; }
+.worktreeFlowBeadMeta { stroke-width: 1.6; opacity: 0.9; }
 
 .worktreeFlowBeadTerminal {
-  stroke-width: 2.4;
+  stroke-width: 3;
 }
 
 .worktreeFlowEpoch {
-  stroke: var(--clay-ink3, #ac9a8d);
+  stroke: #C9CDD4;
   stroke-width: 1;
-  stroke-dasharray: 2 5;
+  stroke-dasharray: 3 5;
 }
 
 .worktreeFlowNow {
-  stroke: var(--clay-accent, #d98a68);
-  stroke-width: 1.4;
-  opacity: 0.45;
+  stroke: #FF7F6E;
+  stroke-width: 1.6;
+  opacity: 0.6;
 }
 
 .worktreeFlowNote {
-  margin: 4px 8px 6px;
+  margin: 4px 8px 2px;
   font-size: 11px;
-  color: var(--clay-ink3, #ac9a8d);
+  color: #9AA0A6;
+}
+
+/* The highlight strip: memorable beats as soft pills, colour-coded by kind
+   so the eye finds the shape of the journey before reading a word. */
+.worktreeHighlights {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #FAFBFC;
+  border: 1px solid #EFF1F3;
+}
+
+.worktreeHighlightsTitle {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #9AA0A6;
+}
+
+.worktreeHighlightList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.worktreeHighlight {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  border: 1px solid #E8EAED;
+  font-size: 12px;
+  color: #4A4F55;
+}
+
+.worktreeHighlight[data-kind='eureka'] { border-color: #FFD7D0; background: #FFF6F4; }
+.worktreeHighlight[data-kind='mainline'] { border-color: #D6E9FA; background: #F4F9FE; }
+.worktreeHighlight[data-kind='adopted'] { border-color: #CFEBD6; background: #F3FBF5; }
+.worktreeHighlight[data-kind='failed'] { border-color: #FADCE6; background: #FEF7F9; }
+.worktreeHighlight[data-kind='busiest'] { border-color: #E4E1FA; background: #F7F6FE; }
+
+/* The lane pill: a saturated badge carrying the lane's own hue, so the
+   label below the graph and the nodes above it are visibly one thing. */
+.worktreeLanePill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 11px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
 }
 
 .worktreeFlowTip {
@@ -5440,4 +5498,122 @@ li.dropIndicator {
 .worktreeFlowTipMeta {
   color: var(--clay-ink2, #8a766a);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Digest (B–F) card ──────────────────────────────────────────── */
+.digestControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+}
+.digestControlLabel {
+  margin-left: 10px;
+  color: var(--clay-ink2, #8a766a);
+  font-size: 12px;
+}
+.digestBody { display: block; }
+.digestRetrieval {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--clay-sunken, rgba(92, 72, 58, 0.06));
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.digestSilence { color: var(--clay-ink2, #8a766a); }
+.digestSection { margin: 14px 0; }
+.digestTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.digestTable th,
+.digestTable td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--clay-line, rgba(92, 72, 58, 0.12));
+  text-align: left;
+}
+.digestTable th[scope='row'] {
+  font-weight: 600;
+  color: var(--clay-ink2, #8a766a);
+  white-space: nowrap;
+}
+.digestCapsuleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.digestCapsule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--clay-card, #fffdf9);
+  box-shadow: 0 2px 5px rgba(92, 72, 58, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.digestCapsuleAt { color: var(--clay-ink2, #8a766a); font-variant-numeric: tabular-nums; }
+.digestCapsuleTheme { font-weight: 600; color: var(--clay-ink, #5b4a3f); }
+.digestCapsuleMetric { font-variant-numeric: tabular-nums; color: var(--clay-ink, #5b4a3f); }
+.digestCapsuleEvidence {
+  color: var(--clay-ink2, #8a766a);
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+}
+.digestNote {
+  color: var(--clay-ink2, #8a766a);
+  font-size: 11px;
+  font-style: italic;
+  margin: 6px 0 0;
+}
+.digestMermaid {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--clay-sunken, rgba(92, 72, 58, 0.06));
+  overflow: auto;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.digestTasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.digestTasks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 13px;
+}
+.digestDeclare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.digestInput {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--clay-line, rgba(92, 72, 58, 0.18));
+  background: var(--clay-input, #fffdf9);
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 13px;
+  box-shadow: inset 0 2px 4px rgba(92, 72, 58, 0.1);
 }

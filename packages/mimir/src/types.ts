@@ -9,6 +9,8 @@ import type { LatexIssue } from './latex-log.ts'
 import type { OutlineNode } from './outline.ts'
 import type { LatexEngineKind } from './tools/latex.ts'
 import type { ArxivEntry } from './tools/arxiv.ts'
+import type { CbeDigestReport, CbeDigestTier } from './report-tier.ts'
+import type { CbeCapsulePerspective, CbeExperienceCapsule } from './report-capsules.ts'
 export type { OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from './outline.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export type { BibEntry } from './bibtex.ts'
@@ -1103,4 +1105,170 @@ export interface ResearchForagingView {
 
 /** `getForaging` result: a pure query, writes nothing. */
 export type ResearchGetForagingResult = ResearchResult<{ readonly foraging: ResearchForagingView }>
+
+/* ── Library themes (S5) wire payloads — the shelf's own drift ────────── */
+
+/** Where a theme came from: the user's own tag, or a repeated keyword. */
+export type ResearchThemeSource = 'tag' | 'keyword'
+
+/** How a theme moved between the previous window and the current one. */
+export type ResearchThemeDirection = 'new' | 'rising' | 'flat' | 'falling' | 'gone'
+
+/** One theme's weight inside one window. */
+export interface ResearchThemeCountView {
+  readonly theme: string
+  readonly count: number
+  readonly share: number
+  readonly source: ResearchThemeSource
+}
+
+/** One window's theme mix. */
+export interface ResearchThemeWindowView {
+  readonly since: string
+  readonly until: string
+  readonly paperCount: number
+  readonly themes: readonly ResearchThemeCountView[]
+}
+
+/** One theme's movement across the two windows. */
+export interface ResearchThemeDriftView {
+  readonly theme: string
+  readonly source: ResearchThemeSource
+  readonly currentCount: number
+  readonly previousCount: number
+  readonly deltaShare: number
+  readonly direction: ResearchThemeDirection
+}
+
+/** `getLibraryThemes` payload: the reading shelf's theme drift. */
+export interface ResearchLibraryThemesView {
+  readonly derivedAt: string
+  readonly current: ResearchThemeWindowView
+  readonly previous: ResearchThemeWindowView
+  readonly drift: readonly ResearchThemeDriftView[]
+  readonly newThemes: readonly string[]
+  readonly departedThemes: readonly string[]
+  readonly speaks: boolean
+}
+
+/** `getLibraryThemes` result: a pure query over the `papers` table. */
+export type ResearchGetLibraryThemesResult = ResearchResult<{
+  readonly themes: ResearchLibraryThemesView
+}>
+
+/* ── Habits (S6) wire payloads — the researcher's own rhythm ──────────── */
+
+/** One sitting: consecutive events with no gap wider than the session gap. */
+export interface ResearchSessionView {
+  readonly startedAt: string
+  readonly endedAt: string
+  readonly minutes: number
+  readonly eventCount: number
+}
+
+/** One hour-of-day bucket (0–23, the researcher's local clock). */
+export interface ResearchHourBucketView {
+  readonly hour: number
+  readonly count: number
+}
+
+/** One weekday bucket (0 = Sunday, the researcher's local calendar). */
+export interface ResearchWeekdayBucketView {
+  readonly weekday: number
+  readonly count: number
+}
+
+/** `getHabits` payload: description only, never advice. */
+export interface ResearchHabitProfileView {
+  readonly derivedAt: string
+  readonly eventCount: number
+  readonly sessionCount: number
+  readonly medianSessionMinutes: number | null
+  readonly longestSessionMinutes: number | null
+  readonly activeHours: readonly ResearchHourBucketView[]
+  readonly weekdayHistogram: readonly ResearchWeekdayBucketView[]
+  readonly activeDays: number
+  readonly currentStreakDays: number
+  readonly speaks: boolean
+}
+
+/** `getHabits` result: a pure query over event timestamps. */
+export type ResearchGetHabitsResult = ResearchResult<{
+  readonly habits: ResearchHabitProfileView
+}>
+
+/* ── Journal draft (S7) — the pre-filled diary, not a blank page ──────── */
+
+/** The draft's span. */
+export type ResearchJournalDraftKind = 'day' | 'week' | 'month'
+
+/** `generateJournalDraft` result: Markdown the researcher edits, not writes. */
+export type ResearchGenerateJournalDraftResult = ResearchResult<{
+  readonly markdown: string
+  readonly generatedAt: string
+  readonly kind: ResearchJournalDraftKind
+  readonly eventCount: number
+}>
+
+/* ── Digest (S8b–S8d) — the experience-capsule report (weekly/monthly/project) ── */
+
+/** The assembled digest model the panel renders and the MMS exporter copies. */
+export type ResearchDigestView = CbeDigestReport
+/** The three report depths. */
+export type ResearchDigestTier = CbeDigestTier
+/** One report atom, from one of the six independent perspectives. */
+export type ResearchExperienceCapsule = CbeExperienceCapsule
+/** Which perspective a capsule belongs to. */
+export type ResearchCapsulePerspective = CbeCapsulePerspective
+
+/** `generateDigest` options: depth + window bounds + render language. */
+export interface ResearchGenerateDigestOptions {
+  /** Report depth; defaults to 'weekly'. */
+  tier?: string | undefined
+  /** ISO-8601 window start, inclusive; defaults to a 7-day span back from `until`. */
+  since?: string | undefined
+  /** ISO-8601 window end, exclusive; defaults to now. */
+  until?: string | undefined
+  /** MMS render language; defaults to 'zh'. */
+  lang?: string | undefined
+}
+
+/** `generateDigest` result: the model, its MMS markdown, and the chosen tier/lang. */
+export type ResearchGenerateDigestResult = ResearchResult<{
+  readonly digest: ResearchDigestView
+  readonly markdown: string
+  readonly tier: ResearchDigestTier
+  readonly lang: 'zh' | 'en'
+  readonly generatedAt: string
+}>
+
+/* ── Eureka declaration (F) — the researcher names the milestone ── */
+
+/** `setEureka` options: the milestone's line scope and the researcher's words. */
+export interface ResearchSetEurekaOptions {
+  /** Idea line the milestone belongs to (mutually exclusive with projectId). */
+  ideaId?: string | undefined
+  /** Project line the milestone belongs to (mutually exclusive with ideaId). */
+  projectId?: string | undefined
+  /** The researcher's own words for the milestone (non-blank). */
+  title: string
+}
+
+/** `setEureka` result: the stored declaration event. */
+export type ResearchSetEurekaResult = ResearchResult<{ readonly event: EventRecord }>
+
+/* ── Moment pin (F) — the researcher promotes one instant ── */
+
+/** `pinMoment` options: the target event, an optional note, and unpin support. */
+export interface ResearchPinMomentOptions {
+  /** The anchoring event id to pin (or unpin). */
+  targetEventId: string
+  /** The researcher's own words for the moment; empty when none. */
+  note?: string | undefined
+  /** true to pin (default), false to unpin (append-only: a superseding declaration). */
+  pinned?: boolean | undefined
+}
+
+/** `pinMoment` result: the stored pin event. */
+export type ResearchPinMomentResult = ResearchResult<{ readonly event: EventRecord }>
 

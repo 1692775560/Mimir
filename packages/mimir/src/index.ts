@@ -66,7 +66,21 @@ export type {
   ResearchFiguresResult,
   ResearchGenerateBriefOptions,
   ResearchGenerateBriefResult,
+  ResearchGenerateJournalDraftResult,
+  ResearchDigestView,
+  ResearchDigestTier,
+  ResearchExperienceCapsule,
+  ResearchCapsulePerspective,
+  ResearchGenerateDigestOptions,
+  ResearchGenerateDigestResult,
+  ResearchPinMomentOptions,
+  ResearchPinMomentResult,
+  ResearchSetEurekaOptions,
+  ResearchSetEurekaResult,
+  ResearchGetHabitsResult,
+  ResearchGetLibraryThemesResult,
   ResearchImportPaperResult,
+  ResearchJournalDraftKind,
   ResearchListBackupsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
@@ -214,6 +228,103 @@ export type {
   CbeGutBaseline,
   CbeGutCard,
 } from './foraging.ts'
+export {
+  deriveLibraryThemes,
+  countThemes,
+  tagThemesOf,
+  themeTokens,
+  CBE_THEME_MIN_PAPERS,
+  CBE_THEME_KEYWORD_MIN_DOCS,
+  CBE_THEME_TOP_N,
+  CBE_THEME_FLAT_BAND,
+} from './library-themes.ts'
+export type {
+  CbeLibraryThemes,
+  CbeThemeCount,
+  CbeThemeDirection,
+  CbeThemeDriftRow,
+  CbeThemeSource,
+  CbeThemeWindow,
+} from './library-themes.ts'
+export {
+  deriveHabits,
+  deriveSessions,
+  CBE_HABIT_MIN_SESSIONS,
+  CBE_HABIT_MIN_EVENTS,
+} from './habits.ts'
+export type {
+  CbeHabitProfile,
+  CbeSession,
+  CbeHourBucket,
+  CbeWeekdayBucket,
+} from './habits.ts'
+export {
+  eurekaDeclarations,
+  eurekaFeatures,
+  eurekaModelAt,
+  eurekaProfileOf,
+  EUREKA_ACTION,
+  EUREKA_FEATURE_KEYS,
+  CBE_EUREKA_WINDOW_DAYS,
+  CBE_EUREKA_MIN_DECLARATIONS,
+} from './eureka.ts'
+export {
+  eurekaCriticalStateData,
+} from './eureka.ts'
+export type {
+  CbeEurekaDeclaration,
+  CbeEurekaFeatureKey,
+  CbeEurekaFeatureRow,
+  CbeEurekaFeatures,
+  CbeEurekaModel,
+  CbeEurekaProfile,
+  CbeCriticalStateSample,
+} from './eureka.ts'
+export {
+  deriveCapsules,
+  formatCapsule,
+} from './report-capsules.ts'
+export type {
+  CbeCapsulePerspective,
+  CbeExperienceCapsule,
+  CbeCapsuleInput,
+  CapsuleLang,
+} from './report-capsules.ts'
+export {
+  assembleDigest,
+} from './report-tier.ts'
+export type {
+  CbeDigestReport,
+  CbeDigestTier,
+  CbeDigestStat,
+  CbeDigestRetrieval,
+  CbeDigestEurekaRow,
+  CbeDigestPerspectiveBlock,
+  DigestInput,
+} from './report-tier.ts'
+export {
+  renderDigest,
+} from './render-digest.ts'
+export {
+  actionSequence,
+  conditionalEntropy,
+  ewsOrder,
+  ewsReading,
+  surprisalSequence,
+  unigramEntropy,
+  CBE_EWS_MIN_EVENTS,
+  CBE_EWS_MAX_ORDER,
+} from './ledger-ews.ts'
+export type { CbeEwsReading } from './ledger-ews.ts'
+export {
+  deriveCuratedMoments,
+  momentPins,
+  MOMENT_PIN_ACTION,
+  CBE_MOMENT_BURST_MIN_EVENTS,
+} from './moment-index.ts'
+export type { CbeCuratedMoment, CbeMomentKind, CbeMomentPin } from './moment-index.ts'
+export { renderJournalDraft } from './journal-draft.ts'
+export type { JournalDraftInput, JournalDraftKind, JournalDraftLang } from './journal-draft.ts'
 export { parseLatexErrors } from './latex-log.ts'
 export type { LatexIssue } from './latex-log.ts'
 export { parseTexOutline } from './outline.ts'

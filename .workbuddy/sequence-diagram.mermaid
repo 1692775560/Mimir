@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    participant Loop as autoresearch 循环
+    participant Tool as latex_compile 工具 / paper.compile 服务
+    participant Ledger as ledger.ts (emitCompileOutcome)
+    participant Domain as wiki events 表
+
+    Note over Loop,Tool: 路径一：工具（循环编译）/ 路径二：服务（面板编译），互斥
+    Loop->>Tool: compileLatex(dir)
+    Tool->>Tool: 解析 outcome(success, errors[])
+    Tool->>Ledger: emitCompileOutcome(domain,{success,projectId})
+    alt 成功
+        Ledger->>Domain: appendReflection(insight) [AUTOR_ACTOR]
+    else 失败
+        Ledger->>Domain: appendReflection(struggle) [AUTOR_ACTOR]
+        Ledger->>Domain: emitPractice(method,"修复编译错误",linkedReflectionId) [AUTOR_ACTOR]
+    end
+
+    Note over Loop,Domain: review FAIL 自动实践卡
+    Loop->>Loop: runReview → round.verdict==='FAIL'
+    Loop->>Domain: appendReflection(mistake) [REVIEWER_ACTOR] → 取 id
+    Loop->>Domain: emitPractice(method, prompt←issues, linkedReflectionId=id) [AUTOR_ACTOR]
+
+    Note over User,Panel: 人本入口（面板）
+    User->>Panel: 点"记一笔反思"/"加一张实践卡"并填写
+    Panel->>Ctrl: controller.addReflection / addPractice
+    Ctrl->>Service: research.addReflection / addPractice (actor=PANEL_ACTOR)
+    Service->>Domain: appendReflection / appendPractice
+    Service-->>Ctrl: {event}
+    Ctrl->>Ctrl: loadLedger(当前窗口) + toast
+    User->>Panel: 看板上点"推进/搁置"
+    Panel->>Ctrl: controller.updatePractice(id,{status})
+    Ctrl->>Service: research.updatePractice
+    Service->>Domain: appendPracticeUpdate
+    Ctrl->>Ctrl: loadLedger 重载看板

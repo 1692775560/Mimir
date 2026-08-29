@@ -165,11 +165,12 @@ async function runAction(domain: ResearchWikiDomain, args: WikiArgs): Promise<Js
       // at creation — it is already part of that project's research process,
       // so the worktree and brief surface it without a separate manual merge.
       // A standalone idea stays `active` for the user to adopt later.
+      const status: 'active' | 'adopted' = projectId !== undefined ? 'adopted' : 'active'
       const record = {
         id,
         title: requireField(args.title, 'title', args.action),
         hypothesis: requireField(args.hypothesis, 'hypothesis', args.action),
-        status: (projectId !== undefined ? 'adopted' : 'active') as const,
+        status,
         projectId: projectId ?? undefined,
         createdAt: new Date().toISOString(),
       }

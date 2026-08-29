@@ -31,12 +31,18 @@ const WORKTREE_FLOW_AMP = 26
 /** Fork/merge bow width in viewBox units. */
 const WORKTREE_FLOW_BOW = 17
 /**
- * The lane palette: eight macaron-distinct hues, soft enough for the clay
- * skin (fat matte strokes read as clay rolls).
+ * The lane palette: six bright, friendly hues borrowed from the clean
+ * branch-graph vocabulary — saturated enough to act as category labels,
+ * but flat (no gradients) so the white-ringed nodes read clearly against
+ * the light grey connectors.
  */
 const WORKTREE_FLOW_PALETTE: readonly string[] = Object.freeze([
-  '#d98a68', '#94b89b', '#85a7c6', '#bfa3c9',
-  '#d4b06e', '#8ab8ab', '#cf9aa6', '#9aa3b8',
+  '#FF7F6E', // coral — mainline energy
+  '#5AB4F2', // blue — open lanes
+  '#6ABF7A', // green — adopted / merged
+  '#F7C566', // yellow — attention / epochs
+  '#F07C9C', // pink — failed / documented No
+  '#7B7FEA', // purple — side roads
 ])
 
 const PAD_X = 14

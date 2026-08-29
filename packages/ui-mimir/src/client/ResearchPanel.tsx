@@ -163,6 +163,7 @@ export function ResearchPanel({
   loadLedger, generateReport, generateBrief, addJournal,
   ensureWorktree, refreshWorktree, setMainline, setIdeaParent, adoptIdea, closeIdea,
   ensureForaging, refreshForaging,
+  ensureDigest, refreshDigest, generateDigest, setEureka, pinMoment,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -200,6 +201,7 @@ export function ResearchPanel({
   const brief = useResearch(view => view.brief)
   const worktree = useResearch(view => view.worktree)
   const foraging = useResearch(view => view.foraging)
+  const digest = useResearch(view => view.digest)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
@@ -635,6 +637,12 @@ export function ResearchPanel({
             ensureForaging={ensureForaging}
             refreshForaging={refreshForaging}
             foraging={foraging}
+            digest={digest}
+            ensureDigest={ensureDigest}
+            refreshDigest={refreshDigest}
+            generateDigest={generateDigest}
+            setEureka={setEureka}
+            pinMoment={pinMoment}
             t={t}
           />
         )}

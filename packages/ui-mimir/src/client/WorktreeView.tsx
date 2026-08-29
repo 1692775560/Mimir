@@ -15,9 +15,9 @@ import type { ResearchWorktreeLaneView, ResearchWorktreeView } from 'dsh-mimir/t
 import type { ResearchWorktreeSlice, ResearchFailureView } from './controller.ts'
 import type { ResearchKey } from './locales.ts'
 import type { ResearchT } from './view-common.ts'
-import { closeReasonState, isIdeaLane, WORKTREE_REASON_MAX_CHARS } from './worktree-view.ts'
+import { closeReasonState, isIdeaLane, worktreeHighlights, WORKTREE_REASON_MAX_CHARS } from './worktree-view.ts'
 import { beadRadius, layoutWorktreeFlow } from './worktree-map.ts'
-import type { WorktreeFlowBead } from './worktree-map.ts'
+import type { WorktreeFlowBead, WorktreeFlowLayout } from './worktree-map.ts'
 import css from './ResearchPanel.module.css'
 
 /** Whole days, rounded for display (the wire carries r3 precision). */
@@ -51,8 +51,11 @@ function actionText(action: string, t: ResearchT): string {
   return action
 }
 
-function WorktreeFlowStrip({ view, t }: { readonly view: ResearchWorktreeView; readonly t: ResearchT }) {
-  const flow = layoutWorktreeFlow(view)
+function WorktreeFlowStrip({ view, flow, t }: {
+  readonly view: ResearchWorktreeView
+  readonly flow: WorktreeFlowLayout
+  readonly t: ResearchT
+}) {
   const [hovered, setHovered] = useState<WorktreeFlowBead | null>(null)
   if (flow.lanes.length === 0) return null
   const labelOf = (lineId: string): string =>
@@ -81,7 +84,7 @@ function WorktreeFlowStrip({ view, t }: { readonly view: ResearchWorktreeView; r
                   : entry.isMain ? css.worktreeFlowMain
                     : css.worktreeFlowCurve
             }
-            stroke={entry.color}
+            stroke="#E5E5EA"
           >
             <title>{`${entry.lane.label} · ${entry.lane.firstSeen.slice(0, 10)} → ${(entry.lane.closedAt ?? entry.lane.lastSeen).slice(0, 10)}`}</title>
           </path>
@@ -139,14 +142,44 @@ function WorktreeFlowStrip({ view, t }: { readonly view: ResearchWorktreeView; r
   )
 }
 
+/**
+ * The highlight strip: the trajectory's memorable beats, phrased as sentences
+ * rather than counters. These are the moments worth keeping until a bigger
+ * Eureka arrives — described, never ranked or advised on.
+ */
+function WorktreeHighlights({ view, t }: {
+  readonly view: ResearchWorktreeView
+  readonly t: ResearchT
+}) {
+  const highlights = worktreeHighlights(view)
+  if (highlights.length === 0) return null
+  return (
+    <div className={css.worktreeHighlights}>
+      <h4 className={css.worktreeHighlightsTitle}>{t('worktree.highlights')}</h4>
+      <ul className={css.worktreeHighlightList}>
+        {highlights.map(item => (
+          <li key={item.kind} className={css.worktreeHighlight} data-kind={item.kind}>
+            {t(`worktree.highlight.${item.kind}` as Parameters<ResearchT>[0], {
+              value: item.value,
+              detail: item.detail,
+            })}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /** One lane row: the glyph, the label, the E0 numbers, and the declared structure. */
 function LaneRow({
-  lane, isMain, ideaLanes, busy, onSetMainline, onSetParent, onAdopt, onClose, t,
+  lane, isMain, ideaLanes, busy, color, onSetMainline, onSetParent, onAdopt, onClose, t,
 }: {
   readonly lane: ResearchWorktreeLaneView
   readonly isMain: boolean
   readonly ideaLanes: readonly ResearchWorktreeLaneView[]
   readonly busy: boolean
+  /** The lane's own hue — the same colour its curve's beads wear. */
+  readonly color: string
   readonly onSetMainline: (lineId: string) => Promise<ResearchFailureView | null>
   readonly onSetParent: (ideaId: string, parentIdeaId: string | null) => Promise<ResearchFailureView | null>
   readonly onAdopt: (ideaId: string) => Promise<ResearchFailureView | null>
@@ -180,7 +213,7 @@ function LaneRow({
 
   return (
     <li className={css.worktreeLane} data-status={lane.status} data-main={isMain || undefined}>
-      <span className={css.worktreeGlyph} data-status={lane.status} aria-hidden>
+      <span className={css.worktreeLanePill} style={{ backgroundColor: color }} aria-hidden>
         {lane.status === 'failed' ? '✗' : lane.status === 'adopted' ? '✓' : '●'}
       </span>
       <div className={css.worktreeLaneBody}>
@@ -339,6 +372,12 @@ export function WorktreeView({
     { key: 'worktree.group.failed', lanes: lanes.filter(lane => lane.status === 'failed') },
   ]
 
+  // One layout pass feeds BOTH the graph and the lane pills, so a lane's
+  // hue never disagrees between its curve and its label.
+  const flow = view === null ? null : layoutWorktreeFlow(view)
+  const colorOf = (lineId: string): string =>
+    flow?.lanes.find(entry => entry.lane.lineId === lineId)?.color ?? '#9AA0A6'
+
   const run = async (
     laneId: string,
     action: () => Promise<ResearchFailureView | null>,
@@ -376,7 +415,7 @@ export function WorktreeView({
           </button>
         </p>
       )}
-      {worktree.status === 'ready' && view !== null && (
+      {worktree.status === 'ready' && view !== null && flow !== null && (
         <>
           <div className={css.worktreeBanner}>
             <span className={css.worktreeBannerKind}>{t('worktree.mainline')}</span>
@@ -395,7 +434,8 @@ export function WorktreeView({
               )}
           </div>
           {/* The branch flow: fat curves from the axis, beads = work nodes. */}
-          <WorktreeFlowStrip view={view} t={t} />
+          <WorktreeFlowStrip view={view} flow={flow} t={t} />
+          <WorktreeHighlights view={view} t={t} />
 
           {lanes.length === 0 && <p className={css.hint}>{t('worktree.empty')}</p>}
           {groups.map(group => group.lanes.length === 0 ? null : (
@@ -409,6 +449,7 @@ export function WorktreeView({
                     isMain={lane.lineId === mainlineId}
                     ideaLanes={ideaLanes}
                     busy={busyLane !== null}
+                    color={colorOf(lane.lineId)}
                     onSetMainline={lineId => run(lineId, () => setMainline(lineId))}
                     onSetParent={(ideaId, parentIdeaId) =>
                       run(ideaId, () => setIdeaParent(ideaId, parentIdeaId))}

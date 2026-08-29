@@ -557,6 +557,34 @@ export interface ResearchPanelInjected {
    */
   refreshForaging: () => void
   /**
+   * Load the digest (B–F) once, on the ledger view's first open (active push).
+   */
+  ensureDigest: () => void
+  /** Re-fetch the digest at its current tier/lang (the card's refresh button). */
+  refreshDigest: () => void
+  /**
+   * Generate the digest at one tier/language (the card's tier/lang switch).
+   * @param tier - weekly / monthly / project.
+   * @param lang - zh / en.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  generateDigest: (tier: 'weekly' | 'monthly' | 'project', lang: 'zh' | 'en') => Promise<ResearchFailureView | null>
+  /**
+   * Declare one Eureka — the researcher's own named milestone (never system
+   * declared, never prompted). Exactly one ref is required.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  setEureka: (
+    ideaId: string | undefined,
+    projectId: string | undefined,
+    title: string,
+  ) => Promise<ResearchFailureView | null>
+  /**
+   * Pin (or unpin) one moment — the explicit bookmark of a curated instant.
+   * @returns null on success, the settled failure view otherwise.
+   */
+  pinMoment: (targetEventId: string, note?: string | undefined) => Promise<ResearchFailureView | null>
+  /**
    * Export the whole wiki as one snapshot (the download button).
    * @returns the snapshot, or the settled failure view.
    */
