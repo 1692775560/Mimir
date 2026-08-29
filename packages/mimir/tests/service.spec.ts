@@ -724,6 +724,69 @@ describe('ResearchService.deleteExperiment', () => {
 })
 
 describe('ResearchService.listProjects', () => {
+  /**
+   * Mirror of the typert gateway's `assertJsonValue` boundary check (it is
+   * not exported from `@deepseek-ai/dsh-api-gateway`, and that package is
+   * not a dependency of this one): rejects undefined values, non-finite
+   * numbers, cyclic graphs, sparse/decorated arrays, and non-plain objects.
+   * A view passing this survives the gateway's post-schema JSON validation.
+   */
+  function assertJsonSafe(value: unknown, ancestors = new Set<object>()): void {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return
+    if (typeof value === 'number') {
+      if (Number.isFinite(value)) return
+      throw new TypeError('non-finite number is not JSON-safe')
+    }
+    if (typeof value !== 'object') throw new TypeError(`${typeof value} is not JSON-safe`)
+    if (ancestors.has(value)) throw new TypeError('cyclic value is not JSON-safe')
+    ancestors.add(value)
+    try {
+      if (Array.isArray(value)) {
+        if (Object.getOwnPropertySymbols(value).length > 0 || Object.keys(value).length !== value.length) {
+          throw new TypeError('sparse or decorated array is not JSON-safe')
+        }
+        for (let index = 0; index < value.length; index += 1) assertJsonSafe(value[index], ancestors)
+        return
+      }
+      const prototype = Object.getPrototypeOf(value) as object | null
+      if (prototype !== null && prototype !== Object.prototype) throw new TypeError('non-plain object is not JSON-safe')
+      if (Object.getOwnPropertySymbols(value).length > 0) throw new TypeError('symbol property is not JSON-safe')
+      for (const key of Object.keys(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key)
+        if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) {
+          throw new TypeError('non-data property is not JSON-safe')
+        }
+        assertJsonSafe(descriptor.value, ancestors)
+      }
+    } finally {
+      ancestors.delete(value)
+    }
+  }
+
+  it('produces gateway-JSON-safe views for records with unset optional keys', async () => {
+    const { domain, service } = await harness()
+    // The boundary failure mode behind "business result failed boundary
+    // validation": key absence must hold for EVERY optional view field, so
+    // simulate the gateway's own check rather than asserting one key.
+    await domain.table('projects').put('p-bare', {
+      id: 'p-bare',
+      title: 'Bare idea-stage project',
+      stage: 'idea',
+      artifacts: [],
+      reviewRounds: 0,
+      updatedAt: '2026-08-28T00:00:00.000Z',
+    })
+    const listed = await service.listProjects()
+    if (!listed.ok) throw new Error('list failed')
+    const bare = listed.value.projects.find(project => project.id === 'p-bare')
+    expect(bare).toBeDefined()
+    expect('paperDir' in bare!).toBe(false)
+    expect('venue' in bare!).toBe(false)
+    expect(() => { assertJsonSafe(listed.value) }).not.toThrow()
+    // Sanity: the mirror actually rejects the regression shape.
+    expect(() => { assertJsonSafe({ projects: [{ id: 'x', paperDir: undefined }] }) }).toThrow(/not JSON-safe/)
+  })
+
   it('omits paperDir from a project view when the record never set one', async () => {
     const { domain, service } = await harness()
     // A project created by research-idea has no paperDir yet. The view must

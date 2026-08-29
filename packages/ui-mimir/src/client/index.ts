@@ -215,6 +215,14 @@ function panelApply(ctx: ClientContext): void {
         actions.select(projectId)
         controller.select(projectId)
       },
+      // The project list's import dialog: a successful import lands selected.
+      importProject: async (path, title) => {
+        const outcome = await controller.importProject(path, title)
+        if ('code' in outcome) return outcome
+        actions.select(outcome.projectId)
+        controller.select(outcome.projectId)
+        return outcome
+      },
       compile: (projectId) => { void controller.compile(projectId) },
       // The per-issue "fix with AI" button.
       requestCompileFix: prompt => sendPromptToCurrentSession(prompt, 'toast.fixSent', 'toast.fixSendFailed'),
@@ -275,6 +283,8 @@ function panelApply(ctx: ClientContext): void {
       deleteMeetingDeck: (projectId, file) => controller.deleteMeetingDeck(projectId, file),
       getImageGenConfig: () => { controller.getImageGenConfig() },
       saveImageGenConfig: input => controller.saveImageGenConfig(input),
+      getSxngConfig: () => { controller.getSxngConfig() },
+      saveSxngConfig: input => controller.saveSxngConfig(input),
       renameFigure: (projectId, relPath, newName) => controller.renameFigure(projectId, relPath, newName),
       updateFigure: (projectId, relPath, caption) => controller.updateFigure(projectId, relPath, caption),
       // A successful insert (or the duplicate's jump) lands in the paper view.

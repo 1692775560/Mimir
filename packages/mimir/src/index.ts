@@ -35,6 +35,7 @@ import { TEMPLATE_DIR_NAME } from './services/venue.ts'
 import { meetingDeckPath } from './services/meeting.ts'
 import { ResearchService } from './service.ts'
 import { registerResearchSkills } from './skills.ts'
+import { registerSxngSkill } from './sxng-skill.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
 
@@ -63,6 +64,8 @@ export type {
   ResearchExperimentsResult,
   ResearchFailure,
   ResearchFetchPaperPdfResult,
+  ResearchGetSxngConfigResult,
+  ResearchSetSxngConfigResult,
   ResearchFiguresResult,
   ResearchGenerateBriefOptions,
   ResearchGenerateBriefResult,
@@ -81,6 +84,9 @@ export type {
   ResearchGetLibraryThemesResult,
   ResearchImportPaperResult,
   ResearchJournalDraftKind,
+  ResearchImportProjectRequest,
+  ResearchImportProjectResult,
+  ResearchImportedProject,
   ResearchListBackupsResult,
   ResearchListJobsResult,
   ResearchListProjectsResult,
@@ -366,7 +372,9 @@ export type { LatexCompileResult, LatexToolOptions, LatexEngineKind, ResolvedLat
 export { createArxivSearchTool, createPaperFetchTool, fetchArxivPdf, fetchArxivSearch, paperPdfFileName, parseArxivFeed, ARXIV_PDF_MAX_BYTES } from './tools/arxiv.ts'
 export type { ArxivEntry, ArxivSearchOptions } from './tools/arxiv.ts'
 export { createWebSearchTool, fetchWebSearch } from './tools/web-search.ts'
+export { getSxngConfig, readSxngConfig, setSxngConfig } from './services/sxng-config.ts'
 export type { WebSearchOptions, WebSearchRunner } from './tools/web-search.ts'
+export { registerSxngSkill } from './sxng-skill.ts'
 export { createZoteroClient } from './tools/zotero.ts'
 export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
@@ -1054,6 +1062,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // optional — bare compositions load the suite without it).
   if (resolved.skills.enabled) {
     registerResearchSkills(ctx)
+    registerSxngSkill(ctx)
   }
 
   ctx.plugin(ResearchService, serviceConfig)

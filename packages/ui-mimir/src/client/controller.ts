@@ -72,6 +72,9 @@ import type {
   ResearchJournalQuestionRef,
   ResearchImportBibResult,
   ResearchImportPaperResult,
+  ResearchImportProjectRequest,
+  ResearchImportProjectResult,
+  ResearchImportedProject,
   ResearchImportWikiMode,
   ResearchImportWikiResult,
   ResearchListBackupsResult,
@@ -85,6 +88,7 @@ import type {
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
   ResearchGetImageGenConfigResult,
+  ResearchGetSxngConfigResult,
   ResearchMeetingDecksResult,
   MeetingDeckView,
   MeetingInclude,
@@ -109,6 +113,7 @@ import type {
   ResearchSearchArxivResult,
   ResearchSearchWebResult,
   ResearchSetImageGenConfigResult,
+  ResearchSetSxngConfigResult,
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
@@ -139,13 +144,14 @@ export type {
 } from 'dsh-mimir/types'
 
 /**
- * The sixty-three Remote calls this controller needs, exactly as the
+ * The Remote calls this controller needs, exactly as the
  * generated `research` namespace types them. The ledger remotes keep
  * `actorKind`/`order` as widened `string` (the generated face elides the
  * literal unions across the boundary).
  */
 export interface ResearchRemote {
   listProjects: () => Promise<RemoteResult<ResearchListProjectsResult>>
+  importProject: (request: ResearchImportProjectRequest) => Promise<RemoteResult<ResearchImportProjectResult>>
   getPaperOutline: (request: { projectId: string; dir?: string | undefined }) => Promise<RemoteResult<ResearchOutlineResult>>
   compile: (request: { projectId?: string; dir?: string | undefined }, signal?: AbortSignal) => Promise<RemoteResult<ResearchCompileResult>>
   getCompileStatus: (request: { projectId?: string }) => Promise<RemoteResult<ResearchCompileStatusResult>>
@@ -244,6 +250,20 @@ export interface ResearchRemote {
     model?: string | undefined
     size?: string | undefined
   }) => Promise<RemoteResult<ResearchSetImageGenConfigResult>>
+  getSxngConfig: () => Promise<RemoteResult<ResearchGetSxngConfigResult>>
+  setSxngConfig: (request: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }) => Promise<RemoteResult<ResearchSetSxngConfigResult>>
   saveServer: (request: { server: ServerInput }) => Promise<RemoteResult<ResearchSaveServerResult>>
   deleteServer: (request: { id: string }) => Promise<RemoteResult<ResearchDeleteServerResult>>
   checkServer: (request: { id: string }) => Promise<RemoteResult<ResearchCheckServerResult>>
@@ -493,6 +513,24 @@ export interface ResearchImageGenView {
   readonly failure: ResearchFailureView | null
 }
 
+/** The Papers view's native sxng-cli configuration. */
+export interface ResearchSxngConfigView {
+  readonly status: ResearchLoadStatus
+  readonly configured: boolean
+  readonly baseUrl: string
+  readonly defaultEngine: string
+  readonly allowedEngines: readonly string[]
+  readonly defaultLimit: number
+  readonly defaultFormat: 'md' | 'json'
+  readonly useProxy: boolean
+  readonly proxyUrl: string
+  readonly timeout: number
+  readonly ollamaApiKeyPreview: string
+  readonly redundancyThreshold: number
+  readonly redundancyBigramThreshold: number
+  readonly failure: ResearchFailureView | null
+}
+
 /** The markdown artifact viewer's load. */
 export interface ResearchArtifactView {
   readonly projectId: string
@@ -639,6 +677,8 @@ export interface ResearchView {
   readonly meetings: ResearchProjectSlice<readonly MeetingDeckView[]> | null
   /** The meetings view's image-generation config; `cold` until first fetched. */
   readonly imageGen: ResearchImageGenView
+  /** The Papers view's sxng-cli config; `cold` until its Web tab opens. */
+  readonly sxngConfig: ResearchSxngConfigView
   readonly servers: ResearchServersView
   /** Per-server probe state, keyed by server id; absent means never probed. */
   readonly serverChecks: Readonly<Record<string, ServerCheckState>>
@@ -695,6 +735,11 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   meetings: null,
   imageGen: Object.freeze({
     status: 'cold', configured: false, baseUrl: '', model: '', size: '', apiKeyPreview: '', failure: null,
+  }),
+  sxngConfig: Object.freeze({
+    status: 'cold', configured: false, baseUrl: '', defaultEngine: '', allowedEngines: Object.freeze([]), defaultLimit: 10,
+    defaultFormat: 'md', useProxy: false, proxyUrl: '', timeout: 30_000, ollamaApiKeyPreview: '',
+    redundancyThreshold: 0.7, redundancyBigramThreshold: 0.5, failure: null,
   }),
   servers: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   serverChecks: Object.freeze({}),
@@ -768,6 +813,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   private meetingsGeneration = 0
   private meetingsInFlight = false
   private imageGenInFlight = false
+  private sxngConfigInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
@@ -1928,6 +1974,60 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
   }
 
+  getSxngConfig(): void {
+    if (this.sxngConfigInFlight || this.view.sxngConfig.status === 'ready') return
+    void this.loadSxngConfig()
+  }
+
+  private async loadSxngConfig(): Promise<void> {
+    this.sxngConfigInFlight = true
+    this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'loading', failure: null }) })
+    try {
+      const carried = await this.remote.getSxngConfig()
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({ sxngConfig: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+    } catch (error) {
+      if (!this.disposed) this.publish({ sxngConfig: Object.freeze({ ...this.view.sxngConfig, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.sxngConfigInFlight = false
+    }
+  }
+
+  async saveSxngConfig(input: {
+    baseUrl?: string | undefined
+    defaultEngine?: string | undefined
+    allowedEngines?: readonly string[] | undefined
+    defaultLimit?: number | undefined
+    defaultFormat?: 'md' | 'json' | undefined
+    useProxy?: boolean | undefined
+    proxyUrl?: string | undefined
+    timeout?: number | undefined
+    ollamaApiKey?: string | undefined
+    redundancyThreshold?: number | undefined
+    redundancyBigramThreshold?: number | undefined
+  }): Promise<ResearchFailureView | null> {
+    try {
+      const carried = await this.remote.setSxngConfig(input)
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      this.publish({ sxngConfig: Object.freeze({ status: 'ready', ...result.value, failure: null }) })
+      this.notify('success', 'papers.sxngConfigSaved')
+      return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
   /**
    * Load the venue picker's built-in registry, once and lazily: a ready (or
    * in-flight) registry is left alone.
@@ -2468,6 +2568,30 @@ export class ResearchController implements HostObservable<ResearchView> {
       await this.loadPapers()
       this.notify('success', 'toast.paperImported')
       return null
+    } catch (error) {
+      return transportFailure(error)
+    }
+  }
+
+  /**
+   * Import one existing local LaTeX project into the workspace (the sidebar's
+   * "import existing project" dialog): the host copies the tree into
+   * `imported/<slug>/` and registers the project. On success the project list
+   * refreshes BEFORE the summary resolves, so the caller can select the new
+   * project against an up-to-date list.
+   * @param path - absolute or `~`-prefixed source directory.
+   * @param title - the optional explicit title.
+   * @returns the import summary on success, the settled failure otherwise.
+   */
+  async importProject(path: string, title?: string): Promise<ResearchImportedProject | ResearchFailureView> {
+    try {
+      const carried = await this.remote.importProject(title === undefined ? { path } : { path, title })
+      if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
+      const result = carried.value
+      if (!result.ok) return businessFailure(result.error)
+      await this.loadProjects()
+      this.notify('success', 'toast.projectImported', result.value.title)
+      return result.value
     } catch (error) {
       return transportFailure(error)
     }
