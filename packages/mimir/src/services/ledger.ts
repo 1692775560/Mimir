@@ -19,6 +19,7 @@ import {
   PANEL_ACTOR,
 } from '../ledger.ts'
 import { deriveBrief, JOURNAL_ACTION, QUESTION_ANSWERED_ACTION, QUESTION_SHOWED_ACTION, renderBriefMarkdown, CBE_DERIVATION_VERSION } from '../cognitive-map.ts'
+import { MS_PER_DAY } from '../time.ts'
 import type { CbeBriefWindow, CbeWikiSnapshot } from '../cognitive-map.ts'
 import { evidenceModelAt, evidenceProfileOf } from '../cbe-engine.ts'
 import { deriveForaging } from '../foraging.ts'
@@ -80,7 +81,6 @@ export interface LedgerDeps {
 /** The default comparison span every window-bounded organ falls back to. */
 const DEFAULT_SPAN_DAYS = 30
 
-const MS_PER_DAY = 86_400_000
 
 /**
  * Snapshot the wiki tables the cognitive layer reads. The library is

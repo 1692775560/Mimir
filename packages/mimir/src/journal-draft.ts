@@ -25,6 +25,7 @@
 import type { CbeBrief, CbeLineState } from './cognitive-map.ts'
 import type { CbeLibraryThemes } from './library-themes.ts'
 import type { CbeHabitProfile } from './habits.ts'
+import { tsToMs } from './time.ts'
 
 /** The draft's span: one day, one week, or one month. */
 export type JournalDraftKind = 'day' | 'week' | 'month'
@@ -89,11 +90,6 @@ function localTime(ms: number): string {
   return `${`${at.getHours()}`.padStart(2, '0')}:${`${at.getMinutes()}`.padStart(2, '0')}`
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /**
  * Render the pre-filled journal draft: the day (or week, or month) already

@@ -29,6 +29,7 @@
 
 import { CBE_SESSION_GAP_MINUTES } from './cognitive-map.ts'
 import type { EventRecord } from './types.ts'
+import { MS_PER_DAY, tsToMs } from './time.ts'
 
 /** Sessions before the comparative numbers may speak (I2's floor). */
 export const CBE_HABIT_MIN_SESSIONS = 3
@@ -37,7 +38,6 @@ export const CBE_HABIT_MIN_SESSIONS = 3
 export const CBE_HABIT_MIN_EVENTS = 5
 
 const MS_PER_MINUTE = 60_000
-const MS_PER_DAY = 86_400_000
 
 /** Round to 3 decimals for stable rendering/serialization. */
 function r3(value: number): number {
@@ -45,10 +45,6 @@ function r3(value: number): number {
 }
 
 /** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /** One sitting: consecutive events with no gap wider than the session gap. */
 export interface CbeSession {

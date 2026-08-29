@@ -52,6 +52,7 @@
  * @module dsh-mimir/src/ledger-ews
  */
 
+import { sliceEvents } from './time.ts'
 import type { EventRecord } from './types.ts'
 
 /** Symbols needed before conditional (order ≥ 1) quantities are reported. */
@@ -88,17 +89,12 @@ function r6(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
-
 /**
  * Project a window of the ledger onto its symbol stream: one symbol per
  * event, in time order. The action name is the symbol — the ledger's own
  * discrete vocabulary, unmodified. Unparseable timestamps are dropped
- * (they cannot be placed in a sequence).
+ * (they cannot be placed in a sequence). The window slice is the shared
+ * {@link sliceEvents} so this agrees with every other fold on what is inside.
  * @param events - ledger events, any order.
  * @param fromMs - window start, inclusive (epoch ms).
  * @param toMs - window end, exclusive (epoch ms).
@@ -109,13 +105,7 @@ export function actionSequence(
   fromMs: number,
   toMs: number,
 ): readonly string[] {
-  return [...events]
-    .filter(event => {
-      const ms = tsToMs(event.ts)
-      return ms !== null && ms >= fromMs && ms < toMs
-    })
-    .sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id))
-    .map(event => event.action)
+  return sliceEvents(events, fromMs, toMs).map(event => event.action)
 }
 
 /** Shannon entropy in bits of one empirical distribution (counts → total). */
@@ -143,9 +133,17 @@ export function unigramEntropy(symbols: readonly string[]): number {
 }
 
 /**
- * The largest Markov order the sample can carry: enough symbols, and enough
- * observations per distinct context. Fixed high orders on small samples are
- * how entropy estimates turn into noise, so the order follows the data.
+ * The largest Markov order the sample can carry — and crucially, the order
+ * SHRINKS as the action alphabet gets coarse, because a small alphabet needs
+ * proportionally more observations to populate its contexts. The rule is
+ * explicit: order k is admissible only when the sample can fill its contexts,
+ * requiring `(n − k) ≥ distinct^k · CBE_EWS_MIN_OBS_PER_CONTEXT` on average.
+ *
+ * This is the opposite of "more symbols ⇒ higher order". The previous rule
+ * let a 15-symbol window with a 14-letter alphabet estimate a 3rd-order
+ * Markov — exactly the numerology the sample floor exists to forbid. With a
+ * coarse ledger (the realistic case: a sparse stream of semantic actions),
+ * higher orders are simply unavailable, and H(1) is the honest workhorse.
  * @param n - number of symbols.
  * @param distinct - number of distinct symbols.
  * @returns the admissible order (0..{@link CBE_EWS_MAX_ORDER}).
@@ -154,14 +152,12 @@ export function ewsOrder(n: number, distinct: number): number {
   if (n < CBE_EWS_MIN_EVENTS) return 0
   for (let k = CBE_EWS_MAX_ORDER; k >= 1; k -= 1) {
     const contexts = n - k
-    // Worst case: every context is distinct (distinct^k), so require enough
-    // observations to spread across the contexts we could see.
-    const maxContexts = Math.min(contexts, Math.pow(Math.max(distinct, 1), k))
-    if (maxContexts <= 0) continue
-    if (contexts / maxContexts >= CBE_EWS_MIN_OBS_PER_CONTEXT / CBE_EWS_MIN_EVENTS
-      && contexts >= CBE_EWS_MIN_EVENTS) {
-      return k
-    }
+    // Not even enough transitions to clear the floor at this order.
+    if (contexts < CBE_EWS_MIN_EVENTS) break
+    // Up to `distinct^k` contexts could appear; require each to be seen at
+    // least CBE_EWS_MIN_OBS_PER_CONTEXT times before trusting the estimate.
+    const needed = Math.pow(Math.max(distinct, 1), k) * CBE_EWS_MIN_OBS_PER_CONTEXT
+    if (contexts >= needed) return k
   }
   return 1
 }

@@ -33,6 +33,7 @@
 import { deriveLines, CREATION_ACTIONS, LINE_WEIGHTS } from './cognitive-map.ts'
 import type { CbeLineState, CbeWikiSnapshot } from './cognitive-map.ts'
 import type { EventRecord } from './types.ts'
+import { MS_PER_DAY, tsToMs } from './time.ts'
 
 /** The mainline-ref move: one append-only declaration of the current mainline. */
 export const MAINLINE_ACTION = 'cbe.mainline.set'
@@ -128,18 +129,12 @@ export interface CbeWorktree {
   }
 }
 
-const MS_PER_DAY = 86_400_000
 
 /** Round to 3 decimals for stable rendering/serialization. */
 function r3(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /**
  * The user-declared parent edges, last declaration per child (a re-declared

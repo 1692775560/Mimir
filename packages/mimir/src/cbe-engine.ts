@@ -26,6 +26,7 @@
 
 import { LINE_WEIGHTS, TERMINAL_ACTIONS } from './cognitive-map.ts'
 import type { EventRecord } from './types.ts'
+import { MS_PER_DAY, tsToMs } from './time.ts'
 
 /** α — the learning rate per terminal (share-scaled). */
 export const CBE_ENGINE_ALPHA = 0.3
@@ -36,7 +37,6 @@ export const CBE_ENGINE_N_FLIP = 3
 /** How many days back a terminal's eligibility window reaches. */
 export const CBE_ENGINE_FOLD_WINDOW_DAYS = 180
 
-const MS_PER_DAY = 86_400_000
 
 /** One action's learned value: share-accumulated mean and mass. */
 export interface CbeActionValue {
@@ -63,11 +63,6 @@ function r6(value: number): number {
   return Math.round(value * 1_000_000) / 1000_000
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /**
  * The outcome signal of one terminal event, sign-only: a supported claim

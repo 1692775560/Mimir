@@ -39,6 +39,7 @@ import {
   type CbeExperienceCapsule,
 } from './report-capsules.ts'
 import type { EventRecord } from './types.ts'
+import { tsToMs } from './time.ts'
 
 /** The three report depths (light → heavy). */
 export type CbeDigestTier = 'weekly' | 'monthly' | 'project'
@@ -128,12 +129,6 @@ const TIER_STATS: Readonly<Record<CbeDigestTier, readonly string[]>> = {
   weekly: ['events', 'creations', 'pinnedMoments'],
   monthly: ['events', 'creations', 'pinnedMoments', 'deadBranches', 'papers'],
   project: ['events', 'creations', 'mainlineActive', 'deadBranches', 'papers', 'pinnedMoments', 'openLoops', 'eurekas', 'longestSession'],
-}
-
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
 }
 
 /** Round to 1 decimal for stable stat strings. */

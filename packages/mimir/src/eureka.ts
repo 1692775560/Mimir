@@ -46,9 +46,8 @@ import { CREATION_ACTIONS, signedWeight } from './cognitive-map.ts'
 import { deriveSessions } from './habits.ts'
 import { ewsReading } from './ledger-ews.ts'
 import type { CbeEwsReading } from './ledger-ews.ts'
+import { MS_PER_DAY, orderedEvents, tsToMs } from './time.ts'
 import type { EventRecord } from './types.ts'
-
-const MS_PER_DAY = 86_400_000
 
 /** The user's declared Eureka milestone (one append-only declaration). */
 export const EUREKA_ACTION = 'cbe.eureka.set'
@@ -143,22 +142,11 @@ function r3(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
-
 /** The line an event attributes to (idea first, then project), or null. */
 function lineOf(event: EventRecord): string | null {
   if (event.refs.ideaId !== undefined) return event.refs.ideaId
   if (event.refs.projectId !== undefined) return `project:${event.refs.projectId}`
   return null
-}
-
-/** Sort a copy into the canonical (ts, id) order every fold uses. */
-function ordered(events: readonly EventRecord[]): readonly EventRecord[] {
-  return [...events].sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id))
 }
 
 /**
@@ -171,7 +159,7 @@ function ordered(events: readonly EventRecord[]): readonly EventRecord[] {
  */
 export function eurekaDeclarations(events: readonly EventRecord[]): readonly CbeEurekaDeclaration[] {
   const out: CbeEurekaDeclaration[] = []
-  for (const event of ordered(events)) {
+  for (const event of orderedEvents(events)) {
     if (event.action !== EUREKA_ACTION) continue
     if (tsToMs(event.ts) === null) continue
     const title = typeof event.payload.title === 'string' ? event.payload.title : ''
@@ -234,6 +222,42 @@ export function eurekaFeatures(
 }
 
 /**
+ * The lead-in / control window bounds for one declaration, anchored on its
+ * timestamp. Both the folded model and the critical-state collector MUST derive
+ * their windows from this so the control-observability rule — "a control that
+ * would start before the ledger begins is not a control we estimate" — is
+ * enforced in exactly one place. Previously the model applied it and the
+ * collector did not, so the two could disagree about which Eurekas count;
+ * that is the kind of silent drift a shared锅底 is meant to prevent.
+ * @param declaration - the declared Eureka.
+ * @param earliestMs - the ledger's first event time (the floor).
+ * @returns the bounds, or null when the declaration timestamp is unparseable.
+ */
+interface EurekaWindowBounds {
+  /** The declaration instant (epoch ms). */
+  readonly atMs: number
+  /** Lead-in window start (epoch ms); the window is [leadFrom, atMs). */
+  readonly leadFrom: number
+  /** Control window start (epoch ms); the window is [controlFrom, leadFrom). */
+  readonly controlFrom: number
+  /** false when the control would start before the ledger — unobservable. */
+  readonly observable: boolean
+}
+
+function eurekaWindowBounds(declaration: CbeEurekaDeclaration, earliestMs: number): EurekaWindowBounds | null {
+  const atMs = tsToMs(declaration.at)
+  if (atMs === null) return null
+  const leadFrom = atMs - CBE_EUREKA_WINDOW_DAYS * MS_PER_DAY
+  const controlFrom = atMs - 2 * CBE_EUREKA_WINDOW_DAYS * MS_PER_DAY
+  return Object.freeze({
+    atMs,
+    leadFrom,
+    controlFrom,
+    observable: controlFrom >= earliestMs,
+  })
+}
+
+/**
  * Fold the whole model: every declared Eureka contributes its lead-in
  * window, paired with the equal-length window immediately before it on the
  * same line. Unparseable or pre-history declarations (a control window that
@@ -243,23 +267,18 @@ export function eurekaFeatures(
  * @returns the folded model.
  */
 export function eurekaModelAt(events: readonly EventRecord[]): CbeEurekaModel {
-  const stream = ordered(events)
+  const stream = orderedEvents(events)
   const declarations = eurekaDeclarations(stream)
-  const windowMs = CBE_EUREKA_WINDOW_DAYS * MS_PER_DAY
   const earliestMs = stream.length === 0 ? 0 : (tsToMs(stream[0]?.ts ?? '') ?? 0)
 
   const leads: CbeEurekaFeatures[] = []
   const controls: CbeEurekaFeatures[] = []
   const usable: CbeEurekaDeclaration[] = []
   for (const declaration of declarations) {
-    const atMs = tsToMs(declaration.at)
-    if (atMs === null) continue
-    const leadFrom = atMs - windowMs
-    const controlFrom = atMs - 2 * windowMs
-    // A control that would start before the ledger begins is unobservable.
-    if (controlFrom < earliestMs) continue
-    leads.push(eurekaFeatures(stream, declaration.lineId, leadFrom, atMs))
-    controls.push(eurekaFeatures(stream, declaration.lineId, controlFrom, leadFrom))
+    const bounds = eurekaWindowBounds(declaration, earliestMs)
+    if (bounds === null || !bounds.observable) continue
+    leads.push(eurekaFeatures(stream, declaration.lineId, bounds.leadFrom, bounds.atMs))
+    controls.push(eurekaFeatures(stream, declaration.lineId, bounds.controlFrom, bounds.leadFrom))
     usable.push(declaration)
   }
   return Object.freeze({
@@ -359,21 +378,22 @@ export interface CbeCriticalStateSample {
  * @returns the samples in declaration order (empty when none).
  */
 export function eurekaCriticalStateData(events: readonly EventRecord[]): readonly CbeCriticalStateSample[] {
-  const stream = ordered(events)
+  const stream = orderedEvents(events)
   const declarations = eurekaDeclarations(stream)
-  const windowMs = CBE_EUREKA_WINDOW_DAYS * MS_PER_DAY
+  const earliestMs = stream.length === 0 ? 0 : (tsToMs(stream[0]?.ts ?? '') ?? 0)
   const samples: CbeCriticalStateSample[] = []
   for (const declaration of declarations) {
-    const atMs = tsToMs(declaration.at)
-    if (atMs === null) continue
-    const leadFrom = atMs - windowMs
-    const controlFrom = atMs - 2 * windowMs
+    // Same window bounds as the folded model — the collector no longer skips
+    // the control-observability rule, so "which Eurekas count" is identical
+    // whichever path the (future) view takes.
+    const bounds = eurekaWindowBounds(declaration, earliestMs)
+    if (bounds === null || !bounds.observable) continue
     samples.push(Object.freeze({
       declarationId: declaration.id,
       at: declaration.at,
       title: declaration.title,
-      lead: ewsReading(stream, leadFrom, atMs),
-      control: ewsReading(stream, controlFrom, leadFrom),
+      lead: ewsReading(stream, bounds.leadFrom, bounds.atMs),
+      control: ewsReading(stream, bounds.controlFrom, bounds.leadFrom),
     }))
   }
   return Object.freeze(samples)

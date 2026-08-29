@@ -30,6 +30,7 @@ import type {
   LedgerJsonValue,
   ProjectRecord,
 } from './types.ts'
+import { MS_PER_DAY, tsToMs } from './time.ts'
 
 /** Half-life (days) of the drift decay: a week-old investment weighs half. */
 export const CBE_HALF_LIFE_DAYS = 7
@@ -64,8 +65,6 @@ export const CBE_TIER_SILENT_LINE_EVENTS = 5
 export const CBE_TIER_E1_LINE_EVENTS = 20
 /** Window events required before E1 comparative language may appear (I2). */
 export const CBE_TIER_E1_USER_EVENTS = 100
-
-const MS_PER_DAY = 86_400_000
 
 /**
  * The signed weight of one action on its line, over the REAL ledger
@@ -309,12 +308,6 @@ interface Attributed {
   readonly isTerminal: boolean
   readonly tsMs: number
   readonly sessionId: number
-}
-
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
 }
 
 /** Round to 3 decimals for stable rendering/serialization. */

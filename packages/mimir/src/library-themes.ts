@@ -30,6 +30,7 @@
  */
 
 import type { PaperRecord } from './types.ts'
+import { tsToMs } from './time.ts'
 
 /** Papers in the current window before the drift comparison may speak (I2's floor). */
 export const CBE_THEME_MIN_PAPERS = 3
@@ -67,10 +68,6 @@ function r3(value: number): number {
 }
 
 /** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /** Where one theme came from: the user's own tag, or a repeated keyword. */
 export type CbeThemeSource = 'tag' | 'keyword'

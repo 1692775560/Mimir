@@ -26,22 +26,17 @@ import { deriveWorktree } from './worktree.ts'
 import { CBE_HALF_LIFE_DAYS, signedWeight } from './cognitive-map.ts'
 import type { CbeWikiSnapshot } from './cognitive-map.ts'
 import type { EventRecord } from './types.ts'
+import { MS_PER_DAY, tsToMs } from './time.ts'
 
 /** Documented closes before the personal baseline may speak (I2's floor). */
 export const CBE_GUT_BASELINE_MIN_DEPARTURES = 5
 
-const MS_PER_DAY = 86_400_000
 
 /** Round to 3 decimals for stable rendering/serialization. */
 function r3(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /** One research territory's E0 ledger row. */
 export interface CbeTerritory {

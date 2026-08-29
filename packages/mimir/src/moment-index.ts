@@ -26,6 +26,7 @@
 import { CBE_SESSION_GAP_MINUTES, TERMINAL_ACTIONS } from './cognitive-map.ts'
 import { EUREKA_ACTION } from './eureka.ts'
 import type { EventRecord } from './types.ts'
+import { tsToMs } from './time.ts'
 
 const MS_PER_MINUTE = 60_000
 
@@ -87,11 +88,6 @@ function kindOfBurst(
   return null
 }
 
-/** Parse one ISO-8601 timestamp to epoch ms (NaN → null). */
-function tsToMs(ts: string): number | null {
-  const ms = Date.parse(ts)
-  return Number.isNaN(ms) ? null : ms
-}
 
 /** The line an event attributes to (idea first, then project), or null. */
 function lineOf(event: EventRecord): string | null {
