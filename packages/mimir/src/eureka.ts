@@ -42,11 +42,11 @@
  * @module dsh-mimir/src/eureka
  */
 
-import { CREATION_ACTIONS, signedWeight } from './cognitive-map.ts'
+import { CREATION_ACTIONS, lineOf, signedWeight } from './vocabulary.ts'
 import { deriveSessions } from './habits.ts'
 import { ewsReading } from './ledger-ews.ts'
 import type { CbeEwsReading } from './ledger-ews.ts'
-import { MS_PER_DAY, orderedEvents, tsToMs } from './time.ts'
+import { MS_PER_DAY, orderedEvents, sliceEvents, tsToMs } from './time.ts'
 import type { EventRecord } from './types.ts'
 
 /** The user's declared Eureka milestone (one append-only declaration). */
@@ -142,13 +142,6 @@ function r3(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-/** The line an event attributes to (idea first, then project), or null. */
-function lineOf(event: EventRecord): string | null {
-  if (event.refs.ideaId !== undefined) return event.refs.ideaId
-  if (event.refs.projectId !== undefined) return `project:${event.refs.projectId}`
-  return null
-}
-
 /**
  * Read the declared Eureka milestones off the ledger. A declaration is the
  * researcher's own call — an unparseable timestamp is skipped rather than
@@ -189,13 +182,12 @@ export function eurekaFeatures(
   fromMs: number,
   toMs: number,
 ): CbeEurekaFeatures {
-  const inWindow: EventRecord[] = []
-  for (const event of events) {
-    const ms = tsToMs(event.ts)
-    if (ms === null || ms < fromMs || ms >= toMs) continue
-    if (lineId !== null && lineOf(event) !== lineId) continue
-    inWindow.push(event)
-  }
+  // The shared slice decides what "in the window" means (this module's
+  // hand-rolled copy of that predicate is how it drifted from the others), and
+  // it hands the events back in canonical order — which `deriveSessions`
+  // below requires and the old code did not guarantee.
+  const inWindow = sliceEvents(events, fromMs, toMs)
+    .filter(event => lineId === null || lineOf(event) === lineId)
   const days = new Set<string>()
   let netWeight = 0
   let creationCount = 0

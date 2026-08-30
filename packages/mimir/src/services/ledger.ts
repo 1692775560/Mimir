@@ -11,8 +11,10 @@ import type { ResearchWikiDomain } from '../store.ts'
 import {
   appendEvent,
   buildProgressReport,
+  countEvents,
   emitEvent,
   EVENT_PAYLOAD_MAX_CHARS,
+  isObservationEvent,
   JOURNAL_TEXT_MAX_CHARS,
   LIST_EVENTS_MAX_LIMIT,
   listEvents,
@@ -38,14 +40,16 @@ import type {
   CbeMainlineDeclaration,
   CbeWorktreeLane,
 } from '../worktree.ts'
-import { EUREKA_ACTION } from '../eureka.ts'
+import { CBE_EUREKA_WINDOW_DAYS, EUREKA_ACTION } from '../eureka.ts'
 import { MOMENT_PIN_ACTION } from '../moment-index.ts'
 import { assembleDigest } from '../report-tier.ts'
 import type { CbeDigestTier } from '../report-tier.ts'
 import { renderDigest } from '../render-digest.ts'
 import type {
+  EventRecord,
   EventRefs,
   LedgerActorKind,
+  ResearchEventFilter,
   ResearchAddJournalEntryResult,
   ResearchBriefQuestion,
   ResearchCloseIdeaResult,
@@ -113,13 +117,62 @@ function resolveWindow(
   return { since: new Date(anchor - spanDays * MS_PER_DAY).toISOString(), until: untilIso }
 }
 
+/** One bounded ledger read: what was folded, and what was really there. */
+interface LedgerWindow {
+  /** The events handed to the fold — the newest window, time-ascending, observations out. */
+  readonly events: readonly EventRecord[]
+  /** Every event matching the filter, uncapped by {@link LIST_EVENTS_MAX_LIMIT}. */
+  readonly total: number
+  /** Whether the fold saw less than the whole match set. */
+  readonly truncated: boolean
+}
+
+/**
+ * Read one bounded ledger window for a pure CBE fold. Three guards that the
+ * bare `listEvents` call used to leave open:
+ *
+ * - **Newest window, not oldest.** `listEvents` caps at
+ *   {@link LIST_EVENTS_MAX_LIMIT}; keeping the head of history froze every
+ *   organ on the first events ever written, silently and forever.
+ * - **Observation events stripped.** The read path writes
+ *   `cbe.question.showed` / `.answered` about itself; counting them let
+ *   repeatedly opening the panel inflate the window mass and lift a line's
+ *   I2 evidence tier with no research behind it.
+ * - **The real total reported.** `events.length` is the capped window, not
+ *   the ledger — callers must not dress the cap up as the total.
+ *
+ * @param domain - open wiki domain.
+ * @param filter - the same predicates `listEvents` takes.
+ * @param label - what is folding, for the truncation warning.
+ */
+async function loadLedgerWindow(
+  domain: ResearchWikiDomain,
+  filter: Omit<ResearchEventFilter, 'limit' | 'order' | 'anchor'>,
+  label: string,
+): Promise<LedgerWindow> {
+  const [events, total] = await Promise.all([
+    listEvents(domain, { ...filter, limit: LIST_EVENTS_MAX_LIMIT }),
+    countEvents(domain, filter),
+  ])
+  const research = events.filter(event => !isObservationEvent(event))
+  const truncated = total > LIST_EVENTS_MAX_LIMIT
+  if (truncated) {
+    console.warn(
+      `[mimir] ledger window truncated: ${label} folded ${research.length} of ${total} events (cap ${LIST_EVENTS_MAX_LIMIT})`,
+    )
+  }
+  return { events: research, total, truncated }
+}
+
 /**
  * Query the research ledger (the append-only growth record). Every field is
  * an optional filter: a project ref, an actor kind, an action prefix
  * (e.g. `compute.`), and ISO-8601 time bounds (`since` inclusive, `until`
  * exclusive). The result is capped (default 200, hard cap 1000) and ordered
- * by (ts, id); `order: 'desc'` inverts it. An illegal limit or an
- * unparseable bound is `invalid-input` — the ledger itself is never mutated
+ * by (ts, id); `order: 'desc'` inverts it. The cap keeps the NEWEST matches
+ * (`anchor: 'oldest'` is the explicit exception), so a ledger past the cap
+ * still returns live activity. An illegal limit, anchor, or bound, or an
+ * unparseable one, is `invalid-input` — the ledger itself is never mutated
  * by this read.
  * @param deps - open wiki domain.
  * @param request - the optional filters.
@@ -135,6 +188,7 @@ export async function listEventsRemote(
     until?: string | undefined
     limit?: number | undefined
     order?: string | undefined
+    anchor?: string | undefined
   },
 ): Promise<ResearchListEventsResult> {
   const kind = request.actorKind
@@ -145,6 +199,10 @@ export async function listEventsRemote(
   if (order !== undefined && order !== 'asc' && order !== 'desc') {
     return rejected({ code: 'invalid-input', message: `order must be 'asc' or 'desc', got '${order}'` })
   }
+  const anchor = request.anchor
+  if (anchor !== undefined && anchor !== 'newest' && anchor !== 'oldest') {
+    return rejected({ code: 'invalid-input', message: `anchor must be 'newest' or 'oldest', got '${anchor}'` })
+  }
   try {
     const events = await listEvents(deps.domain, {
       ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
@@ -154,6 +212,7 @@ export async function listEventsRemote(
       ...(request.until === undefined ? {} : { until: request.until }),
       ...(request.limit === undefined ? {} : { limit: request.limit }),
       ...(order === undefined ? {} : { order }),
+      ...(anchor === undefined ? {} : { anchor }),
     })
     return success({ events })
   } catch (error) {
@@ -253,12 +312,11 @@ export async function generateBriefRemote(
     projectId: options.projectId ?? null,
   }
   try {
-    const events = await listEvents(deps.domain, {
+    const { events } = await loadLedgerWindow(deps.domain, {
       ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
       ...(options.since === undefined ? {} : { since: options.since }),
       ...(options.until === undefined ? {} : { until: options.until }),
-      limit: LIST_EVENTS_MAX_LIMIT,
-    })
+    }, 'brief')
     const wiki = wikiSnapshot(deps.domain)
     const brief = deriveBrief(events, wiki, window, Date.now())
     const questions = briefQuestions(brief, wiki)
@@ -426,7 +484,7 @@ export async function addJournalEntryRemote(
  */
 export async function getEvidenceProfileRemote(deps: LedgerDeps): Promise<ResearchGetEvidenceProfileResult> {
   try {
-    const events = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
+    const { events } = await loadLedgerWindow(deps.domain, {}, 'evidence profile')
     const model = evidenceModelAt(events)
     const profile = evidenceProfileOf(model)
     return success({
@@ -436,7 +494,8 @@ export async function getEvidenceProfileRemote(deps: LedgerDeps): Promise<Resear
         actions: profile.actions,
       },
     })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the evidence profile could not be folded', error)
     return rejected({ code: 'operation-failed', message: 'the evidence profile could not be folded' })
   }
 }
@@ -452,7 +511,7 @@ export async function getEvidenceProfileRemote(deps: LedgerDeps): Promise<Resear
  */
 export async function getForagingRemote(deps: LedgerDeps): Promise<ResearchGetForagingResult> {
   try {
-    const events = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
+    const { events } = await loadLedgerWindow(deps.domain, {}, 'foraging')
     const wiki = wikiSnapshot(deps.domain)
     const layer = deriveForaging(events, wiki, Date.now())
     return success({
@@ -463,7 +522,8 @@ export async function getForagingRemote(deps: LedgerDeps): Promise<ResearchGetFo
         cards: layer.cards,
       },
     })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the foraging layer could not be derived', error)
     return rejected({ code: 'operation-failed', message: 'the foraging layer could not be derived' })
   }
 }
@@ -512,7 +572,7 @@ function declaredView(
  */
 export async function getWorktreeRemote(deps: LedgerDeps): Promise<ResearchGetWorktreeResult> {
   try {
-    const events = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
+    const { events } = await loadLedgerWindow(deps.domain, {}, 'worktree')
     const wiki = wikiSnapshot(deps.domain)
     const tree = deriveWorktree(events, wiki, Date.now())
     const labels = worktreeLabels(wiki)
@@ -530,7 +590,8 @@ export async function getWorktreeRemote(deps: LedgerDeps): Promise<ResearchGetWo
       counts: Object.freeze({ ...tree.counts }),
     })
     return success({ worktree: view })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the worktree could not be derived', error)
     return rejected({ code: 'operation-failed', message: 'the worktree could not be derived' })
   }
 }
@@ -580,7 +641,8 @@ export async function setMainlineRemote(
       refs: ideaId !== undefined ? { ideaId } : { projectId: projectId as string },
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the mainline declaration could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the mainline declaration could not be written' })
   }
 }
@@ -619,7 +681,8 @@ export async function setIdeaParentRemote(
         payload: { parentIdeaId: null },
       })
       return success({ event })
-    } catch {
+    } catch (error) {
+      console.warn('[mimir]', 'the derivation edge could not be written', error)
       return rejected({ code: 'operation-failed', message: 'the derivation edge could not be written' })
     }
   }
@@ -650,7 +713,8 @@ export async function setIdeaParentRemote(
       payload: { parentIdeaId },
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the derivation edge could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the derivation edge could not be written' })
   }
 }
@@ -709,7 +773,8 @@ export async function closeIdeaRemote(
       payload: { reason },
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the close could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the close could not be written' })
   }
 }
@@ -761,7 +826,8 @@ export async function adoptIdeaRemote(
       payload: {},
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the adoption could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the adoption could not be written' })
   }
 }
@@ -804,7 +870,8 @@ export async function getLibraryThemesRemote(
         speaks: layer.speaks,
       },
     })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the library themes could not be derived', error)
     return rejected({ code: 'operation-failed', message: 'the library themes could not be derived' })
   }
 }
@@ -833,11 +900,11 @@ export async function getHabitsRemote(
 ): Promise<ResearchGetHabitsResult> {
   try {
     const window = resolveWindow(request.since, request.until, DEFAULT_SPAN_DAYS)
-    const events = await listEvents(deps.domain, {
-      since: window.since,
-      until: window.until,
-      limit: LIST_EVENTS_MAX_LIMIT,
-    })
+    const { events } = await loadLedgerWindow(
+      deps.domain,
+      { since: window.since, until: window.until },
+      'habits',
+    )
     const profile = deriveHabits(events, window.since, window.until, Date.now())
     return success({
       habits: {
@@ -853,7 +920,8 @@ export async function getHabitsRemote(
         speaks: profile.speaks,
       },
     })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the habit profile could not be derived', error)
     return rejected({ code: 'operation-failed', message: 'the habit profile could not be derived' })
   }
 }
@@ -904,12 +972,11 @@ export async function generateJournalDraftRemote(
   try {
     const nowMs = Date.now()
     const window = resolveWindow(request.since, request.until, DRAFT_SPAN_DAYS[kind])
-    const events = await listEvents(deps.domain, {
+    const { events } = await loadLedgerWindow(deps.domain, {
       ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
       since: window.since,
       until: window.until,
-      limit: LIST_EVENTS_MAX_LIMIT,
-    })
+    }, 'journal draft')
     const wiki = wikiSnapshot(deps.domain)
     const papers = [...deps.domain.table('papers').entries()].map(([, record]) => record)
     const briefWindow: CbeBriefWindow = {
@@ -993,7 +1060,8 @@ export async function setEurekaRemote(
       payload: { title },
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the eureka declaration could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the eureka declaration could not be written' })
   }
 }
@@ -1034,7 +1102,8 @@ export async function pinMomentRemote(
       payload: { targetEventId, note: note ?? null, pinned: pinned ?? true },
     })
     return success({ event })
-  } catch {
+  } catch (error) {
+    console.warn('[mimir]', 'the moment pin could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the moment pin could not be written' })
   }
 }
@@ -1070,8 +1139,11 @@ export async function generateDigestRemote(
   const nowMs = Date.now()
   let window: { readonly since: string; readonly until: string }
   if (safeTier === 'project' && request.since === undefined) {
-    const all = await listEvents(deps.domain, { limit: LIST_EVENTS_MAX_LIMIT })
-    const earliestMs = all.reduce((min, event) => {
+    // Explicit `oldest`: this call genuinely wants the head of history (the
+    // project tier opens the whole ledger), where every other read folds the
+    // newest window. Without the anchor the cap would answer "newest 1000".
+    const oldest = await listEvents(deps.domain, { anchor: 'oldest', limit: 1 })
+    const earliestMs = oldest.reduce((min, event) => {
       const ms = Date.parse(event.ts)
       return Number.isNaN(ms) ? min : Math.min(min, ms)
     }, nowMs)
@@ -1083,11 +1155,23 @@ export async function generateDigestRemote(
     window = resolveWindow(request.since, request.until, DIGEST_SPAN_DAYS[safeTier])
   }
   try {
-    const events = await listEvents(deps.domain, {
+    const folded = await loadLedgerWindow(deps.domain, {
       since: window.since,
       until: window.until,
-      limit: LIST_EVENTS_MAX_LIMIT,
-    })
+    }, `digest (${safeTier})`)
+    const events = folded.events
+    // Eureka reads a control window of `2 × CBE_EUREKA_WINDOW_DAYS` BEFORE
+    // each declaration; a short digest window would make those controls
+    // "unobservable" and silently drop declarations. Fetch an extended
+    // lookback so the eureka model sees its baseline, while the other folds
+    // keep using the (window-scoped) `events` above.
+    const eurekaLookbackSince = new Date(
+      Date.parse(window.since) - 2 * CBE_EUREKA_WINDOW_DAYS * MS_PER_DAY,
+    ).toISOString()
+    const eurekaFolded = await loadLedgerWindow(deps.domain, {
+      since: eurekaLookbackSince,
+      until: window.until,
+    }, `digest eureka lookback (${safeTier})`)
     const wiki = wikiSnapshot(deps.domain)
     const papers = [...deps.domain.table('papers').entries()].map(([, record]) => record)
     const digest = assembleDigest({
@@ -1098,10 +1182,29 @@ export async function generateDigestRemote(
       until: window.until,
       tier: safeTier,
       nowMs,
+      // Honest total: the capped window `events` is not the ledger, so hand
+      // the real match count to `assembleDigest` instead of letting it fall
+      // back to `events.length`.
+      eventsTotal: folded.total,
+      // Give eureka the extended lookback (see above) so its control windows
+      // stay observable; the other folds never receive these events.
+      eurekaEvents: eurekaFolded.events,
     })
-    const markdown = renderDigest(digest, lang as 'zh' | 'en')
+    // Register a truncation as a silence rather than letting the fold cap pass
+    // itself off as the whole history. `eventsTotal` is already the true
+    // total inside the digest; only the silence needs appending here.
+    const retrieval = Object.freeze({
+      ...digest.retrieval,
+      silences: folded.truncated
+        ? Object.freeze([
+          ...digest.retrieval.silences,
+          `events 截断：窗口共 ${folded.total} 条，超过单次折叠上限 ${LIST_EVENTS_MAX_LIMIT}，本报告只折叠最新的 ${digest.retrieval.eventsHit} 条`,
+        ])
+        : digest.retrieval.silences,
+    })
+    const markdown = renderDigest({ ...digest, retrieval }, lang as 'zh' | 'en')
     return success({
-      digest,
+      digest: { ...digest, retrieval },
       markdown,
       tier: safeTier,
       lang,

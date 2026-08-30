@@ -23,12 +23,10 @@
  * @module dsh-mimir/src/moment-index
  */
 
-import { CBE_SESSION_GAP_MINUTES, TERMINAL_ACTIONS } from './cognitive-map.ts'
+import { CREATION_ACTIONS, CBE_SESSION_GAP_MINUTES, TERMINAL_ACTIONS, lineOf } from './vocabulary.ts'
 import { EUREKA_ACTION } from './eureka.ts'
 import type { EventRecord } from './types.ts'
-import { tsToMs } from './time.ts'
-
-const MS_PER_MINUTE = 60_000
+import { orderedEvents, sessionize, sliceEvents, tsToMs } from './time.ts'
 
 /** The researcher's pin (or unpin) of one moment, anchored to one event. */
 export const MOMENT_PIN_ACTION = 'cbe.moment.pin'
@@ -78,9 +76,10 @@ function kindOfBurst(
   if (eureka !== undefined) return { kind: 'eureka', action: eureka.action }
   const terminal = burst.find(event => TERMINAL_ACTIONS.has(event.action))
   if (terminal !== undefined) return { kind: 'terminal', action: terminal.action }
-  const creation = burst.find(event => event.action === 'knowledge.idea.added'
-    || event.action === 'knowledge.claim.added'
-    || event.action === 'experiments.saved')
+  // The whole creation class, as the vocabulary defines it — not a hand-copied
+  // subset. A copy that lists three of the six members silently refuses to
+  // call a burst of literature imports "creation".
+  const creation = burst.find(event => CREATION_ACTIONS.has(event.action))
   if (creation !== undefined) return { kind: 'creation', action: creation.action }
   if (burst.length >= CBE_MOMENT_BURST_MIN_EVENTS) {
     return { kind: 'burst', action: burst[0]?.action ?? '' }
@@ -88,13 +87,6 @@ function kindOfBurst(
   return null
 }
 
-
-/** The line an event attributes to (idea first, then project), or null. */
-function lineOf(event: EventRecord): string | null {
-  if (event.refs.ideaId !== undefined) return event.refs.ideaId
-  if (event.refs.projectId !== undefined) return `project:${event.refs.projectId}`
-  return null
-}
 
 /**
  * Read the researcher's pin declarations: last declaration per target wins,
@@ -105,7 +97,7 @@ function lineOf(event: EventRecord): string | null {
  */
 export function momentPins(events: readonly EventRecord[]): ReadonlyMap<string, CbeMomentPin> {
   const pins = new Map<string, CbeMomentPin>()
-  const ordered = [...events].sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id))
+  const ordered = orderedEvents(events)
   for (const event of ordered) {
     if (event.action !== MOMENT_PIN_ACTION) continue
     const target = event.payload['targetEventId']
@@ -115,32 +107,6 @@ export function momentPins(events: readonly EventRecord[]): ReadonlyMap<string, 
     pins.set(target, Object.freeze({ targetEventId: target, note, pinned }))
   }
   return pins
-}
-
-/**
- * Cut the stream into bursts at the map's own session gap. Unparseable
- * timestamps are skipped (they cannot be placed in time).
- * @param events - events in ascending (ts, id) order.
- * @returns the bursts in time order.
- */
-function burstsOf(events: readonly EventRecord[]): readonly EventRecord[][] {
-  const bursts: EventRecord[][] = []
-  let current: EventRecord[] = []
-  for (const event of events) {
-    const ms = tsToMs(event.ts)
-    if (ms === null) continue
-    const previous = current[current.length - 1]
-    if (previous !== undefined) {
-      const previousMs = tsToMs(previous.ts) ?? 0
-      if (ms - previousMs > CBE_SESSION_GAP_MINUTES * MS_PER_MINUTE) {
-        bursts.push(current)
-        current = []
-      }
-    }
-    current.push(event)
-  }
-  if (current.length > 0) bursts.push(current)
-  return bursts
 }
 
 /**
@@ -163,18 +129,15 @@ export function deriveCuratedMoments(
 ): readonly CbeCuratedMoment[] {
   const sinceMs = since === null ? Number.NEGATIVE_INFINITY : (tsToMs(since) ?? Number.NEGATIVE_INFINITY)
   const untilMs = until === null ? Number.POSITIVE_INFINITY : (tsToMs(until) ?? Number.POSITIVE_INFINITY)
-  const ordered = [...events]
-    .filter(event => {
-      const ms = tsToMs(event.ts)
-      return ms !== null && ms >= sinceMs && ms < untilMs
-    })
-    .sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id))
+  // The shared slice: the same window semantics every other fold uses, and it
+  // hands back the events already in canonical order.
+  const ordered = sliceEvents(events, sinceMs, untilMs)
 
   const pins = momentPins(events)
   const byId = new Map(ordered.map(event => [event.id, event] as const))
   const moments = new Map<string, CbeCuratedMoment>()
 
-  for (const burst of burstsOf(ordered)) {
+  for (const burst of sessionize(ordered, CBE_SESSION_GAP_MINUTES)) {
     const classified = kindOfBurst(burst)
     if (classified === null) continue
     // Anchor on the most significant event of the burst, not the loudest.

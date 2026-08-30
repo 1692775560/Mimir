@@ -124,6 +124,21 @@ export type {
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
+/**
+ * The L0 primitives. These are the锅底 every fold is written against, and they
+ * are exported so a consumer — or a twelfth fold — never has to re-declare
+ * the canonical ordering, the window slice, the session cut, or the day and
+ * minute units. A re-declared primitive is how two folds come to disagree.
+ */
+export { MS_PER_DAY, MS_PER_MINUTE, orderedEvents, sessionize, sliceEvents, tsToMs } from './time.ts'
+/**
+ * The two vocabulary names that are not already re-exported through
+ * `./cognitive-map.ts` above. The constants themselves (`LINE_WEIGHTS`,
+ * `TERMINAL_ACTIONS`, `CREATION_ACTIONS`, `CBE_SESSION_GAP_MINUTES`) and
+ * `signedWeight` keep their original export path, so no existing import
+ * breaks.
+ */
+export { isDecisionEvent, lineOf } from './vocabulary.ts'
 export {
   appendEvent,
   buildProgressReport,
@@ -690,6 +705,12 @@ function createPaperPdfHandler(
       // Same cache-bust rationale as the compiled-paper route: a refetch
       // overwrites the same file, and the panel busts with ?v=<timestamp>.
       'Cache-Control': 'no-cache',
+      // Defense-in-depth: the served bytes are not our app; never let the
+      // browser guess a type or let a crafted PDF/SVG inherit our origin's
+      // privileges (sniffing + sandbox), even though these files are
+      // workspace-local.
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     })
     if (req.method === 'HEAD') {
       res.end()
@@ -797,6 +818,12 @@ function createFigureHandler(
       // Same cache-bust rationale as the PDF route; figures are immutable per
       // mtime from the panel's point of view.
       'Cache-Control': 'no-cache',
+      // Defense-in-depth: a `.svg` is served as `image/svg+xml` from our
+      // origin, and SVG can carry scripts. Pin the type (no sniff) and drop
+      // all privileges (sandbox + default-src 'none') so a served figure
+      // can never act as our page.
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     })
     if (req.method === 'HEAD') {
       res.end()

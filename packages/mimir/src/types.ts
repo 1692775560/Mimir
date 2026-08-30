@@ -790,8 +790,12 @@ export type ResearchZoteroExportResult = ResearchResult<{
   readonly skipped: readonly string[]
 }>
 
-/** The seven research-wiki tables, in domain order (the runtime-only `jobs` table is excluded). */
-export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers' | 'figures'
+/**
+ * The research-wiki tables carried by an export snapshot, in domain order
+ * (the runtime-only `jobs` table is excluded; `events` — the CBE engine's
+ * single source of truth — is included since snapshot v3).
+ */
+export type ResearchWikiTableName = 'papers' | 'ideas' | 'claims' | 'projects' | 'experiments' | 'servers' | 'figures' | 'events'
 
 /** One wiki export snapshot's table payload. */
 export interface ResearchWikiSnapshotTables {
@@ -802,15 +806,19 @@ export interface ResearchWikiSnapshotTables {
   readonly experiments: readonly ExperimentRecord[]
   readonly servers: readonly ServerRecord[]
   readonly figures: readonly FigureRecord[]
+  /** The append-only ledger. Absent at runtime in a legacy v2 snapshot. */
+  readonly events: readonly EventRecord[]
 }
 
 /**
- * One wiki backup snapshot: every record of all seven tables under a format
- * envelope (`format`/`version` guard against importing foreign JSON).
+ * One wiki backup snapshot: every record of all seven wiki tables plus the
+ * whole ledger under a format envelope (`format`/`version` guard against
+ * importing foreign JSON). `2` is still accepted by `importWiki` — a v2
+ * snapshot carries no `events` and restores no ledger.
  */
 export interface ResearchWikiSnapshot {
   readonly format: 'mimir-wiki'
-  readonly version: 2
+  readonly version: 2 | 3
   readonly exportedAt: string
   readonly tables: ResearchWikiSnapshotTables
 }
@@ -920,6 +928,14 @@ export interface ResearchEventFilter {
   readonly limit?: number | undefined
   /** Sort direction (default `asc`). */
   readonly order?: 'asc' | 'desc' | undefined
+  /**
+   * Which end of the match set the `limit` keeps (default `newest`): the cap
+   * is a sliding window over the newest events, so a ledger past the cap
+   * still folds live activity instead of freezing on its first N events.
+   * `oldest` is the explicit exception (e.g. "the earliest event in the
+   * ledger") and must be asked for by name.
+   */
+  readonly anchor?: 'newest' | 'oldest' | undefined
 }
 
 /** `listEvents` result. */

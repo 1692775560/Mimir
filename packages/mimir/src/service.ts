@@ -650,6 +650,7 @@ export class ResearchService extends TypertRemoteService {
     until?: string | undefined
     limit?: number | undefined
     order?: string | undefined
+    anchor?: string | undefined
   }): Promise<ResearchListEventsResult> {
     return ledger.listEventsRemote(this.deps, request)
   }

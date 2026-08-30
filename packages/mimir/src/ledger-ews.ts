@@ -76,8 +76,6 @@ export interface CbeEwsReading {
   readonly conditionalEntropy: number | null
   /** The order k actually used (0 when only H₁ is reported). */
   readonly order: number
-  /** H(k) at the largest admissible k — the sequence's unpredictability. */
-  readonly entropyRate: number | null
   /** H₁ − H(1): symbolic persistence, the critical-slowing-down analogue. */
   readonly lag1MutualInformation: number | null
   /** Mean −log₂ p of each symbol given its k predecessors. */
@@ -286,7 +284,6 @@ export function ewsReading(
     unigramEntropy: h1,
     conditionalEntropy: hk,
     order,
-    entropyRate: hk,
     lag1MutualInformation: lag1,
     meanSurprisal,
   })

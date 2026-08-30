@@ -38,7 +38,7 @@ export interface CbeParameterEntry {
 
 /** The registry itself: keyed by exported constant name. */
 export const PARAMETER_REGISTRY: Readonly<Record<string, CbeParameterEntry>> = Object.freeze({
-  /* ── cognitive-map.ts ─────────────────────────────────────────────── */
+  /* ── vocabulary.ts ────────────────────────────────────────────────── */
   CBE_HALF_LIFE_DAYS: {
     value: 7,
     track: 'calibratable',

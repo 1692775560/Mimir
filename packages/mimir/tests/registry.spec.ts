@@ -14,11 +14,12 @@ import * as ledger from '../src/ledger.ts'
 import * as worktree from '../src/worktree.ts'
 import * as cbeEngine from '../src/cbe-engine.ts'
 import * as foraging from '../src/foraging.ts'
+import * as vocabulary from '../src/vocabulary.ts'
 import { PARAMETER_REGISTRY } from '../src/registry.ts'
 import type { CbeParameterEntry } from '../src/registry.ts'
 
 /** The CBE modules whose exported constants are governed. */
-const MODULES: ReadonlyArray<Record<string, unknown>> = [cognitiveMap, ledger, worktree, cbeEngine, foraging]
+const MODULES: ReadonlyArray<Record<string, unknown>> = [cognitiveMap, ledger, worktree, cbeEngine, foraging, vocabulary]
 
 /** A constant name is governed when it looks like one and is not vocabulary. */
 function isGovernedScalar(name: string, value: unknown): boolean {
