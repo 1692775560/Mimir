@@ -178,3 +178,51 @@ describe('wiki_note set_paper', () => {
     expect(stored?.summary).toBe('Refreshed abstract.')
   })
 })
+
+describe('wiki_note add_idea auto-adoption', () => {
+  it('adopts an idea registered into a project at creation', async () => {
+    const domain = await harness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const created = await run(domain, {
+      action: 'add_idea',
+      title: 'Whole-body ego pose',
+      hypothesis: 'Egocentric frames improve pose',
+      project_id: 'p1',
+    }) as { ok: true; id: string }
+    const stored = domain.table('ideas').get(created.id)
+    expect(stored).toBeDefined()
+    expect(stored?.status).toBe('adopted')
+    expect(stored?.projectId).toBe('p1')
+    const adoptEvent = [...domain.table('events').entries()]
+      .map(([, e]) => e)
+      .find((e) => e.action === 'knowledge.idea.adopted' && e.refs.ideaId === created.id)
+    expect(adoptEvent).toBeDefined()
+    expect(adoptEvent?.refs.projectId).toBe('p1')
+  })
+
+  it('keeps a standalone idea active (no project) and emits knowledge.idea.added', async () => {
+    const domain = await harness()
+    const created = await run(domain, {
+      action: 'add_idea',
+      title: 'Loose thought',
+      hypothesis: 'Maybe',
+    }) as { ok: true; id: string }
+    const stored = domain.table('ideas').get(created.id)
+    expect(stored?.status).toBe('active')
+    expect(stored?.projectId).toBeUndefined()
+    const addedEvent = [...domain.table('events').entries()]
+      .map(([, e]) => e)
+      .find((e) => e.action === 'knowledge.idea.added' && e.refs.ideaId === created.id)
+    expect(addedEvent).toBeDefined()
+  })
+
+  it('rejects a project-scoped idea whose project does not exist', async () => {
+    const domain = await harness()
+    await expect(run(domain, {
+      action: 'add_idea',
+      title: 'Orphan',
+      hypothesis: 'No project',
+      project_id: 'ghost',
+    })).rejects.toThrow("no project with id 'ghost'")
+  })
+})

@@ -598,10 +598,6 @@
   -webkit-line-clamp: 2;
 }
 
-.projectMeta {
-  color: var(--dsw-alias-label-tertiary, #5b6474);
-  font-size: 12px;
-}
 
 /* The content well: the paper ground. Two faint washes (a slate tint at the
    upper left, an ochre tint at the upper right — the muted-zine rule of one
@@ -3857,6 +3853,135 @@ li.dropIndicator {
   font-weight: 600;
 }
 
+/* The boundary confirmation cards: one question row per card — the agent
+   asks, the user's answer lands as an L2 journal line. */
+.questionList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.questionCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 10px;
+}
+
+.questionKind {
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+}
+
+.questionLine {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-size: 12.5px;
+}
+
+/* The L2 journal box: a dashed enclosure under the brief's sheet — the one
+   place the user writes their own words onto the map. */
+.journalBox {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--mimir-line);
+  border-radius: 10px;
+}
+
+.journalHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.journalScope {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-family: var(--mimir-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.journalInput {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--mimir-line);
+  border-radius: 8px;
+  background: var(--mimir-sheet);
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-family: var(--mimir-serif);
+  font-size: 13.5px;
+  line-height: 1.6;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.journalInput::placeholder {
+  color: var(--dsw-alias-label-tertiary, #9aa2b1);
+}
+
+.journalInput:focus {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  box-shadow: 0 0 0 3px var(--dsw-alias-state-business-tertiary, rgb(65 118 230 / 15%));
+}
+
+.journalFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.journalCount {
+  margin-right: auto;
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-family: var(--mimir-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalCount[data-over] {
+  color: var(--dsw-alias-state-danger, #c2413a);
+}
+
+.journalOver {
+  color: var(--dsw-alias-state-danger, #c2413a);
+  font-size: 11px;
+}
+
+.journalMood {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.journalMoodLabel {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+}
+
+.journalSelect {
+  padding: 2px 6px;
+  border: 1px solid var(--mimir-line);
+  border-radius: 6px;
+  background: var(--mimir-sheet);
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-family: var(--mimir-mono);
+  font-size: 11px;
+  outline: none;
+}
+
 /* The timeline: one hairline-separated row per event — microtext timestamp,
    a flat square node, the action stamp, the actor microtext, the payload line. */
 .timelineCard {
@@ -4750,6 +4875,747 @@ li.dropIndicator {
 .zoteroSelect:focus-visible {   outline: 2px solid var(--dsw-alias-focus-border, #4f7cff);
   outline-offset: 1px;
 }
+
+/* The worktree (S2) card: the process as branches, dead ends, and the
+   mainline ref — a lane list, mainline-first, glyph-coded by status. */
+.worktreeBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin: 2px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 10px;
+}
+
+.worktreeBannerKind {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.worktreeBannerMain {
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.worktreeBannerMeta {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 12px;
+}
+
+.worktreeGroup {
+  margin-top: 12px;
+}
+
+.worktreeGroupTitle {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.worktreeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.worktreeLane {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 10px;
+}
+
+.worktreeLane[data-main] {
+  border-left: 3px solid var(--dsw-alias-label-primary, #211e19);
+}
+
+.worktreeLane[data-status='failed'] {
+  opacity: 0.82;
+}
+
+.worktreeGlyph {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.worktreeGlyph[data-status='failed'] {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+}
+
+.worktreeLaneBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.worktreeLaneHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.worktreeLaneLabel {
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.worktreeMainBadge {
+  padding: 1px 6px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 10.5px;
+}
+
+.worktreeLaneMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 2px;
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11.5px;
+}
+
+.worktreeReason {
+  margin: 4px 0 0;
+  color: var(--dsw-alias-label-secondary, #5b6474);
+  font-size: 12px;
+}
+
+.worktreeParent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.worktreeParentLabel {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+}
+
+.worktreeSelect,
+.worktreeCloseInput {
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--mimir-line-soft);
+  border-radius: 7px;
+  background: var(--mimir-paper);
+  color: var(--dsw-alias-label-primary, #211e19);
+  font-size: 12px;
+}
+
+.worktreeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.worktreeCloseBox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--mimir-line-soft);
+  border-radius: 8px;
+}
+
+.worktreeCloseInput {
+  flex: 1;
+  min-width: 160px;
+}
+
+.worktreeCount {
+  color: var(--dsw-alias-label-tertiary, #857d6c);
+  font-size: 11px;
+}
+
+.worktreeOver {
+  color: #b3261e;
+  font-size: 11px;
+}
+
+.worktreeCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+/* ── Foraging (S4) card + worktree storyline strip ───────────────────── */
+
+.foragingBaseline {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--research-ink-2, #5b6470);
+}
+
+.foragingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.foragingRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.foragingGut {
+  margin-left: auto;
+  color: var(--research-ink-2, #5b6470);
+  font-variant-numeric: tabular-nums;
+}
+
+.foragingNote {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--research-ink-3, #8a93a0);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/* ── Clay skin for the ledger view (worktree + foraging + timeline) ────── */
+
+.ledger {
+  --clay-bg: #efe4db;
+  --clay-card: #f9f1ea;
+  --clay-tray: #e9dcd1;
+  --clay-btn: #f6ebe2;
+  --clay-ink: #5b4a3f;
+  --clay-ink2: #8a766a;
+  --clay-ink3: #ac9a8d;
+  --clay-accent: #d98a68;
+  --clay-sh: 92, 72, 58;
+  background: var(--clay-bg);
+  border-radius: 26px;
+  padding: 22px;
+}
+
+.ledger .reportCard {
+  border: none;
+  border-radius: 26px;
+  background: var(--clay-card);
+  color: var(--clay-ink);
+  box-shadow:
+    0 16px 28px rgba(var(--clay-sh), 0.16),
+    0 5px 10px rgba(var(--clay-sh), 0.09),
+    inset 0 9px 16px rgba(255, 255, 255, 0.65),
+    inset 0 -12px 22px rgba(var(--clay-sh), 0.09);
+}
+
+.ledger .reportCardTitle { color: var(--clay-ink); font-weight: 700; }
+.ledger .hint { color: var(--clay-ink2); }
+.ledger .viewTitle { color: var(--clay-ink); }
+.ledger .viewSubtitle { color: var(--clay-ink2); }
+
+.ledger .btn,
+.ledger .btnPrimary {
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--clay-ink);
+  background: var(--clay-btn);
+  box-shadow:
+    0 8px 14px rgba(var(--clay-sh), 0.16),
+    0 2px 4px rgba(var(--clay-sh), 0.09),
+    inset 0 6px 10px rgba(255, 255, 255, 0.7),
+    inset 0 -6px 10px rgba(var(--clay-sh), 0.12);
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ledger .btnPrimary {
+  background: var(--clay-accent);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.ledger .btn:hover,
+.ledger .btnPrimary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 22px rgba(var(--clay-sh), 0.2),
+    0 4px 8px rgba(var(--clay-sh), 0.11),
+    inset 0 7px 12px rgba(255, 255, 255, 0.7),
+    inset 0 -7px 12px rgba(var(--clay-sh), 0.12);
+}
+
+.ledger .btn:active,
+.ledger .btnPrimary:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow:
+    0 2px 4px rgba(var(--clay-sh), 0.09),
+    inset 0 6px 12px rgba(var(--clay-sh), 0.22),
+    inset 0 -3px 6px rgba(255, 255, 255, 0.45);
+}
+
+.ledger .btn:disabled,
+.ledger .btnPrimary:disabled {
+  opacity: 0.55;
+  transform: none;
+  box-shadow: inset 0 4px 8px rgba(var(--clay-sh), 0.12);
+}
+
+.ledger .worktreeBanner {
+  border: none;
+  border-radius: 999px;
+  background: var(--clay-card);
+  color: var(--clay-ink);
+  box-shadow:
+    0 6px 12px rgba(var(--clay-sh), 0.11),
+    inset 0 5px 9px rgba(255, 255, 255, 0.6),
+    inset 0 -6px 10px rgba(var(--clay-sh), 0.09);
+}
+
+.ledger .worktreeBannerKind { color: var(--clay-ink2); }
+.ledger .worktreeBannerMain { color: var(--clay-ink); font-weight: 700; }
+.ledger .worktreeBannerMeta { color: var(--clay-ink3); }
+
+.ledger .worktreeLane {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 6px 12px rgba(var(--clay-sh), 0.09),
+    inset 0 5px 9px rgba(255, 255, 255, 0.55),
+    inset 0 -7px 12px rgba(var(--clay-sh), 0.07);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
+}
+
+.ledger .worktreeLane:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 16px rgba(var(--clay-sh), 0.12),
+    inset 0 6px 10px rgba(255, 255, 255, 0.55),
+    inset 0 -8px 12px rgba(var(--clay-sh), 0.08);
+}
+
+.ledger .worktreeLaneLabel { color: var(--clay-ink); font-weight: 600; }
+.ledger .worktreeLaneMeta { color: var(--clay-ink2); }
+.ledger .worktreeGroupTitle { color: var(--clay-ink3); letter-spacing: 0.08em; }
+.ledger .worktreeReason { color: var(--clay-ink2); }
+.ledger .worktreeParentLabel { color: var(--clay-ink3); }
+
+.ledger .worktreeGlyph {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: var(--clay-btn);
+  color: var(--clay-ink);
+  box-shadow:
+    0 4px 8px rgba(var(--clay-sh), 0.15),
+    inset 0 4px 6px rgba(255, 255, 255, 0.7),
+    inset 0 -5px 8px rgba(var(--clay-sh), 0.16);
+}
+
+.ledger .worktreeGlyph[data-status='failed'] { color: #a2573f; }
+.ledger .worktreeGlyph[data-status='adopted'] { color: #7fa189; }
+
+.ledger .worktreeMainBadge {
+  border: none;
+  border-radius: 999px;
+  background: var(--clay-accent);
+  color: #fff;
+  font-weight: 700;
+  box-shadow:
+    0 4px 8px rgba(var(--clay-sh), 0.17),
+    inset 0 3px 5px rgba(255, 255, 255, 0.35),
+    inset 0 -4px 6px rgba(var(--clay-sh), 0.2);
+}
+
+.ledger .worktreeSelect {
+  border: none;
+  border-radius: 12px;
+  background: var(--clay-tray);
+  color: var(--clay-ink);
+  box-shadow:
+    inset 0 4px 8px rgba(var(--clay-sh), 0.16),
+    inset 0 -2px 4px rgba(255, 255, 255, 0.4);
+}
+
+.ledger .statChip {
+  border: none;
+  border-radius: 999px;
+  background: var(--clay-btn);
+  color: var(--clay-ink2);
+  box-shadow:
+    0 4px 8px rgba(var(--clay-sh), 0.09),
+    inset 0 4px 7px rgba(255, 255, 255, 0.6),
+    inset 0 -4px 7px rgba(var(--clay-sh), 0.1);
+}
+
+.ledger .worktreeCounts { color: var(--clay-ink2); }
+.ledger .foragingBaseline { color: var(--clay-ink2); }
+.ledger .foragingGut { color: var(--clay-ink2); }
+.ledger .foragingNote { color: var(--clay-ink3); }
+
+.ledger .foragingRow {
+  border-radius: 14px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow:
+    inset 0 4px 8px rgba(255, 255, 255, 0.5),
+    inset 0 -5px 8px rgba(var(--clay-sh), 0.06);
+}
+
+.ledger .timelineCard {
+  border: none;
+  border-radius: 26px;
+  background: var(--clay-card);
+  box-shadow:
+    0 14px 24px rgba(var(--clay-sh), 0.14),
+    inset 0 9px 16px rgba(255, 255, 255, 0.65),
+    inset 0 -12px 22px rgba(var(--clay-sh), 0.08);
+}
+
+.ledger .tagPill {
+  border: none;
+  border-radius: 999px;
+  background: var(--clay-btn);
+  color: var(--clay-ink2);
+  box-shadow:
+    0 4px 8px rgba(var(--clay-sh), 0.1),
+    inset 0 3px 6px rgba(255, 255, 255, 0.6),
+    inset 0 -3px 6px rgba(var(--clay-sh), 0.1);
+  cursor: pointer;
+}
+
+.ledger .tagPill[data-active='true'],
+.ledger .tagPill[data-active] {
+  background: var(--clay-accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.ledger .journalBox {
+  border: none;
+  border-radius: 20px;
+  background: var(--clay-tray);
+  box-shadow:
+    inset 0 6px 12px rgba(var(--clay-sh), 0.14),
+    inset 0 -4px 8px rgba(255, 255, 255, 0.4);
+}
+
+.ledger .journalInput {
+  border: none;
+  border-radius: 14px;
+  background: var(--clay-card);
+  color: var(--clay-ink);
+  box-shadow:
+    inset 0 4px 10px rgba(var(--clay-sh), 0.12),
+    inset 0 -3px 6px rgba(255, 255, 255, 0.55);
+}
+
+.ledger .retry { color: var(--clay-accent); }
+
+/* ── Branch flow (clean branch-graph vocabulary: white canvas, light grey
+      connectors, bright white-ringed nodes) ───────────────────────────── */
+
+.worktreeFlowBox {
+  position: relative;
+  margin: 0 0 12px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #EFEFF2;
+  padding: 10px 6px 4px;
+  overflow: auto;
+}
+
+.worktreeFlowBox svg {
+  display: block;
+  width: 100%;
+  min-width: 320px;
+  height: auto;
+}
+
+/* Flat connectors on the light grey rail — the lane's own colour lives on
+   its pill and its nodes, so the graph stays calm with many lanes. */
+.worktreeFlowCurve,
+.worktreeFlowMain,
+.worktreeFlowAdopted,
+.worktreeFlowDead {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.worktreeFlowCurve { stroke-width: 4; }
+.worktreeFlowMain { stroke-width: 6; }
+.worktreeFlowAdopted { stroke-width: 4.5; }
+.worktreeFlowDead { stroke-width: 3; opacity: 0.6; stroke-dasharray: 5 4; }
+
+/* White ring + saturated fill: the node reads as a bead, not a blob. */
+.worktreeFlowBead,
+.worktreeFlowBeadMeta,
+.worktreeFlowBeadTerminal {
+  stroke: #ffffff;
+  stroke-width: 2.2;
+}
+
+.worktreeFlowBeadMeta { stroke-width: 1.6; opacity: 0.9; }
+
+.worktreeFlowBeadTerminal {
+  stroke-width: 3;
+}
+
+.worktreeFlowEpoch {
+  stroke: #C9CDD4;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.worktreeFlowNow {
+  stroke: #FF7F6E;
+  stroke-width: 1.6;
+  opacity: 0.6;
+}
+
+.worktreeFlowNote {
+  margin: 4px 8px 2px;
+  font-size: 11px;
+  color: #9AA0A6;
+}
+
+/* The highlight strip: memorable beats as soft pills, colour-coded by kind
+   so the eye finds the shape of the journey before reading a word. */
+.worktreeHighlights {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #FAFBFC;
+  border: 1px solid #EFF1F3;
+}
+
+.worktreeHighlightsTitle {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #9AA0A6;
+}
+
+.worktreeHighlightList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.worktreeHighlight {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  border: 1px solid #E8EAED;
+  font-size: 12px;
+  color: #4A4F55;
+}
+
+.worktreeHighlight[data-kind='eureka'] { border-color: #FFD7D0; background: #FFF6F4; }
+.worktreeHighlight[data-kind='mainline'] { border-color: #D6E9FA; background: #F4F9FE; }
+.worktreeHighlight[data-kind='adopted'] { border-color: #CFEBD6; background: #F3FBF5; }
+.worktreeHighlight[data-kind='failed'] { border-color: #FADCE6; background: #FEF7F9; }
+.worktreeHighlight[data-kind='busiest'] { border-color: #E4E1FA; background: #F7F6FE; }
+
+/* The lane pill: a saturated badge carrying the lane's own hue, so the
+   label below the graph and the nodes above it are visibly one thing. */
+.worktreeLanePill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 11px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.worktreeFlowTip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--clay-card, #f9f1ea);
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow:
+    0 10px 18px rgba(92, 72, 58, 0.22),
+    inset 0 4px 8px rgba(255, 255, 255, 0.6),
+    inset 0 -5px 8px rgba(92, 72, 58, 0.1);
+}
+
+.worktreeFlowTipLane {
+  font-weight: 700;
+}
+
+.worktreeFlowTipMeta {
+  color: var(--clay-ink2, #8a766a);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Digest (B–F) card ──────────────────────────────────────────── */
+.digestControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+}
+.digestControlLabel {
+  margin-left: 10px;
+  color: var(--clay-ink2, #8a766a);
+  font-size: 12px;
+}
+.digestBody { display: block; }
+.digestRetrieval {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--clay-sunken, rgba(92, 72, 58, 0.06));
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.digestSilence { color: var(--clay-ink2, #8a766a); }
+.digestSection { margin: 14px 0; }
+.digestTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.digestTable th,
+.digestTable td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--clay-line, rgba(92, 72, 58, 0.12));
+  text-align: left;
+}
+.digestTable th[scope='row'] {
+  font-weight: 600;
+  color: var(--clay-ink2, #8a766a);
+  white-space: nowrap;
+}
+.digestCapsuleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.digestCapsule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--clay-card, #fffdf9);
+  box-shadow: 0 2px 5px rgba(92, 72, 58, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.digestCapsuleAt { color: var(--clay-ink2, #8a766a); font-variant-numeric: tabular-nums; }
+.digestCapsuleTheme { font-weight: 600; color: var(--clay-ink, #5b4a3f); }
+.digestCapsuleMetric { font-variant-numeric: tabular-nums; color: var(--clay-ink, #5b4a3f); }
+.digestCapsuleEvidence {
+  color: var(--clay-ink2, #8a766a);
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+}
+.digestNote {
+  color: var(--clay-ink2, #8a766a);
+  font-size: 11px;
+  font-style: italic;
+  margin: 6px 0 0;
+}
+.digestMermaid {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--clay-sunken, rgba(92, 72, 58, 0.06));
+  overflow: auto;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.digestTasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.digestTasks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 13px;
+}
+.digestDeclare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.digestInput {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--clay-line, rgba(92, 72, 58, 0.18));
+  background: var(--clay-input, #fffdf9);
+  color: var(--clay-ink, #5b4a3f);
+  font-size: 13px;
+  box-shadow: inset 0 2px 4px rgba(92, 72, 58, 0.1);
 
 /* Import-existing-project dialog: portaled to document.body, so the z-index
    is relative to the root stacking context — it must clear the workbench

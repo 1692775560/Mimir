@@ -161,8 +161,11 @@ export function ResearchPanel({
   loadSnapshots, loadSnapshotDetail, closeSnapshotDetail, revertSnapshot,
   ensureVenueTemplates, applyVenueTemplate, clearVenueTemplate, uploadTemplateFiles, requestVenueFormat,
   loadMeetings, generateMeetingDeck, deleteMeetingDeck, getImageGenConfig, saveImageGenConfig,
+  loadLedger, generateReport, generateBrief, addJournal,
+  ensureWorktree, refreshWorktree, setMainline, setIdeaParent, adoptIdea, closeIdea,
+  ensureForaging, refreshForaging,
+  ensureDigest, refreshDigest, generateDigest, setEureka, pinMoment,
   getSxngConfig, saveSxngConfig,
-  loadLedger, generateReport,
   exportWiki, importWiki, dismissToast, pruneToasts,
   toggleTheme, toggleLocale, t,
 }: ResearchPanelProps) {
@@ -198,6 +201,10 @@ export function ResearchPanel({
   const snapshotDetail = useResearch(view => view.snapshotDetail)
   const ledger = useResearch(view => view.ledger)
   const report = useResearch(view => view.report)
+  const brief = useResearch(view => view.brief)
+  const worktree = useResearch(view => view.worktree)
+  const foraging = useResearch(view => view.foraging)
+  const digest = useResearch(view => view.digest)
   const toasts = useResearch(view => view.toasts)
   const backup = useResearch(view => view.backup)
   const paperJump = useResearch(view => view.paperJump)
@@ -627,9 +634,28 @@ export function ResearchPanel({
           <LedgerView
             ledger={ledger}
             report={report}
+            brief={brief}
+            worktree={worktree}
             selectedProjectId={selectedProjectId}
             loadLedger={loadLedger}
             generateReport={generateReport}
+            generateBrief={generateBrief}
+            addJournal={addJournal}
+            ensureWorktree={ensureWorktree}
+            refreshWorktree={refreshWorktree}
+            setMainline={setMainline}
+            setIdeaParent={setIdeaParent}
+            adoptIdea={adoptIdea}
+            closeIdea={closeIdea}
+            ensureForaging={ensureForaging}
+            refreshForaging={refreshForaging}
+            foraging={foraging}
+            digest={digest}
+            ensureDigest={ensureDigest}
+            refreshDigest={refreshDigest}
+            generateDigest={generateDigest}
+            setEureka={setEureka}
+            pinMoment={pinMoment}
             t={t}
           />
         )}

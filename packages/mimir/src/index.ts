@@ -45,9 +45,11 @@ export type {
   ArxivSubscriptionView,
   FigureEntry,
   OutlineNode,
+  ResearchAddJournalEntryResult,
   ResearchArtifactResult,
   ResearchArxivSubscriptionsResult,
   ResearchBackupStatusView,
+  ResearchBriefQuestion,
   ResearchCheckArxivSubscriptionsResult,
   ResearchCheckServerResult,
   ResearchCompileResult,
@@ -65,7 +67,23 @@ export type {
   ResearchGetSxngConfigResult,
   ResearchSetSxngConfigResult,
   ResearchFiguresResult,
+  ResearchGenerateBriefOptions,
+  ResearchGenerateBriefResult,
+  ResearchGenerateJournalDraftResult,
+  ResearchDigestView,
+  ResearchDigestTier,
+  ResearchExperienceCapsule,
+  ResearchCapsulePerspective,
+  ResearchGenerateDigestOptions,
+  ResearchGenerateDigestResult,
+  ResearchPinMomentOptions,
+  ResearchPinMomentResult,
+  ResearchSetEurekaOptions,
+  ResearchSetEurekaResult,
+  ResearchGetHabitsResult,
+  ResearchGetLibraryThemesResult,
   ResearchImportPaperResult,
+  ResearchJournalDraftKind,
   ResearchImportProjectRequest,
   ResearchImportProjectResult,
   ResearchImportedProject,
@@ -106,6 +124,21 @@ export type {
 } from './types.ts'
 export { researchWikiDomainSpec } from './store.ts'
 export type { ResearchWikiDomain } from './store.ts'
+/**
+ * The L0 primitives. These are the锅底 every fold is written against, and they
+ * are exported so a consumer — or a twelfth fold — never has to re-declare
+ * the canonical ordering, the window slice, the session cut, or the day and
+ * minute units. A re-declared primitive is how two folds come to disagree.
+ */
+export { MS_PER_DAY, MS_PER_MINUTE, orderedEvents, sessionize, sliceEvents, tsToMs } from './time.ts'
+/**
+ * The two vocabulary names that are not already re-exported through
+ * `./cognitive-map.ts` above. The constants themselves (`LINE_WEIGHTS`,
+ * `TERMINAL_ACTIONS`, `CREATION_ACTIONS`, `CBE_SESSION_GAP_MINUTES`) and
+ * `signedWeight` keep their original export path, so no existing import
+ * breaks.
+ */
+export { isDecisionEvent, lineOf } from './vocabulary.ts'
 export {
   appendEvent,
   buildProgressReport,
@@ -118,10 +151,201 @@ export {
   SERVICE_ACTOR,
   WIKI_AGENT_ACTOR,
   EVENT_PAYLOAD_MAX_CHARS,
+  JOURNAL_TEXT_MAX_CHARS,
   LIST_EVENTS_DEFAULT_LIMIT,
   LIST_EVENTS_MAX_LIMIT,
 } from './ledger.ts'
 export type { LedgerEventInput } from './ledger.ts'
+export {
+  deriveLines,
+  detectMoments,
+  deriveTransitions,
+  deriveOpenLoops,
+  deriveQuestions,
+  deriveBrief,
+  deriveNarrative,
+  lineInferenceCard,
+  renderBriefMarkdown,
+  signedWeight,
+  claimsOf,
+  LINE_WEIGHTS,
+  TERMINAL_ACTIONS,
+  CREATION_ACTIONS,
+  JOURNAL_ACTION,
+  QUESTION_SHOWED_ACTION,
+  QUESTION_ANSWERED_ACTION,
+  CBE_HALF_LIFE_DAYS,
+  CBE_SESSION_GAP_MINUTES,
+  CBE_DOMINANT_DRIFT,
+  CBE_STALLED_DRIFT,
+  CBE_EXPLORE_EVENTS,
+  CBE_RETURN_SESSIONS,
+  CBE_FOCUS_DISPERSION,
+  CBE_LINE_EVIDENCE_CAP,
+  CBE_QUESTION_CAP,
+  CBE_DERIVATION_VERSION,
+  CBE_TIER_SILENT_LINE_EVENTS,
+  CBE_TIER_E1_LINE_EVENTS,
+  CBE_TIER_E1_USER_EVENTS,
+} from './cognitive-map.ts'
+export type {
+  CbeBrief,
+  CbeBriefWindow,
+  CbeBoundaryQuestion,
+  CbeEvidenceTier,
+  CbeLine,
+  CbeLineState,
+  CbeMoment,
+  CbeNarrative,
+  CbeOpenLoop,
+  CbeOpenLoopKind,
+  CbeQuestionKind,
+  CbeTransition,
+  CbeWikiSnapshot,
+  InferenceCard,
+} from './cognitive-map.ts'
+export { PARAMETER_REGISTRY } from './registry.ts'
+export type { CbeParameterEntry, CbeParameterTrack } from './registry.ts'
+export {
+  deriveWorktree,
+  ideaParentEdges,
+  MAINLINE_ACTION,
+  IDEA_PARENT_ACTION,
+  IDEA_CLOSE_REASON_MAX_CHARS,
+} from './worktree.ts'
+export type {
+  CbeWorktree,
+  CbeWorktreeLane,
+  CbeWorktreeLaneStatus,
+  CbeMainlineDeclaration,
+} from './worktree.ts'
+export {
+  evidenceModelAt,
+  evidenceProfileOf,
+  effectiveValue,
+  initialModel,
+  terminalOutcome,
+  isTerminalOutcome,
+  updateOnTerminal,
+  CBE_ENGINE_ALPHA,
+  CBE_ENGINE_KAPPA,
+  CBE_ENGINE_N_FLIP,
+  CBE_ENGINE_FOLD_WINDOW_DAYS,
+} from './cbe-engine.ts'
+export type {
+  CbeEvidenceModel,
+  CbeActionValue,
+  CbeEvidenceActionRow,
+} from './cbe-engine.ts'
+export {
+  deriveForaging,
+  deriveTerritories,
+  deriveGutBaseline,
+  CBE_GUT_BASELINE_MIN_DEPARTURES,
+} from './foraging.ts'
+export type {
+  CbeForaging,
+  CbeTerritory,
+  CbeGutBaseline,
+  CbeGutCard,
+} from './foraging.ts'
+export {
+  deriveLibraryThemes,
+  countThemes,
+  tagThemesOf,
+  themeTokens,
+  CBE_THEME_MIN_PAPERS,
+  CBE_THEME_KEYWORD_MIN_DOCS,
+  CBE_THEME_TOP_N,
+  CBE_THEME_FLAT_BAND,
+} from './library-themes.ts'
+export type {
+  CbeLibraryThemes,
+  CbeThemeCount,
+  CbeThemeDirection,
+  CbeThemeDriftRow,
+  CbeThemeSource,
+  CbeThemeWindow,
+} from './library-themes.ts'
+export {
+  deriveHabits,
+  deriveSessions,
+  CBE_HABIT_MIN_SESSIONS,
+  CBE_HABIT_MIN_EVENTS,
+} from './habits.ts'
+export type {
+  CbeHabitProfile,
+  CbeSession,
+  CbeHourBucket,
+  CbeWeekdayBucket,
+} from './habits.ts'
+export {
+  eurekaDeclarations,
+  eurekaFeatures,
+  eurekaModelAt,
+  eurekaProfileOf,
+  EUREKA_ACTION,
+  EUREKA_FEATURE_KEYS,
+  CBE_EUREKA_WINDOW_DAYS,
+  CBE_EUREKA_MIN_DECLARATIONS,
+} from './eureka.ts'
+export {
+  eurekaCriticalStateData,
+} from './eureka.ts'
+export type {
+  CbeEurekaDeclaration,
+  CbeEurekaFeatureKey,
+  CbeEurekaFeatureRow,
+  CbeEurekaFeatures,
+  CbeEurekaModel,
+  CbeEurekaProfile,
+  CbeCriticalStateSample,
+} from './eureka.ts'
+export {
+  deriveCapsules,
+  formatCapsule,
+} from './report-capsules.ts'
+export type {
+  CbeCapsulePerspective,
+  CbeExperienceCapsule,
+  CbeCapsuleInput,
+  CapsuleLang,
+} from './report-capsules.ts'
+export {
+  assembleDigest,
+} from './report-tier.ts'
+export type {
+  CbeDigestReport,
+  CbeDigestTier,
+  CbeDigestStat,
+  CbeDigestRetrieval,
+  CbeDigestEurekaRow,
+  CbeDigestPerspectiveBlock,
+  DigestInput,
+} from './report-tier.ts'
+export {
+  renderDigest,
+} from './render-digest.ts'
+export {
+  actionSequence,
+  conditionalEntropy,
+  ewsOrder,
+  ewsReading,
+  surprisalSequence,
+  unigramEntropy,
+  CBE_EWS_MIN_EVENTS,
+  CBE_EWS_MAX_ORDER,
+} from './ledger-ews.ts'
+export type { CbeEwsReading } from './ledger-ews.ts'
+export {
+  deriveCuratedMoments,
+  momentPins,
+  MOMENT_PIN_ACTION,
+  CBE_MOMENT_BURST_MIN_EVENTS,
+} from './moment-index.ts'
+export type { CbeCuratedMoment, CbeMomentKind, CbeMomentPin } from './moment-index.ts'
+export { renderJournalDraft } from './journal-draft.ts'
+export type { JournalDraftInput, JournalDraftKind, JournalDraftLang } from './journal-draft.ts'
 export { parseLatexErrors } from './latex-log.ts'
 export type { LatexIssue } from './latex-log.ts'
 export { parseTexOutline } from './outline.ts'
@@ -481,6 +705,12 @@ function createPaperPdfHandler(
       // Same cache-bust rationale as the compiled-paper route: a refetch
       // overwrites the same file, and the panel busts with ?v=<timestamp>.
       'Cache-Control': 'no-cache',
+      // Defense-in-depth: the served bytes are not our app; never let the
+      // browser guess a type or let a crafted PDF/SVG inherit our origin's
+      // privileges (sniffing + sandbox), even though these files are
+      // workspace-local.
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     })
     if (req.method === 'HEAD') {
       res.end()
@@ -588,6 +818,12 @@ function createFigureHandler(
       // Same cache-bust rationale as the PDF route; figures are immutable per
       // mtime from the panel's point of view.
       'Cache-Control': 'no-cache',
+      // Defense-in-depth: a `.svg` is served as `image/svg+xml` from our
+      // origin, and SVG can carry scripts. Pin the type (no sniff) and drop
+      // all privileges (sandbox + default-src 'none') so a served figure
+      // can never act as our page.
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     })
     if (req.method === 'HEAD') {
       res.end()

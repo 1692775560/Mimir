@@ -19,19 +19,22 @@ import { researchWikiDomainSpec } from '../src/store.ts'
 import type { ResearchWikiDomain } from '../src/store.ts'
 import { ResearchService } from '../src/service.ts'
 import { createWikiNoteTool } from '../src/tools/wiki.ts'
+import { CBE_DERIVATION_VERSION, CBE_TIER_E1_USER_EVENTS, QUESTION_SHOWED_ACTION } from '../src/cognitive-map.ts'
 import {
   appendEvent,
   buildProgressReport,
+  countEvents,
   listEvents,
   newEvent,
   truncatePayload,
   EVENT_PAYLOAD_MAX_CHARS,
+  JOURNAL_TEXT_MAX_CHARS,
   LIST_EVENTS_MAX_LIMIT,
   PANEL_ACTOR,
   SERVICE_ACTOR,
   WIKI_AGENT_ACTOR,
 } from '../src/ledger.ts'
-import type { ProjectRecord, ClaimRecord, ExperimentRecord, EventRecord } from '../src/types.ts'
+import type { ProjectRecord, ClaimRecord, ExperimentRecord, EventRecord, IdeaRecord } from '../src/types.ts'
 
 /** Boot one open research-wiki domain over a throwaway memory medium. */
 async function domainHarness(): Promise<ResearchWikiDomain> {
@@ -171,6 +174,38 @@ describe('ledger append + query', () => {
     await expect(listEvents(domain, { limit: LIST_EVENTS_MAX_LIMIT + 1 })).rejects.toThrow(RangeError)
     await expect(listEvents(domain, { since: 'not-a-date' })).rejects.toThrow(RangeError)
     await expect(listEvents(domain, { until: 'not-a-date' })).rejects.toThrow(RangeError)
+  })
+
+  it('caps the NEWEST window, not the oldest, so a long ledger never freezes', async () => {
+    const domain = await domainHarness()
+    const base = new Date('2026-08-01T00:00:00.000Z')
+    for (let i = 0; i < 5; i += 1) {
+      await appendEvent(domain, { actor: PANEL_ACTOR, action: `a.${i}`, now: new Date(base.getTime() + i * 1000) })
+    }
+    // The window is the newest matches, still handed back time-ascending so
+    // the downstream folds (sessionize, symbol sequences) keep their order.
+    const newest = await listEvents(domain, { limit: 2 })
+    expect(newest.map(event => event.action)).toEqual(['a.3', 'a.4'])
+    const newestDesc = await listEvents(domain, { limit: 2, order: 'desc' })
+    expect(newestDesc.map(event => event.action)).toEqual(['a.4', 'a.3'])
+    // `oldest` is opt-in, for callers that really want the head of history.
+    const oldest = await listEvents(domain, { limit: 2, anchor: 'oldest' })
+    expect(oldest.map(event => event.action)).toEqual(['a.0', 'a.1'])
+  })
+
+  it('counts every match uncapped, so a truncated window can say so', async () => {
+    const domain = await domainHarness()
+    const base = new Date('2026-08-01T00:00:00.000Z')
+    for (let i = 0; i < 5; i += 1) {
+      await appendEvent(domain, { actor: PANEL_ACTOR, action: `a.${i}`, now: new Date(base.getTime() + i * 1000) })
+    }
+    await appendEvent(domain, { actor: SERVICE_ACTOR, action: 'b.other', now: new Date(base.getTime() + 5000) })
+    expect(await countEvents(domain)).toBe(6)
+    expect(await countEvents(domain, { actorKind: 'system' })).toBe(1)
+    // The capped window is 2 long; the honest total is 6.
+    const window = await listEvents(domain, { limit: 2 })
+    expect(window).toHaveLength(2)
+    expect(await countEvents(domain)).toBeGreaterThan(window.length)
   })
 })
 
@@ -417,6 +452,566 @@ describe('ResearchService ledger wiring (panel actor)', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
     const ok = await service.listEvents({})
     expect(ok).toEqual({ ok: true, value: { events: [] } })
+  })
+})
+
+describe('cognitive beidou remotes (CBE service wiring)', () => {
+  it('addJournalEntry appends the L2 event with panel actor and queryable refs', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    const outcome = await service.addJournalEntry({ text: '这条线要再想想', projectId: PROJECT.id })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    expect(outcome.value.event).toMatchObject({
+      action: 'journal.entry.added',
+      actor: { kind: 'user', id: 'panel' },
+      refs: { projectId: PROJECT.id },
+      payload: { text: '这条线要再想想' },
+    })
+    const events = await listEvents(domain, { actionPrefix: 'journal.' })
+    expect(events).toHaveLength(1)
+    expect(events[0]?.id).toBe(outcome.value.event.id)
+  })
+
+  it('addJournalEntry carries optional self-reported mood ratings, range-checked', async () => {
+    const { service } = await serviceHarness()
+    const tagged = await service.addJournalEntry({ text: '今天有点乱但兴奋', valence: 4, arousal: 5 })
+    expect(tagged.ok).toBe(true)
+    if (!tagged.ok) throw new Error('unreachable')
+    expect(tagged.value.event.payload).toEqual({ text: '今天有点乱但兴奋', valence: 4, arousal: 5 })
+    const oneSided = await service.addJournalEntry({ text: '只标一头', valence: 2 })
+    expect(oneSided.ok).toBe(true)
+    if (!oneSided.ok) throw new Error('unreachable')
+    expect(oneSided.value.event.payload).toEqual({ text: '只标一头', valence: 2 })
+    await expect(service.addJournalEntry({ text: 'x', valence: 0 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'valence must be an integer between 1 and 5' } })
+    await expect(service.addJournalEntry({ text: 'x', arousal: 2.5 }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'arousal must be an integer between 1 and 5' } })
+  })
+
+  it('addJournalEntry rejects blank text, over-cap text, and unknown projects', async () => {
+    const { service } = await serviceHarness()
+    await expect(service.addJournalEntry({ text: '   ', projectId: 'p1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'journal text must not be empty' } })
+    await expect(service.addJournalEntry({ text: 'x'.repeat(JOURNAL_TEXT_MAX_CHARS + 1) }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.addJournalEntry({ text: 'valid text', projectId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+  })
+
+  it('generateBrief composes the roadbook: dominant line, L2 words, event count', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('ideas').put('i1', {
+      id: 'i1',
+      title: 'Retrieval-free decoding',
+      hypothesis: 'It works without retrieval.',
+      status: 'active',
+      createdAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+    })
+    const now = Date.now()
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'knowledge.idea.added',
+      refs: { ideaId: 'i1', projectId: PROJECT.id },
+      payload: { title: 'Retrieval-free decoding' },
+      now: new Date(now - 3_600_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: 'i1', projectId: PROJECT.id },
+      payload: { name: 'rfd-run-1', created: true },
+      now: new Date(now - 1_800_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'literature.paper.imported',
+      refs: { ideaId: 'i1', projectId: PROJECT.id },
+      payload: { title: 'Retrieval-free related work', imported: true },
+      now: new Date(now - 600_000),
+    })
+    await service.addJournalEntry({ text: '这条线起来了', projectId: PROJECT.id, ideaId: 'i1' })
+    const brief = await service.generateBrief({
+      projectId: PROJECT.id,
+      since: new Date(now - 2 * 86_400_000).toISOString(),
+    })
+    expect(brief.ok).toBe(true)
+    if (!brief.ok) throw new Error('unreachable')
+    expect(brief.value.markdown).toContain('| `i1` Retrieval-free decoding | dominant')
+    expect(brief.value.markdown).toContain('## Your words (the L2 layer)')
+    expect(brief.value.markdown).toContain('这条线起来了')
+    expect(brief.value.eventCount).toBe(4)
+  })
+
+  it('generateBrief carries the derivation version and logs the I4 showed meta event', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('claims').put('c9', {
+      id: 'c9',
+      text: 'another pending claim text that is long enough to stand in a card',
+      status: 'pending',
+      evidence: '—',
+    })
+    const brief = await service.generateBrief({ projectId: PROJECT.id })
+    expect(brief.ok).toBe(true)
+    if (!brief.ok) throw new Error('unreachable')
+    expect(brief.value.derivationVersion).toBe(CBE_DERIVATION_VERSION)
+    const meta = await listEvents(domain, { actionPrefix: 'cbe.question.' })
+    expect(meta).toHaveLength(1)
+    expect(meta[0]).toMatchObject({
+      action: 'cbe.question.showed',
+      actor: { kind: 'user', id: 'panel' },
+      payload: { count: 1, lineIds: ['c9'] },
+    })
+  })
+
+  it('does not let the instrument’s own observations lift a line’s evidence tier', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put('i1', {
+      id: 'i1',
+      title: 'Observer-proof line',
+      hypothesis: 'The tier comes from research, not from looking.',
+      status: 'active',
+      createdAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+    })
+    const now = Date.now()
+    // One real event short of the E1 window mass (CBE_TIER_E1_USER_EVENTS).
+    for (let i = 0; i < CBE_TIER_E1_USER_EVENTS - 1; i += 1) {
+      await appendEvent(domain, {
+        actor: WIKI_AGENT_ACTOR,
+        action: 'knowledge.claim.set',
+        refs: { ideaId: 'i1' },
+        payload: { status: 'supported' },
+        now: new Date(now - (CBE_TIER_E1_USER_EVENTS - i) * 1000),
+      })
+    }
+    // The instrument's own ticks: without excluding these, opening the panel
+    // a few times would push the window over the E1 floor and upgrade the
+    // line from e0 to e0+e1 with no research behind it.
+    await appendEvent(domain, { actor: PANEL_ACTOR, action: QUESTION_SHOWED_ACTION, refs: {}, payload: { count: 1 } })
+    await appendEvent(domain, { actor: PANEL_ACTOR, action: QUESTION_SHOWED_ACTION, refs: {}, payload: { count: 1 } })
+
+    const brief = await service.generateBrief({})
+    expect(brief.ok).toBe(true)
+    if (!brief.ok) throw new Error('unreachable')
+    expect(brief.value.markdown).toContain('| e0 |')
+    expect(brief.value.markdown).not.toContain('| e0+e1 |')
+
+    // Control: one more REAL decision-grade event crosses the floor, so the
+    // test above is not vacuous — the tier does move when research happens.
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'knowledge.claim.set',
+      refs: { ideaId: 'i1' },
+      payload: { status: 'supported' },
+      now: new Date(now),
+    })
+    const upgraded = await service.generateBrief({})
+    expect(upgraded.ok).toBe(true)
+    if (!upgraded.ok) throw new Error('unreachable')
+    expect(upgraded.value.markdown).toContain('| e0+e1 |')
+  })
+
+  it('addJournalEntry answers a question card with the I4 answered meta event', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('claims').put('c9', {
+      id: 'c9',
+      text: 'a pending claim the journal entry answers',
+      status: 'pending',
+      evidence: '—',
+    })
+    const outcome = await service.addJournalEntry({
+      text: '关于这条断言：我的裁定是先放着',
+      question: { kind: 'pending-claim', lineId: 'c9' },
+    })
+    expect(outcome.ok).toBe(true)
+    const meta = await listEvents(domain, { actionPrefix: 'cbe.question.' })
+    expect(meta).toHaveLength(1)
+    expect(meta[0]).toMatchObject({
+      action: 'cbe.question.answered',
+      refs: { claimId: 'c9' },
+      payload: { kind: 'pending-claim', lineId: 'c9' },
+    })
+    await expect(service.addJournalEntry({ text: 'x', question: { kind: 'nonsense', lineId: 'c9' } }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+  })
+
+  it('generateBrief rejects an unknown project id', async () => {
+    const { service } = await serviceHarness()
+    await expect(service.generateBrief({ projectId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+  })
+
+  it('generateBrief surfaces structured boundary questions with labels', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('ideas').put('idea-r', {
+      id: 'idea-r',
+      title: 'Side road idea',
+      hypothesis: 'A persistent side road.',
+      status: 'active',
+      createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+    })
+    await domain.table('claims').put('c9', {
+      id: 'c9',
+      text: '这个断言的文本写得足够长，长到明显超过四十八个字符的上限，从而必须被截断成一个较短的摘要，才能放进那张边界确认卡片里。',
+      status: 'pending',
+      evidence: '—',
+    })
+    const now = Date.now()
+    // A returning-side line: +1.5 / −1.5 / +1.5 / +1.5 / −1.5 across five
+    // far-apart days — five events so the line clears the I2 word floor.
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: 'idea-r', projectId: PROJECT.id },
+      payload: { name: 'r0', created: true },
+      now: new Date(now - 7 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: 'idea-r', projectId: PROJECT.id },
+      payload: { name: 'r1', created: true },
+      now: new Date(now - 5 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.deleted',
+      refs: { ideaId: 'idea-r', projectId: PROJECT.id },
+      payload: { name: 'r1', destructive: true },
+      now: new Date(now - 3 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: 'idea-r', projectId: PROJECT.id },
+      payload: { name: 'r2', created: true },
+      now: new Date(now - 1 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.deleted',
+      refs: { ideaId: 'idea-r', projectId: PROJECT.id },
+      payload: { name: 'r0', destructive: true },
+      now: new Date(now - 2 * 86_400_000),
+    })
+    const brief = await service.generateBrief({ projectId: PROJECT.id })
+    expect(brief.ok).toBe(true)
+    if (!brief.ok) throw new Error('unreachable')
+    const questions = brief.value.questions
+    const branch = questions.find(question => question.kind === 'returning-branch')
+    expect(branch).toEqual({ kind: 'returning-branch', lineId: 'idea-r', label: 'Side road idea' })
+    const pending = questions.find(question => question.kind === 'pending-claim')
+    expect(pending?.lineId).toBe('c9')
+    expect(pending?.label.endsWith('…')).toBe(true)
+    expect(pending?.label.length).toBeLessThanOrEqual(48)
+  })
+})
+
+describe('worktree remotes (S2 service wiring)', () => {
+  const ACTIVE: IdeaRecord = {
+    id: 'i1',
+    title: 'Bayes overflow',
+    hypothesis: 'h',
+    status: 'active',
+    createdAt: '2026-08-01T00:00:00.000Z',
+  }
+  const SIDE: IdeaRecord = {
+    id: 'i2',
+    title: 'Side branch',
+    hypothesis: 'h',
+    status: 'active',
+    createdAt: '2026-08-02T00:00:00.000Z',
+  }
+
+  it('getWorktree derives an empty tree over a fresh wiki', async () => {
+    const { service } = await serviceHarness()
+    const outcome = await service.getWorktree()
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    expect(outcome.value.worktree.lanes).toEqual([])
+    expect(outcome.value.worktree.mainline).toBeNull()
+    expect(outcome.value.worktree.counts).toEqual({ open: 0, failed: 0, adopted: 0 })
+  })
+
+  it('setMainline moves the ref, and getWorktree reads it back label-resolved', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('ideas').put(ACTIVE.id, ACTIVE)
+    const declared = await service.setMainline({ ideaId: 'i1' })
+    expect(declared.ok).toBe(true)
+    if (!declared.ok) throw new Error('unreachable')
+    expect(declared.value.event).toMatchObject({
+      action: 'cbe.mainline.set',
+      actor: { kind: 'user', id: 'panel' },
+      refs: { ideaId: 'i1' },
+    })
+    const tree = await service.getWorktree()
+    expect(tree.ok).toBe(true)
+    if (!tree.ok) throw new Error('unreachable')
+    expect(tree.value.worktree.mainline).toEqual({ lineId: 'i1', label: 'Bayes overflow', declaredAt: declared.value.event.ts })
+    expect(tree.value.worktree.mainlineHistory).toHaveLength(1)
+  })
+
+  it('setMainline validates arity, unknown ids, and live-line status', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await domain.table('ideas').put(ACTIVE.id, ACTIVE)
+    await domain.table('ideas').put('i3', { ...ACTIVE, id: 'i3', status: 'failed', failureReason: 'no effect' })
+    await expect(service.setMainline({}))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'setMainline takes exactly one of ideaId or projectId' } })
+    await expect(service.setMainline({ ideaId: 'i1', projectId: 'p1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+    await expect(service.setMainline({ ideaId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown ideaId: ghost' } })
+    await expect(service.setMainline({ projectId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'project-not-found' } })
+    await expect(service.setMainline({ ideaId: 'i3' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'only an active line can be the mainline (this one is failed)' } })
+    const projectMainline = await service.setMainline({ projectId: PROJECT.id })
+    expect(projectMainline.ok).toBe(true)
+  })
+
+  it('setIdeaParent declares edges, rejects cycles, and clears with null', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put(ACTIVE.id, ACTIVE)
+    await domain.table('ideas').put(SIDE.id, SIDE)
+    await expect(service.setIdeaParent({ ideaId: 'ghost', parentIdeaId: 'i1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown ideaId: ghost' } })
+    await expect(service.setIdeaParent({ ideaId: 'i2', parentIdeaId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown parentIdeaId: ghost' } })
+    await expect(service.setIdeaParent({ ideaId: 'i2', parentIdeaId: 'i2' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'a line cannot derive from itself' } })
+    const declared = await service.setIdeaParent({ ideaId: 'i2', parentIdeaId: 'i1' })
+    expect(declared.ok).toBe(true)
+    if (!declared.ok) throw new Error('unreachable')
+    expect(declared.value.event).toMatchObject({
+      action: 'cbe.idea.parent.set',
+      refs: { ideaId: 'i2' },
+      payload: { parentIdeaId: 'i1' },
+    })
+    // i1 → i2 would close a loop through the just-declared i2 → i1 edge.
+    await expect(service.setIdeaParent({ ideaId: 'i1', parentIdeaId: 'i2' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'that derivation would create a cycle' } })
+    const tree = await service.getWorktree()
+    expect(tree.ok).toBe(true)
+    if (!tree.ok) throw new Error('unreachable')
+    const lane = tree.value.worktree.lanes.find(item => item.lineId === 'i2')
+    expect(lane?.parentLineId).toBe('i1')
+    expect(lane?.parentLabel).toBe('Bayes overflow')
+    const cleared = await service.setIdeaParent({ ideaId: 'i2', parentIdeaId: null })
+    expect(cleared.ok).toBe(true)
+    const after = await service.getWorktree()
+    expect(after.ok).toBe(true)
+    if (!after.ok) throw new Error('unreachable')
+    expect(after.value.worktree.lanes.find(item => item.lineId === 'i2')?.parentLineId).toBeNull()
+  })
+
+  it('closeIdea writes the documented No end to end: record, event, origin, GUT', async () => {
+    // The close below rides the REAL clock, so the anchor must too — a
+    // hardcoded date makes GUT drift by however many days have passed since.
+    const now = Date.now()
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put(SIDE.id, SIDE)
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'knowledge.idea.added',
+      refs: { ideaId: SIDE.id },
+      payload: { title: SIDE.title },
+      now: new Date(now - 10 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: SIDE.id },
+      payload: { name: 'run1', created: true },
+      now: new Date(now - 6 * 86_400_000),
+    })
+    await expect(service.closeIdea({ ideaId: 'i2', reason: '   ' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'close reason must not be empty' } })
+    await expect(service.closeIdea({ ideaId: 'i2', reason: 'x'.repeat(49) }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'close reason is capped at 48 characters' } })
+    await expect(service.closeIdea({ ideaId: 'ghost', reason: 'no effect' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown ideaId: ghost' } })
+    const closed = await service.closeIdea({ ideaId: 'i2', reason: 'no effect under load' })
+    expect(closed.ok).toBe(true)
+    if (!closed.ok) throw new Error('unreachable')
+    expect(closed.value.event).toMatchObject({
+      action: 'knowledge.idea.failed',
+      actor: { kind: 'user', id: 'panel' }, // origin: the user's explicit, refusable action
+      refs: { ideaId: 'i2' },
+      payload: { reason: 'no effect under load' },
+    })
+    expect(domain.table('ideas').get('i2')).toMatchObject({ status: 'failed', failureReason: 'no effect under load' })
+    // Re-closing is rejected: a documented No is written once.
+    await expect(service.closeIdea({ ideaId: 'i2', reason: 'again' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'that line is already closed (a documented No)' } })
+    const tree = await service.getWorktree()
+    expect(tree.ok).toBe(true)
+    if (!tree.ok) throw new Error('unreachable')
+    const lane = tree.value.worktree.lanes.find(item => item.lineId === 'i2')
+    expect(lane?.status).toBe('failed')
+    expect(lane?.closeReason).toBe('no effect under load')
+    // GUT: last touch 6 days before the close (the close rides the real
+    // clock). The derivation rounds to 3 decimals, so "6 days plus the
+    // milliseconds it takes to close" reads as exactly 6 — hence >= not >.
+    expect(lane?.gutDays).toBeGreaterThanOrEqual(6)
+    expect(lane?.gutDays).toBeLessThan(7)
+  })
+
+  it('closeIdea refuses an adopted line: a merge is not a dead end', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put('i4', { ...ACTIVE, id: 'i4', status: 'adopted' })
+    await expect(service.closeIdea({ ideaId: 'i4', reason: 'wrong kind of ending' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'an adopted line is a merge, not a dead end' } })
+  })
+})
+
+describe('evidence engine remotes (S3 service wiring)', () => {
+  it('getEvidenceProfile folds the priors over an empty ledger', async () => {
+    const { service } = await serviceHarness()
+    const outcome = await service.getEvidenceProfile()
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    expect(outcome.value.profile.terminalsFolded).toBe(0)
+    expect(outcome.value.profile.actions.length).toBeGreaterThan(0)
+    const saved = outcome.value.profile.actions.find(row => row.action === 'experiments.saved')
+    expect(saved?.effectiveValue).toBe(saved?.prior)
+  })
+
+  it('getEvidenceProfile folds a attributed terminal into a learned row', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { ideaId: 'i1', projectId: PROJECT.id },
+      payload: { name: 'run', created: true },
+      now: new Date(Date.now() - 2 * 86_400_000),
+    })
+    // Synthetic rich refs: today's real claim emit carries only claimId —
+    // attribution enrichment is the standing P2 item (see cbe-engine.spec).
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'knowledge.claim.set',
+      refs: { ideaId: 'i1', projectId: PROJECT.id },
+      payload: { status: 'supported' },
+      now: new Date(Date.now() - 1 * 86_400_000),
+    })
+    const outcome = await service.getEvidenceProfile()
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    expect(outcome.value.profile.terminalsFolded).toBe(1)
+    const saved = outcome.value.profile.actions.find(row => row.action === 'experiments.saved')
+    expect(saved?.mass).toBeGreaterThan(0)
+    expect(saved?.effectiveValue).not.toBe(saved?.prior)
+  })
+})
+
+describe('adopt remotes (worktree merge)', () => {
+  const MAIN: IdeaRecord = {
+    id: 'i9', title: 'Chunk-graph reranking', hypothesis: 'h',
+    status: 'active', createdAt: '2026-08-01T00:00:00.000Z',
+  }
+  const SIDE_BRANCH: IdeaRecord = {
+    id: 'i10', title: 'Late-interaction pooling', hypothesis: 'h',
+    status: 'active', createdAt: '2026-08-02T00:00:00.000Z',
+  }
+
+  it('adoptIdea declares the merge end to end: record, event, origin, lane', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put(MAIN.id, MAIN)
+    await expect(service.adoptIdea({ ideaId: 'ghost' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'unknown ideaId: ghost' } })
+    const merged = await service.adoptIdea({ ideaId: MAIN.id })
+    expect(merged.ok).toBe(true)
+    if (!merged.ok) throw new Error('unreachable')
+    expect(merged.value.event).toMatchObject({
+      action: 'knowledge.idea.adopted',
+      actor: { kind: 'user', id: 'panel' }, // origin: the user's explicit, refusable action
+      refs: { ideaId: MAIN.id },
+    })
+    expect(domain.table('ideas').get(MAIN.id)).toMatchObject({ status: 'adopted' })
+    // A merge is written once; a documented No is not a merge.
+    await expect(service.adoptIdea({ ideaId: MAIN.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'that line is already merged (an adoption is written once)' } })
+    await domain.table('ideas').put(SIDE_BRANCH.id, SIDE_BRANCH)
+    await service.closeIdea({ ideaId: SIDE_BRANCH.id, reason: 'no effect' })
+    await expect(service.adoptIdea({ ideaId: SIDE_BRANCH.id }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'a documented No is a dead end, not a merge' } })
+    const tree = await service.getWorktree()
+    expect(tree.ok).toBe(true)
+    if (!tree.ok) throw new Error('unreachable')
+    expect(tree.value.worktree.counts.adopted).toBe(1)
+    const lane = tree.value.worktree.lanes.find(item => item.lineId === MAIN.id)
+    expect(lane?.status).toBe('adopted')
+  })
+
+  it('the merge folds +1 in the evidence engine (credit on prior actions)', async () => {
+    const { domain, service } = await serviceHarness()
+    await domain.table('ideas').put(MAIN.id, MAIN)
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'knowledge.idea.added',
+      refs: { ideaId: MAIN.id },
+      payload: { title: MAIN.title },
+      now: new Date(Date.now() - 5 * 86_400_000),
+    })
+    await service.adoptIdea({ ideaId: MAIN.id })
+    const profile = await service.getEvidenceProfile()
+    expect(profile.ok).toBe(true)
+    if (!profile.ok) throw new Error('unreachable')
+    expect(profile.value.profile.terminalsFolded).toBe(1)
+    // The +1 lands on the line's prior eligible action (share form).
+    const added = profile.value.profile.actions.find(item => item.action === 'knowledge.idea.added')
+    expect(added?.mass ?? 0).toBeGreaterThanOrEqual(1)
+    // The +1 outcome pulls the effective value toward +1 from its +2 prior.
+    expect(Math.abs((added?.effectiveValue ?? 1) - 1)).toBeLessThan(Math.abs((added?.prior ?? 1) - 1))
+  })
+})
+
+describe('foraging remotes (S4 service wiring)', () => {
+  it('getForaging derives an empty layer over a fresh wiki', async () => {
+    const { service } = await serviceHarness()
+    const outcome = await service.getForaging()
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    expect(outcome.value.foraging.territories).toEqual([])
+    expect(outcome.value.foraging.baseline.speaks).toBe(false)
+  })
+
+  it('getForaging returns territory rows with the clean-compile harvest proxy', async () => {
+    const now = Date.now()
+    const { domain, service } = await serviceHarness()
+    await domain.table('projects').put(PROJECT.id, PROJECT)
+    await appendEvent(domain, {
+      actor: WIKI_AGENT_ACTOR,
+      action: 'experiments.saved',
+      refs: { projectId: PROJECT.id },
+      payload: { name: 'run', created: true },
+      now: new Date(now - 3 * 86_400_000),
+    })
+    await appendEvent(domain, {
+      actor: SERVICE_ACTOR,
+      action: 'writing.compile.settled',
+      refs: { projectId: PROJECT.id },
+      payload: { issues: 0 },
+      now: new Date(now - 1 * 86_400_000),
+    })
+    const outcome = await service.getForaging()
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error('unreachable')
+    const territory = outcome.value.foraging.territories.find(item => item.projectId === PROJECT.id)
+    expect(territory?.label).toBe(PROJECT.title)
+    expect(territory?.eventCount).toBe(2)
+    expect(territory?.harvestCount).toBe(1)
+    expect(territory?.daysSinceHarvest).toBeGreaterThanOrEqual(1)
+    expect(territory?.daysSinceHarvest).toBeLessThan(2)
+    const card = outcome.value.foraging.cards.find(item => item.projectId === PROJECT.id)
+    expect(card?.baselineMedianDays).toBeNull() // the baseline stays silent below five closes
   })
 })
 

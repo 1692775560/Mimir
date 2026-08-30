@@ -24,7 +24,7 @@ function ideaInstruction(deps: ResearchCommandDeps, direction: string, projectId
     "1. Check the wiki's idea memory first: wiki_note with action=list, table=ideas. If a FAILED idea already covers this direction, do not resurrect it unchanged; state the overlap in your report and pivot to what is actually new.",
     `2. Survey the literature with arxiv_search using 2-4 focused queries. For every result that materially informs the project, call paper_fetch with project_id=${projectId}, its arXiv id, concise usefulness notes, and tags. paper_fetch automatically archives and links it; do not rely on search output alone. If web_search is available, use it too for non-arXiv sources (official docs, blogs, code repositories) that inform the direction.`,
     `3. Write the idea report to ${join(deps.workspaceDir, 'IDEA_REPORT.md')}, filling every section of the skeleton already written there. Ground Related Work in the recorded papers (cite arXiv ids) and fill "Failed Ideas Considered" from step 1.`,
-    '4. Record the idea with wiki_note action=add_idea (it starts active).',
+    `4. Record the idea with wiki_note action=add_idea, passing project_id=${projectId} so it is auto-adopted into this project's worktree (it starts active only if you omit project_id for a standalone exploratory thought).`,
     '5. Finish with a short summary for the user: the hypothesis, the closest prior work, and why this is not a repeat of a failed idea.',
   ].join('\n')
 }

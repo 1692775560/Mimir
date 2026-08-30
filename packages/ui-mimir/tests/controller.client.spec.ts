@@ -23,6 +23,16 @@ import type {
   ResearchExperimentsResult,
   ResearchFetchPaperPdfResult,
   ResearchFiguresResult,
+  ResearchGenerateBriefResult,
+  ResearchAddJournalEntryResult,
+  ResearchCloseIdeaResult,
+  ResearchAdoptIdeaResult,
+  ResearchGetWorktreeResult,
+  ResearchSetIdeaParentResult,
+  ResearchSetMainlineResult,
+  ResearchWorktreeView,
+  ResearchForagingView,
+  ResearchGetForagingResult,
   ResearchImportBibResult,
   ResearchImportPaperResult,
   ResearchListEventsResult,
@@ -111,6 +121,14 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     listBackups: missing('listBackups'),
     listEvents: missing('listEvents'),
     generateProgressReport: missing('generateProgressReport'),
+    generateBrief: missing('generateBrief'),
+    addJournalEntry: missing('addJournalEntry'),
+    getWorktree: missing('getWorktree'),
+    getForaging: missing('getForaging'),
+    setMainline: missing('setMainline'),
+    setIdeaParent: missing('setIdeaParent'),
+    adoptIdea: missing('adoptIdea'),
+    closeIdea: missing('closeIdea'),
     getImageGenConfig: missing('getImageGenConfig'),
     setImageGenConfig: missing('setImageGenConfig'),
     ...overrides,
@@ -1810,5 +1828,377 @@ describe('ResearchController ledger (growth record)', () => {
     const report = controller.getSnapshot().report
     expect(report.status).toBe('error')
     expect(report.failure?.code).toBe('project-not-found')
+  })
+})
+
+describe('ResearchController cognitive brief (CBE)', () => {
+  /** One stored journal event, as the service would return it. */
+  const JOURNAL_EVENT = {
+    id: 'ev-j1',
+    ts: '2026-08-27T06:00:00.000Z',
+    actor: { kind: 'user' as const, id: 'panel' },
+    action: 'journal.entry.added',
+    refs: { projectId: 'p1' },
+    payload: { text: '这一句算数' },
+  }
+
+  it('generateBrief publishes the brief slice and toasts the success', async () => {
+    const controller = new ResearchController(stubRemote({
+      generateBrief: () => Promise.resolve(carried<ResearchGenerateBriefResult>({
+        ok: true,
+        value: {
+          markdown: '# Cognitive Brief',
+          generatedAt: '2026-08-27T06:00:00.000Z',
+          eventCount: 4,
+          derivationVersion: 2,
+          questions: [{ kind: 'pending-claim', lineId: 'c9', label: 'delta transfers' }],
+        },
+      })),
+    }))
+    const failure = await controller.generateBrief({ projectId: 'p1' })
+    expect(failure).toBeNull()
+    expect(controller.getSnapshot().brief).toEqual({
+      status: 'ready',
+      markdown: '# Cognitive Brief',
+      generatedAt: '2026-08-27T06:00:00.000Z',
+      eventCount: 4,
+      derivationVersion: 2,
+      recalibrated: false,
+      questions: [{ kind: 'pending-claim', lineId: 'c9', label: 'delta transfers' }],
+      failure: null,
+    })
+    expect(controller.getSnapshot().toasts).toHaveLength(1)
+    expect(controller.getSnapshot().toasts[0]?.copy).toBe('brief.ready')
+  })
+
+  it('generateBrief returns the failure view and freezes the slice on error', async () => {
+    const controller = new ResearchController(stubRemote({
+      generateBrief: () => Promise.resolve(carried<ResearchGenerateBriefResult>({
+        ok: false,
+        error: { code: 'project-not-found', message: 'no such project' },
+      })),
+    }))
+    const failure = await controller.generateBrief({ projectId: 'ghost' })
+    expect(failure).toEqual({ code: 'project-not-found', message: 'no such project' })
+    const brief = controller.getSnapshot().brief
+    expect(brief.status).toBe('error')
+    expect(brief.failure?.code).toBe('project-not-found')
+  })
+
+  it('addJournal sends exactly the text and project scope, and toasts once', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      addJournalEntry: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchAddJournalEntryResult>({ ok: true, value: { event: JOURNAL_EVENT } }))
+      },
+    }))
+    const failure = await controller.addJournal('这一句算数', 'p1')
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ text: '这一句算数', projectId: 'p1' }])
+    expect(controller.getSnapshot().toasts).toHaveLength(1)
+    expect(controller.getSnapshot().toasts[0]?.copy).toBe('journal.added')
+  })
+
+  it('addJournal omits the projectId key entirely for an unscoped entry', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      addJournalEntry: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchAddJournalEntryResult>({ ok: true, value: { event: JOURNAL_EVENT } }))
+      },
+    }))
+    const failure = await controller.addJournal('不限项目的一句', null)
+    expect(failure).toBeNull()
+    // exactOptionalPropertyTypes: the absent scope must not cross as `undefined`.
+    expect(seen).toEqual([{ text: '不限项目的一句' }])
+    expect(Object.prototype.hasOwnProperty.call(seen[0], 'projectId')).toBe(false)
+  })
+
+  it('addJournal forwards a line ref and mood ratings, absent keys omitted', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      addJournalEntry: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchAddJournalEntryResult>({ ok: true, value: { event: JOURNAL_EVENT } }))
+      },
+    }))
+    const failure = await controller.addJournal('留着这条线', null, { ideaId: 'idea-r', valence: 4 })
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ text: '留着这条线', ideaId: 'idea-r', valence: 4 }])
+    expect(Object.prototype.hasOwnProperty.call(seen[0], 'projectId')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(seen[0], 'arousal')).toBe(false)
+  })
+
+  it('addJournal forwards a boundary-question ref exactly when present', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      addJournalEntry: (request) => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchAddJournalEntryResult>({ ok: true, value: { event: JOURNAL_EVENT } }))
+      },
+    }))
+    const failure = await controller.addJournal('先放着', null, {
+      question: { kind: 'pending-claim', lineId: 'c9' },
+    })
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ text: '先放着', question: { kind: 'pending-claim', lineId: 'c9' } }])
+    expect(Object.prototype.hasOwnProperty.call(seen[0], 'ideaId')).toBe(false)
+  })
+
+  it('addJournal returns the failure view inline and stays quiet', async () => {
+    const controller = new ResearchController(stubRemote({
+      addJournalEntry: () => Promise.resolve(carried<ResearchAddJournalEntryResult>({
+        ok: false,
+        error: { code: 'invalid-input', message: 'journal text must not be empty' },
+      })),
+    }))
+    const failure = await controller.addJournal('   ', null)
+    expect(failure).toEqual({ code: 'invalid-input', message: 'journal text must not be empty' })
+    expect(controller.getSnapshot().toasts).toEqual([])
+  })
+})
+
+describe('ResearchController worktree (S2)', () => {
+  const TREE: ResearchWorktreeView = {
+    derivedAt: '2026-08-27T07:00:00.000Z',
+    lanes: [
+      {
+        lineId: 'i1', label: 'Idea One', status: 'open', state: 'dominant',
+        parentLineId: null, parentLabel: null,
+        firstSeen: '2026-08-01T00:00:00.000Z', lastSeen: '2026-08-26T00:00:00.000Z',
+        eventCount: 6, drift: 4.5, closedAt: null, closeReason: null, gutDays: null, idleDays: 1,
+        touches: [],
+      },
+      {
+        lineId: 'i2', label: 'Old branch', status: 'failed', state: 'settled',
+        parentLineId: 'i1', parentLabel: 'Idea One',
+        firstSeen: '2026-08-02T00:00:00.000Z', lastSeen: '2026-08-10T00:00:00.000Z',
+        eventCount: 3, drift: -1.2, closedAt: '2026-08-10T00:00:00.000Z', closeReason: 'no effect', gutDays: 4, idleDays: null,
+        touches: [],
+      },
+    ],
+    mainline: { lineId: 'i1', label: 'Idea One', declaredAt: '2026-08-20T00:00:00.000Z' , touches: [] },
+    mainlineHistory: [{ lineId: 'i1', label: 'Idea One', declaredAt: '2026-08-20T00:00:00.000Z' }],
+    counts: { open: 1, failed: 1, adopted: 0 },
+  }
+
+  const STRUCTURAL_EVENT = {
+    id: 'ev-s1',
+    ts: '2026-08-27T07:10:00.000Z',
+    actor: { kind: 'user' as const, id: 'panel' },
+    action: 'cbe.mainline.set',
+    refs: { ideaId: 'i1' },
+    payload: {},
+  }
+
+  it('ensureWorktree loads once and publishes the ready slice', async () => {
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      getWorktree: () => {
+        calls += 1
+        return Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } }))
+      },
+    }))
+    controller.ensureWorktree()
+    controller.ensureWorktree()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(calls).toBe(1)
+    expect(controller.getSnapshot().worktree).toEqual({ status: 'ready', view: TREE, failure: null })
+  })
+
+  it('getWorktree business failure freezes the slice with the failure view', async () => {
+    const controller = new ResearchController(stubRemote({
+      getWorktree: () => Promise.resolve(carried<ResearchGetWorktreeResult>({
+        ok: false,
+        error: { code: 'operation-failed', message: 'the worktree could not be derived' },
+      })),
+    }))
+    controller.ensureWorktree()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const worktree = controller.getSnapshot().worktree
+    expect(worktree.status).toBe('error')
+    expect(worktree.failure).toEqual({ code: 'operation-failed', message: 'the worktree could not be derived' })
+  })
+
+  it('setMainline splits a project lane into a projectId-only request', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      setMainline: request => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchSetMainlineResult>({ ok: true, value: { event: STRUCTURAL_EVENT } }))
+      },
+      getWorktree: () => Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } })),
+    }))
+    const failure = await controller.setMainline('project:p1')
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ projectId: 'p1' }])
+    expect(Object.prototype.hasOwnProperty.call(seen[0], 'ideaId')).toBe(false)
+  })
+
+  it('setMainline toasts once and refreshes the tree', async () => {
+    let loads = 0
+    const controller = new ResearchController(stubRemote({
+      setMainline: () => Promise.resolve(carried<ResearchSetMainlineResult>({ ok: true, value: { event: STRUCTURAL_EVENT } })),
+      getWorktree: () => {
+        loads += 1
+        return Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } }))
+      },
+    }))
+    controller.ensureWorktree()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const failure = await controller.setMainline('i1')
+    expect(failure).toBeNull()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(loads).toBe(2)
+    expect(controller.getSnapshot().toasts[0]?.copy).toBe('worktree.mainline.ready')
+  })
+
+  it('setIdeaParent forwards null as an explicit clear and stays quiet on failure', async () => {
+    const seen: unknown[] = []
+    const controller = new ResearchController(stubRemote({
+      setIdeaParent: request => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchSetIdeaParentResult>({
+          ok: false,
+          error: { code: 'invalid-input', message: 'that derivation would create a cycle' },
+        }))
+      },
+    }))
+    const failure = await controller.setIdeaParent('i1', null)
+    expect(seen).toEqual([{ ideaId: 'i1', parentIdeaId: null }])
+    expect(failure).toEqual({ code: 'invalid-input', message: 'that derivation would create a cycle' })
+    expect(controller.getSnapshot().toasts).toEqual([])
+  })
+
+  it('closeIdea rejects an over-cap reason client-side without a remote call', async () => {
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      closeIdea: () => {
+        calls += 1
+        return Promise.resolve(carried<ResearchCloseIdeaResult>({ ok: true, value: { event: STRUCTURAL_EVENT } }))
+      },
+    }))
+    const failure = await controller.closeIdea('i2', 'x'.repeat(49))
+    expect(failure).toEqual({ code: 'invalid-input', message: 'close reason is capped at 48 characters' })
+    expect(calls).toBe(0)
+  })
+
+  it('closeIdea records the documented No and refreshes the tree', async () => {
+    const seen: unknown[] = []
+    let loads = 0
+    const closeEvent = { ...STRUCTURAL_EVENT, action: 'knowledge.idea.failed', refs: { ideaId: 'i2' }, payload: { reason: 'no effect' } }
+    const controller = new ResearchController(stubRemote({
+      closeIdea: request => {
+        seen.push(request)
+        return Promise.resolve(carried<ResearchCloseIdeaResult>({ ok: true, value: { event: closeEvent } }))
+      },
+      getWorktree: () => {
+        loads += 1
+        return Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } }))
+      },
+    }))
+    controller.ensureWorktree()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const failure = await controller.closeIdea('i2', 'no effect')
+    expect(failure).toBeNull()
+    expect(seen).toEqual([{ ideaId: 'i2', reason: 'no effect' }])
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(loads).toBe(2)
+    expect(controller.getSnapshot().toasts[0]?.copy).toBe('worktree.closed')
+  })
+})
+
+describe('ResearchController foraging (S4)', () => {
+  const LAYER: ResearchForagingView = {
+    derivedAt: '2026-08-27T08:00:00.000Z',
+    territories: [
+      {
+        projectId: 'p1', label: 'Project One', eventCount: 6,
+        firstSeen: '2026-08-01T00:00:00.000Z', lastSeen: '2026-08-26T00:00:00.000Z',
+        activityMass: 4.2, harvestCount: 1, lastHarvestAt: '2026-08-20T00:00:00.000Z',
+        daysSinceHarvest: 6, daysSinceActivity: 1,
+      },
+    ],
+    baseline: { samples: 2, medianDays: null, iqrDays: null, minSamples: 5, speaks: false },
+    cards: [
+      { projectId: 'p1', label: 'Project One', daysSinceHarvest: 6, daysSinceActivity: 1, baselineMedianDays: null },
+    ],
+  }
+
+  it('ensureForaging loads once and publishes the ready slice', async () => {
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      getForaging: () => {
+        calls += 1
+        return Promise.resolve(carried<ResearchGetForagingResult>({ ok: true, value: { foraging: LAYER } }))
+      },
+    }))
+    controller.ensureForaging()
+    controller.ensureForaging()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(calls).toBe(1)
+    expect(controller.getSnapshot().foraging).toEqual({ status: 'ready', view: LAYER, failure: null })
+  })
+
+  it('a documented close refreshes the foraging layer (a new GUT sample)', async () => {
+    let loads = 0
+    const closeEvent = {
+      id: 'ev-c1',
+      ts: '2026-08-27T08:10:00.000Z',
+      actor: { kind: 'user' as const, id: 'panel' },
+      action: 'knowledge.idea.failed',
+      refs: { ideaId: 'i2' },
+      payload: { reason: 'no effect' },
+    }
+    const controller = new ResearchController(stubRemote({
+      closeIdea: () => Promise.resolve(carried<ResearchCloseIdeaResult>({ ok: true, value: { event: closeEvent } })),
+      getWorktree: () => Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } })),
+      getForaging: () => {
+        loads += 1
+        return Promise.resolve(carried<ResearchGetForagingResult>({ ok: true, value: { foraging: LAYER } }))
+      },
+    }))
+    controller.ensureWorktree()
+    controller.ensureForaging()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const failure = await controller.closeIdea('i2', 'no effect')
+    expect(failure).toBeNull()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(loads).toBe(2)
+  })
+})
+
+describe('ResearchController adoptIdea (worktree merge)', () => {
+  it('a merge refreshes the worktree but not the foraging baseline (not a departure)', async () => {
+    let worktreeLoads = 0
+    let foragingLoads = 0
+    const mergeEvent = {
+      id: 'ev-a1',
+      ts: '2026-08-27T08:00:00.000Z',
+      actor: { kind: 'user' as const, id: 'panel' },
+      action: 'knowledge.idea.adopted',
+      refs: { ideaId: 'i2' },
+      payload: {},
+    }
+    const controller = new ResearchController(stubRemote({
+      adoptIdea: () => Promise.resolve(carried<ResearchAdoptIdeaResult>({ ok: true, value: { event: mergeEvent } })),
+      getWorktree: () => {
+        worktreeLoads += 1
+        return Promise.resolve(carried<ResearchGetWorktreeResult>({ ok: true, value: { worktree: TREE } }))
+      },
+      getForaging: () => {
+        foragingLoads += 1
+        return Promise.resolve(carried<ResearchGetForagingResult>({ ok: true, value: { foraging: LAYER } }))
+      },
+    }))
+    controller.ensureWorktree()
+    controller.ensureForaging()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const failure = await controller.adoptIdea('i2')
+    expect(failure).toBeNull()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(worktreeLoads).toBe(2) // the merge re-derives the tree
+    expect(foragingLoads).toBe(1) // a merge is not a GUT departure
   })
 })
