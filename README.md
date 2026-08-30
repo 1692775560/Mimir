@@ -10,8 +10,6 @@ literature · experiments &amp; remote GPUs · figures · LaTeX writing → comp
 <p>
 <a href="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml"><img src="https://github.com/1692775560/dsh-Mimir-Academic-research/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://www.npmjs.com/package/dsh-mimir"><img src="https://img.shields.io/npm/v/dsh-mimir?label=dsh-mimir" alt="npm: dsh-mimir"></a>
-<a href="https://www.dsh.so/artifact/dsh-mimir-academic-research/"><img src="https://www.dsh.so/badge/install/dsh-mimir-academic-research.svg" alt="dsh.so install"></a>
-<a href="https://www.dsh.so/artifact/dsh-mimir-academic-research/"><img src="https://www.dsh.so/badge/dsh-mimir-academic-research.svg" alt="dsh.so risk: low"></a>
 <a href="https://mimir.smartlarkai.com"><img src="https://img.shields.io/badge/website-mimir.smartlarkai.com-47608c" alt="Website"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
@@ -25,7 +23,7 @@ literature · experiments &amp; remote GPUs · figures · LaTeX writing → comp
 Mimir is a single npm package (`dsh-mimir`) that plugs into dsh and gives you:
 
 - **Eight-view web workbench** (sidebar toggle → overlay, dark/light, 中/EN):
-  **Overview** pipeline & stats · **Paper** Overleaf-style LaTeX studio (edit → compile → PDF preview, one-click AI fix) · **Library** arXiv + web search, AI relevance scoring, fullscreen PDF reader · **Experiments** metric charts, one-click paper figures · **Figures** upload/organize/insert into the paper · **Meetings** one-click group-meeting PPT (real paper figures + optional AI illustrations) · **Servers** GPU fleet probes + remote jobs · **Ledger** growth-record timeline + progress report + cognitive brief
+  **Overview** pipeline & stats · **Paper** Overleaf-style LaTeX studio (edit → compile → PDF preview, one-click AI fix) · **Library** arXiv + web search, AI relevance scoring, fullscreen PDF reader · **Experiments** metric charts, one-click paper figures · **Figures** upload/organize/insert into the paper · **Meetings** one-click group-meeting PPT (real paper figures + optional AI illustrations) · **Servers** GPU fleet probes + remote jobs · **Ledger** growth-record timeline + one-click progress report
 - **Agent tools & slash commands**: `/research-idea` `/research-plan` `/research-review` `/paper-write` `/paper-compile`, plus `arxiv_search`, `web_search`, `wiki_note`, `figure_save`, `latex_compile`, `meeting_deck`
 - **Nine bundled research skills** (literature review, novelty check, experiment planning, citation audit, rebuttal…) that teach the agent the workflow — no setup needed
 
@@ -83,7 +81,9 @@ All keys are optional; set them in the profile's `cordis.patch.yml` (full commen
 
 ## Changelog
 
-- **Unreleased (`dev`)** — Ledger view (成长时间线 + 进展报告) by [@EriXPsy](https://github.com/EriXPsy) ([#115](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/115)); SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#114](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/114)); bundled sxng-cli + one-command SearXNG setup; Meetings AI illustrations; self-activating `dsh.bundle`
+- **Unreleased (`dev`)** — Ledger view (成长时间线 + 进展报告) by [@EriXPsy](https://github.com/EriXPsy) ([#115](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/115)); `research-paper-deai` bilingual de-AI skill (synthesized from MIT-licensed aigc-humanizer-zh + blader/humanizer); Meetings AI illustrations; self-activating `dsh.bundle`
+- **0.15.0** — SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#122](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/122)): sxng-cli config panel (SxngConfig) in the Library web tab, agent search routed through the sxng skill; local LaTeX project import by [@1692775560](https://github.com/1692775560); tolerant project args + PDF fullscreen portal by [@Nick](https://github.com/Nick) ([#120](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/120))
+- **0.14.0** — SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#114](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/114)): `web_search` tool + Library web-source tab; bundled sxng-cli + one-command SearXNG setup
 - **0.13.0** — figure-by-figure meeting decks from real paper PDFs, `meeting_deck` agent tool, academic-Group-meeting-skills pipeline integration
 - **0.12.0** — Meetings tab (group-meeting PPT), `research-meeting-deck` skill
 - **0.11.0** — single-package install: the workbench ships inside `dsh-mimir` itself
