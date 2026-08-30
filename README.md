@@ -23,9 +23,9 @@ literature · experiments &amp; remote GPUs · figures · LaTeX writing → comp
 Mimir is a single npm package (`dsh-mimir`) that plugs into dsh and gives you:
 
 - **Eight-view web workbench** (sidebar toggle → overlay, dark/light, 中/EN):
-  **Overview** pipeline & stats · **Paper** Overleaf-style LaTeX studio (edit → compile → PDF preview, one-click AI fix) · **Library** arXiv + web search, AI relevance scoring, fullscreen PDF reader · **Experiments** metric charts, one-click paper figures · **Figures** upload/organize/insert into the paper · **Meetings** one-click group-meeting PPT (real paper figures + optional AI illustrations) · **Servers** GPU fleet probes + remote jobs · **Ledger** growth-record timeline + one-click progress report
+  **Overview** pipeline & stats · **Paper** Overleaf-style LaTeX studio (edit → compile → PDF preview, one-click AI fix) · **Library** arXiv + web search, AI relevance scoring, fullscreen PDF reader · **Experiments** metric charts, one-click paper figures · **Figures** upload/organize/insert into the paper · **Meetings** one-click group-meeting PPT (real paper figures + optional AI illustrations) · **Servers** GPU fleet probes + remote jobs · **Ledger** humanized research journal — idea evolution auto-captured into a worktree, six-perspective digest capsules, one-click progress report
 - **Agent tools & slash commands**: `/research-idea` `/research-plan` `/research-review` `/paper-write` `/paper-compile`, plus `arxiv_search`, `web_search`, `wiki_note`, `figure_save`, `latex_compile`, `meeting_deck`
-- **Nine bundled research skills** (literature review, novelty check, experiment planning, citation audit, rebuttal…) that teach the agent the workflow — no setup needed
+- **Eleven bundled research skills** (literature review, novelty check, experiment planning, citation audit, bilingual de-AI polish, rebuttal…) that teach the agent the workflow — no setup needed
 
 | Overview | Paper | Library | Experiments |
 | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ All keys are optional; set them in the profile's `cordis.patch.yml` (full commen
 | `search.command` | `auto` | Web search: `auto` uses `sxng` from PATH or the bundled copy |
 | `reviewer.maxRounds` | `3` | Per-project review-round budget |
 | `backup.enabled` / `intervalMinutes` / `keep` | `true` / `60` / `24` | Scheduled wiki snapshots |
-| `skills.enabled` | `true` | Register the nine bundled research skills |
+| `skills.enabled` | `true` | Register the eleven bundled research skills |
 
 ## Troubleshooting
 
@@ -81,7 +81,8 @@ All keys are optional; set them in the profile's `cordis.patch.yml` (full commen
 
 ## Changelog
 
-- **Unreleased (`dev`)** — Ledger view (成长时间线 + 进展报告) by [@EriXPsy](https://github.com/EriXPsy) ([#115](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/115)); `research-paper-deai` bilingual de-AI skill (synthesized from MIT-licensed aigc-humanizer-zh + blader/humanizer); Meetings AI illustrations; self-activating `dsh.bundle`
+- **0.16.0** — Humanized ledger by [@EriXPsy](https://github.com/EriXPsy) ([#125](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/125)): CBE cognitive map, brief view, idea-evolution worktree with ambient auto-capture, six-perspective digest capsules; `research-paper-deai` bilingual de-AI polish skill by [@hkwuks](https://github.com/hkwuks) ([#126](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/126), synthesized from MIT-licensed aigc-humanizer-zh + blader/humanizer, LaTeX-safe with compile re-check)
+- **0.15.1** — cancelling `web_search` now terminates the sxng child process (no more zombie processes) by [@hxhy](https://github.com/huixiaheyu) ([#124](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/124))
 - **0.15.0** — SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#122](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/122)): sxng-cli config panel (SxngConfig) in the Library web tab, agent search routed through the sxng skill; local LaTeX project import by [@1692775560](https://github.com/1692775560); tolerant project args + PDF fullscreen portal by [@Nick](https://github.com/Nick) ([#120](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/120))
 - **0.14.0** — SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#114](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/114)): `web_search` tool + Library web-source tab; bundled sxng-cli + one-command SearXNG setup
 - **0.13.0** — figure-by-figure meeting decks from real paper PDFs, `meeting_deck` agent tool, academic-Group-meeting-skills pipeline integration
@@ -97,7 +98,7 @@ All keys are optional; set them in the profile's `cordis.patch.yml` (full commen
 
 Branch off `main` (`feature/<name>` / `fix/<name>`), keep `pnpm run build && pnpm test && pnpm run typecheck` green, and open a PR — see [CONTRIBUTING.md](CONTRIBUTING.md). Please merge PRs with a **merge commit** (not squash) so contributor authorship shows up on the contributors graph.
 
-Contributors so far: [@EriXPsy](https://github.com/EriXPsy) (Ledger view) · [@hkwuks](https://github.com/hkwuks) (SearXNG web search, [sxng CLI](https://github.com/hkwuks/sxng-cli))
+Contributors so far: [@EriXPsy](https://github.com/EriXPsy) (Ledger view, humanized journal) · [@hkwuks](https://github.com/hkwuks) (SearXNG web search, [sxng CLI](https://github.com/hkwuks/sxng-cli), de-AI skill) · [@hxhy](https://github.com/huixiaheyu) (web_search cancellation fix)
 
 ## Community
 
