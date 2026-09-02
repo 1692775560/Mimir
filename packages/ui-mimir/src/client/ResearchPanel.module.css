@@ -201,11 +201,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--dsw-specific-menu, #fff);
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 11px;
@@ -405,10 +405,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 9px;
-  font-size: 12.5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
@@ -830,12 +830,15 @@
 }
 
 /* Paper view: outline rail + editor + compile/preview as three cards. The
-   root takes the content well's full height (the well is a flex column). */
+   root takes the content well's full height (the well is a flex column).
+   Panes carry min-widths; when the well is narrower than rail + editor +
+   preview, the row scrolls horizontally instead of crushing the source. */
 .paperLayout {
   display: flex;
   flex: 1;
   min-height: 0;
   gap: 12px;
+  overflow-x: auto;
 }
 
 /* Slim label naming the project whose paper is being edited. */
@@ -1362,13 +1365,24 @@ li.dropIndicator {
 }
 
 /* Editor gets 3 shares, preview 2 — the source is the primary surface. The
-   inline flexGrow/flexBasis from the persisted layout overrides these. */
+   inline flexGrow/flexBasis from the persisted layout overrides these. The
+   min-widths mirror EDITOR_MIN_WIDTH/PREVIEW_MIN_WIDTH in paper-layout.ts so
+   flex shrink alone can never crush a pane below its usable floor. */
 .editorPane {
   flex: 3;
+  min-width: 360px;
 }
 
 .previewPane {
   flex: 2;
+  min-width: 280px;
+}
+
+/* Solo (fullscreen/narrow-tab) mode: the one visible pane fills the well, so
+   the floors must not force horizontal scrolling. */
+.paperLayout[data-fullscreen] .editorPane,
+.paperLayout[data-fullscreen] .previewPane {
+  min-width: 0;
 }
 
 /* Drag handles between the three panes: a 12px hit area centered on the 12px
@@ -1631,13 +1645,13 @@ li.dropIndicator {
 
 .compileButton {
   flex-shrink: 0;
-  height: 30px;
-  padding: 0 16px;
+  height: 28px;
+  padding: 0 12px;
   border: none;
-  border-radius: 15px;
+  border-radius: 14px;
   background: var(--dsw-alias-button-primary-fill, #211e19);
   color: var(--dsw-alias-label-primary-foreground, #f6f1e6);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -3084,15 +3098,15 @@ li.dropIndicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
+  height: 28px;
   margin-left: auto;
   flex-shrink: 0;
-  padding: 0 14px;
+  padding: 0 10px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 9px;
+  border-radius: 7px;
   background: var(--dsw-specific-menu, #fff);
   color: var(--dsw-alias-label-secondary, #3c4557);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -4461,12 +4475,12 @@ li.dropIndicator {
   justify-content: center;
   flex-shrink: 0;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid var(--mimir-line-soft);
   border-radius: 7px;
   background: var(--dsw-specific-menu, #fff);
   color: var(--dsw-alias-label-secondary, #3c4557);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
