@@ -9,6 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AUTOSAVE_DEBOUNCE_MS, COMPILE_DEBOUNCE_MS, ResearchController } from '../src/client/controller.ts'
 import type { ResearchRemote } from '../src/client/controller.ts'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** Test-only carrier failure code for unreachable-host simulations. */
+    'unavailable': {}
+  }
+}
 import type {
   ResearchArtifactResult,
   ResearchBibliographyResult,
@@ -77,64 +85,22 @@ const PROJECTS: ResearchListProjectsResult = {
   },
 }
 
-/** Build a remote stub; unspecified calls reject, which no test path reaches. */
+/**
+ * Build a remote stub; unspecified calls reject, which no test path reaches.
+ * A Proxy keeps the stub total over ResearchRemote without enumerating every
+ * method, so a widening Remote face never silently drifts from a literal.
+ */
 function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
-  const missing = (name: string) => () => Promise.reject(new Error(`unexpected ${name} call`))
-  return {
-    listProjects: missing('listProjects'),
-    getPaperOutline: missing('getPaperOutline'),
-    compile: missing('compile'),
-    getCompileStatus: missing('getCompileStatus'),
-    getPaperSource: missing('getPaperSource'),
-    savePaperSource: missing('savePaperSource'),
-    listPapers: missing('listPapers'),
-    searchArxiv: missing('searchArxiv'),
-    searchWeb: missing('searchWeb'),
-    importPaper: missing('importPaper'),
-    removePaper: missing('removePaper'),
-    updatePaper: missing('updatePaper'),
-    fetchPaperPdf: missing('fetchPaperPdf'),
-    listExperiments: missing('listExperiments'),
-    deleteExperiment: missing('deleteExperiment'),
-    readArtifact: missing('readArtifact'),
-    listFigures: missing('listFigures'),
-    deleteFigure: missing('deleteFigure'),
-    convertFigure: missing('convertFigure'),
-    saveFigure: missing('saveFigure'),
-    listServers: missing('listServers'),
-    saveServer: missing('saveServer'),
-    deleteServer: missing('deleteServer'),
-    checkServer: missing('checkServer'),
-    submitJob: missing('submitJob'),
-    listJobs: missing('listJobs'),
-    deleteJob: missing('deleteJob'),
-    getBibliography: missing('getBibliography'),
-    saveBibliography: missing('saveBibliography'),
-    importPapersToBib: missing('importPapersToBib'),
-    reorderPaperSections: missing('reorderPaperSections'),
-    reorderPaperSubsections: missing('reorderPaperSubsections'),
-    listPaperSnapshots: missing('listPaperSnapshots'),
-    getPaperSnapshot: missing('getPaperSnapshot'),
-    revertPaperSnapshot: missing('revertPaperSnapshot'),
-    updateExperiment: missing('updateExperiment'),
-    saveExperiment: missing('saveExperiment'),
-    listBackups: missing('listBackups'),
-    listEvents: missing('listEvents'),
-    generateProgressReport: missing('generateProgressReport'),
-    generateBrief: missing('generateBrief'),
-    addJournalEntry: missing('addJournalEntry'),
-    getWorktree: missing('getWorktree'),
-    getForaging: missing('getForaging'),
-    getMomentIndex: missing('getMomentIndex'),
-    getEurekaView: missing('getEurekaView'),
-    setMainline: missing('setMainline'),
-    setIdeaParent: missing('setIdeaParent'),
-    adoptIdea: missing('adoptIdea'),
-    closeIdea: missing('closeIdea'),
-    getImageGenConfig: missing('getImageGenConfig'),
-    setImageGenConfig: missing('setImageGenConfig'),
-    ...overrides,
-  }
+  const target: Record<PropertyKey, unknown> = {}
+  const stub = new Proxy(target, {
+    get: (t, prop) => {
+      if (prop in t) return t[prop]
+      // Keep the stub non-thenable so it is never accidentally awaited.
+      if (prop === 'then') return undefined
+      return () => Promise.reject(new Error(`unexpected ${String(prop)} call`))
+    },
+  })
+  return Object.assign(stub as unknown as ResearchRemote, overrides)
 }
 
 const IDLE: ResearchCompileStatusResult = {
@@ -174,7 +140,7 @@ describe('ResearchController', () => {
       listProjects: () => {
         calls += 1
         return calls === 1
-          ? Promise.resolve({ ok: false, error: { code: 'unavailable', message: 'host down', details: {} } })
+          ? Promise.resolve({ ok: false, error: new RemoteError('unavailable', 'host down', {}) })
           : Promise.resolve(carried(PROJECTS))
       },
     }))
@@ -478,6 +444,7 @@ describe('ResearchController workbench views', () => {
             papers: [{
               arxivId: '2103.00020v2', title: 'A Paper', authors: ['Ann'],
               summary: 'S', url: 'https://arxiv.org/abs/2103.00020', notes: '',
+              tags: [], projectIds: [],
               addedAt: '2026-08-01T00:00:00Z',
             }],
           },
@@ -777,7 +744,7 @@ describe('ResearchController servers and figure deletion', () => {
 
   it('resiliently folds a carrier failure into an offline probe view', async () => {
     const controller = new ResearchController(stubRemote({
-      checkServer: () => Promise.resolve({ ok: false, error: { code: 'unavailable', message: 'host down', details: {} } }),
+      checkServer: () => Promise.resolve({ ok: false, error: new RemoteError('unavailable', 'host down', {}) }),
     }))
     await controller.checkServer(SERVER.id)
     expect(controller.getSnapshot().serverChecks[SERVER.id]).toMatchObject({
@@ -1113,7 +1080,7 @@ describe('ResearchController arXiv search and paper import', () => {
 
   it('updatePaper forwards the patch and refreshes the list only on success', async () => {
     let lists = 0
-    let seen: { arxivId: string; tags?: string[]; projectIds?: string[]; notes?: string } | null = null
+    let seen: Parameters<ResearchRemote['updatePaper']>[0] | null = null
     const controller = new ResearchController(stubRemote({
       updatePaper: (request) => {
         seen = request
@@ -1357,7 +1324,7 @@ describe('ResearchController arXiv search and paper import', () => {
         outlineReads += 1
         return Promise.resolve(carried<ResearchOutlineResult>({
           ok: true,
-          value: { nodes: [{ title: 'Intro', line: 5, level: 1, children: [] }] },
+          value: { projectId: 'p1', nodes: [{ title: 'Intro', line: 5, level: 1, children: [] }] },
         }))
       },
       getPaperSource: () => {
@@ -1391,7 +1358,7 @@ describe('ResearchController arXiv search and paper import', () => {
     const controller = new ResearchController(stubRemote({
       getPaperOutline: () => {
         outlineReads += 1
-        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { nodes: [] } }))
+        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { projectId: 'p1', nodes: [] } }))
       },
       getPaperSource: () => {
         sourceReads += 1
@@ -1420,7 +1387,7 @@ describe('ResearchController arXiv search and paper import', () => {
     const controller = new ResearchController(stubRemote({
       getPaperOutline: () => {
         outlineReads += 1
-        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { nodes: [] } }))
+        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { projectId: 'p1', nodes: [] } }))
       },
       getPaperSource: () => {
         sourceReads += 1
@@ -1822,11 +1789,11 @@ describe('ResearchController ledger (growth record)', () => {
     const controller = new ResearchController(stubRemote({
       generateProgressReport: () => Promise.resolve(carried<ResearchProgressReportResult>({
         ok: false,
-        error: { code: 'project-not-found', message: 'no such project' },
+        error: { code: 'project-not-found', projectId: 'missing' },
       })),
     }))
     const failure = await controller.generateReport({ projectId: 'missing' })
-    expect(failure).toEqual({ code: 'project-not-found', message: 'no such project' })
+    expect(failure).toEqual({ code: 'project-not-found', message: 'project-not-found' })
     const report = controller.getSnapshot().report
     expect(report.status).toBe('error')
     expect(report.failure?.code).toBe('project-not-found')
@@ -1877,11 +1844,11 @@ describe('ResearchController cognitive brief (CBE)', () => {
     const controller = new ResearchController(stubRemote({
       generateBrief: () => Promise.resolve(carried<ResearchGenerateBriefResult>({
         ok: false,
-        error: { code: 'project-not-found', message: 'no such project' },
+        error: { code: 'project-not-found', projectId: 'ghost' },
       })),
     }))
     const failure = await controller.generateBrief({ projectId: 'ghost' })
-    expect(failure).toEqual({ code: 'project-not-found', message: 'no such project' })
+    expect(failure).toEqual({ code: 'project-not-found', message: 'project-not-found' })
     const brief = controller.getSnapshot().brief
     expect(brief.status).toBe('error')
     expect(brief.failure?.code).toBe('project-not-found')
@@ -1961,8 +1928,7 @@ describe('ResearchController cognitive brief (CBE)', () => {
   })
 })
 
-describe('ResearchController worktree (S2)', () => {
-  const TREE: ResearchWorktreeView = {
+const TREE: ResearchWorktreeView = {
     derivedAt: '2026-08-27T07:00:00.000Z',
     lanes: [
       {
@@ -1980,11 +1946,12 @@ describe('ResearchController worktree (S2)', () => {
         touches: [],
       },
     ],
-    mainline: { lineId: 'i1', label: 'Idea One', declaredAt: '2026-08-20T00:00:00.000Z' , touches: [] },
+    mainline: { lineId: 'i1', label: 'Idea One', declaredAt: '2026-08-20T00:00:00.000Z' },
     mainlineHistory: [{ lineId: 'i1', label: 'Idea One', declaredAt: '2026-08-20T00:00:00.000Z' }],
     counts: { open: 1, failed: 1, adopted: 0 },
-  }
+}
 
+describe('ResearchController worktree (S2)', () => {
   const STRUCTURAL_EVENT = {
     id: 'ev-s1',
     ts: '2026-08-27T07:10:00.000Z',
@@ -2111,8 +2078,7 @@ describe('ResearchController worktree (S2)', () => {
   })
 })
 
-describe('ResearchController foraging (S4)', () => {
-  const LAYER: ResearchForagingView = {
+const LAYER: ResearchForagingView = {
     derivedAt: '2026-08-27T08:00:00.000Z',
     territories: [
       {
@@ -2126,8 +2092,9 @@ describe('ResearchController foraging (S4)', () => {
     cards: [
       { projectId: 'p1', label: 'Project One', daysSinceHarvest: 6, daysSinceActivity: 1, baselineMedianDays: null },
     ],
-  }
+}
 
+describe('ResearchController foraging (S4)', () => {
   it('ensureForaging loads once and publishes the ready slice', async () => {
     let calls = 0
     const controller = new ResearchController(stubRemote({

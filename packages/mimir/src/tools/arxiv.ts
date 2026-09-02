@@ -10,17 +10,10 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ResearchWikiDomain } from '../store.ts'
-import type { PaperRecord, ProjectRecord } from '../types.ts'
+import type { ArxivEntry, PaperRecord, ProjectRecord } from '../types.ts'
 
 /** One parsed arXiv entry, shared by both tools' output. */
-export interface ArxivEntry {
-  readonly id: string
-  readonly title: string
-  readonly authors: string[]
-  readonly summary: string
-  readonly published: string
-  readonly url: string
-}
+export type { ArxivEntry } from '../types.ts'
 
 /** Undo the small XML-entity vocabulary the arXiv Atom feed uses. */
 function unescapeXml(text: string): string {
