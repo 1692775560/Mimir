@@ -7,8 +7,6 @@
 
 import type { LatexIssue } from './latex-log.ts'
 import type { OutlineNode } from './outline.ts'
-import type { LatexEngineKind } from './tools/latex.ts'
-import type { ArxivEntry } from './tools/arxiv.ts'
 import type { CbeDigestReport, CbeDigestTier } from './report-tier.ts'
 import type { CbeCapsulePerspective, CbeExperienceCapsule } from './report-capsules.ts'
 import type { CbeMomentKind } from './moment-index.ts'
@@ -20,9 +18,26 @@ export type { CbeMomentSource, CbeMomentStats, CbeClosenessVotes } from './momen
 export type { CbeEurekaContextView } from './eureka.ts'
 export type { CbeWindowFeatures } from './window-features.ts'
 export type { OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from './outline.ts'
-export type { ArxivEntry } from './tools/arxiv.ts'
 export type { BibEntry } from './bibtex.ts'
 import type { BibEntry } from './bibtex.ts'
+
+/**
+ * One parsed arXiv entry, shared by both arXiv tools' output. Defined here
+ * rather than in `./tools/arxiv.ts` so this types-only module never imports a
+ * tool implementation: such edges drag host-side service declarations
+ * (`@deepseek-ai/dsh-tools` → agent/session) into client type programs.
+ */
+export interface ArxivEntry {
+  readonly id: string
+  readonly title: string
+  readonly authors: string[]
+  readonly summary: string
+  readonly published: string
+  readonly url: string
+}
+
+/** A TeX engine the compile tool knows how to drive. */
+export type LatexEngineKind = 'latexmk' | 'tectonic'
 
 /** One independent-review verdict. */
 export type Verdict = 'PASS' | 'WARN' | 'FAIL'

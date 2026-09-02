@@ -19,12 +19,13 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { parseLatexErrors } from '../latex-log.ts'
 import type { LatexIssue } from '../latex-log.ts'
+import type { LatexEngineKind } from '../types.ts'
+
+/** A TeX engine this tool knows how to drive. */
+export type { LatexEngineKind } from '../types.ts'
 
 /** Characters of log tail returned to the model; the rest is unrecoverable noise. */
 const LOG_EXCERPT_CHARS = 4096
-
-/** A TeX engine this tool knows how to drive. */
-export type LatexEngineKind = 'latexmk' | 'tectonic'
 
 /** The concrete executable and command-line dialect of one resolved engine. */
 export interface ResolvedLatexEngine {
