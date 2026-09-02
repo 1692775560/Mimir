@@ -11,6 +11,14 @@ import type { LatexEngineKind } from './tools/latex.ts'
 import type { ArxivEntry } from './tools/arxiv.ts'
 import type { CbeDigestReport, CbeDigestTier } from './report-tier.ts'
 import type { CbeCapsulePerspective, CbeExperienceCapsule } from './report-capsules.ts'
+import type { CbeMomentKind } from './moment-index.ts'
+import type { CbeMomentSource, CbeMomentStats, CbeClosenessVotes } from './moment-candidates.ts'
+import type { CbeEurekaContextView, CbeEurekaProfile } from './eureka.ts'
+import type { CbeWindowFeatures } from './window-features.ts'
+export type { CbeCuratedMoment, CbeMomentKind } from './moment-index.ts'
+export type { CbeMomentSource, CbeMomentStats, CbeClosenessVotes } from './moment-candidates.ts'
+export type { CbeEurekaContextView } from './eureka.ts'
+export type { CbeWindowFeatures } from './window-features.ts'
 export type { OutlineNode, SectionMove, SectionOutlineTitles, SubsectionMove } from './outline.ts'
 export type { ArxivEntry } from './tools/arxiv.ts'
 export type { BibEntry } from './bibtex.ts'
@@ -1314,8 +1322,12 @@ export interface ResearchSetEurekaOptions {
   title: string
 }
 
-/** `setEureka` result: the stored declaration event. */
-export type ResearchSetEurekaResult = ResearchResult<{ readonly event: EventRecord }>
+/** `setEureka` result: the stored declaration event plus the pure-derived context receipt. */
+export type ResearchSetEurekaResult = ResearchResult<{
+  readonly event: EventRecord
+  /** Lead/control window features at declaration time; never persisted. */
+  readonly context?: CbeEurekaContextView | undefined
+}>
 
 /* ── Moment pin (F) — the researcher promotes one instant ── */
 
@@ -1331,4 +1343,65 @@ export interface ResearchPinMomentOptions {
 
 /** `pinMoment` result: the stored pin event. */
 export type ResearchPinMomentResult = ResearchResult<{ readonly event: EventRecord }>
+
+/* ── Moment index & Eureka view (S9b read paths — pull-only, zero verbs) ── */
+
+/** `getMomentIndex` result: the unified timeline over the five sources. */
+export type ResearchGetMomentIndexResult = ResearchResult<ResearchMomentIndexView>
+
+/** `getEurekaView` result: declarations × lead/control features + the speaks-gated profile. */
+export type ResearchGetEurekaViewResult = ResearchResult<ResearchEurekaView>
+
+/** The unified moment timeline: canonical / candidate / declined, (at, id) order. */
+export interface ResearchMomentIndexView {
+  readonly derivedAt: string
+  readonly window: { readonly since: string; readonly until: string }
+  readonly retrieval: {
+    /** Decision-grade events actually folded (observations stripped). */
+    readonly eventsHit: number
+    /** The true match count, uncapped. */
+    readonly eventsTotal: number
+    readonly truncated: boolean
+    readonly silences: readonly string[]
+  }
+  /** Whether the eureka profile speaks (gates the closeness footnote render). */
+  readonly speaks: boolean
+  readonly moments: readonly ResearchMomentView[]
+}
+
+/** One row of the unified timeline (view shape of a curated moment). */
+export interface ResearchMomentView {
+  readonly id: string
+  readonly at: string
+  readonly lineId: string | null
+  readonly lineLabel: string | null
+  readonly kind: CbeMomentKind
+  readonly sources: readonly CbeMomentSource[]
+  readonly action: string
+  readonly note: string | null
+  readonly pinned: boolean
+  readonly declined: boolean
+  /** pinned || kind === 'eureka' — the researcher's (or declaration's) word. */
+  readonly canonical: boolean
+  readonly eventCount: number
+  readonly stats: CbeMomentStats
+  readonly closeness: CbeClosenessVotes | null
+  readonly evidence: readonly string[]
+}
+
+/** The retrospective eureka view: every declaration with its measured road. */
+export interface ResearchEurekaView {
+  readonly derivedAt: string
+  readonly declarations: readonly {
+    readonly id: string
+    readonly at: string
+    readonly title: string
+    readonly lineId: string | null
+    readonly lineLabel: string | null
+    readonly lead: CbeWindowFeatures
+    readonly control: CbeWindowFeatures | null
+  }[]
+  /** speaks=false ⇒ lift rows stay null (I2), rendered with the descriptive-not-predictive note. */
+  readonly profile: CbeEurekaProfile
+}
 

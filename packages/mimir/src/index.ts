@@ -284,6 +284,8 @@ export {
   eurekaFeatures,
   eurekaModelAt,
   eurekaProfileOf,
+  eurekaContextAt,
+  eurekaWindowBounds,
   EUREKA_ACTION,
   EUREKA_FEATURE_KEYS,
   CBE_EUREKA_WINDOW_DAYS,
@@ -300,7 +302,15 @@ export type {
   CbeEurekaModel,
   CbeEurekaProfile,
   CbeCriticalStateSample,
+  CbeEurekaContextView,
+  EurekaWindowBounds,
 } from './eureka.ts'
+export {
+  windowFeatures,
+} from './window-features.ts'
+export type {
+  CbeWindowFeatures,
+} from './window-features.ts'
 export {
   deriveCapsules,
   formatCapsule,
@@ -344,6 +354,21 @@ export {
   CBE_MOMENT_BURST_MIN_EVENTS,
 } from './moment-index.ts'
 export type { CbeCuratedMoment, CbeMomentKind, CbeMomentPin } from './moment-index.ts'
+export {
+  deriveMomentCandidates,
+  kindOfBurst,
+  CBE_MOMENT_RETURN_GAP_DAYS,
+  CBE_MOMENT_CONVERGENCE_LINES,
+  CBE_MOMENT_LONG_SITTING_FACTOR,
+  CBE_MOMENT_LONG_SITTING_MIN_SESSIONS,
+  CBE_MOMENT_CLOSNESS_ENABLED,
+} from './moment-candidates.ts'
+export type {
+  CbeMomentSource,
+  CbeMomentStats,
+  CbeMomentCandidate,
+  CbeClosenessVotes,
+} from './moment-candidates.ts'
 export { renderJournalDraft } from './journal-draft.ts'
 export type { JournalDraftInput, JournalDraftKind, JournalDraftLang } from './journal-draft.ts'
 export { parseLatexErrors } from './latex-log.ts'

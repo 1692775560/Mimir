@@ -40,8 +40,9 @@ import type {
   CbeMainlineDeclaration,
   CbeWorktreeLane,
 } from '../worktree.ts'
-import { CBE_EUREKA_WINDOW_DAYS, EUREKA_ACTION } from '../eureka.ts'
-import { MOMENT_PIN_ACTION } from '../moment-index.ts'
+import { CBE_EUREKA_WINDOW_DAYS, EUREKA_ACTION, eurekaContextAt, eurekaModelAt, eurekaProfileOf } from '../eureka.ts'
+import { MOMENT_PIN_ACTION, deriveCuratedMoments } from '../moment-index.ts'
+import { CBE_MOMENT_RETURN_GAP_DAYS } from '../moment-candidates.ts'
 import { assembleDigest } from '../report-tier.ts'
 import type { CbeDigestTier } from '../report-tier.ts'
 import { renderDigest } from '../render-digest.ts'
@@ -62,6 +63,11 @@ import type {
   ResearchGetHabitsResult,
   ResearchGetLibraryThemesResult,
   ResearchGetWorktreeResult,
+  ResearchGetMomentIndexResult,
+  ResearchGetEurekaViewResult,
+  ResearchMomentIndexView,
+  ResearchMomentView,
+  ResearchEurekaView,
   ResearchListEventsResult,
   ResearchProgressReportOptions,
   ResearchProgressReportResult,
@@ -74,6 +80,7 @@ import type {
   ResearchGenerateDigestResult,
   ResearchGenerateDigestOptions,
 } from '../types.ts'
+import type { CbeWindowFeatures } from '../window-features.ts'
 import { rejected, success } from './common.ts'
 
 /** Everything the ledger domain functions need from the service scope. */
@@ -1053,13 +1060,19 @@ export async function setEurekaRemote(
     })
   }
   try {
+    // Context receipt, computed BEFORE the write so it describes the road the
+    // declaration caps — a pure derivation, returned (never persisted): re-
+    // computing it later over the same ledger yields the same numbers.
+    const foldedNow = await loadLedgerWindow(deps.domain, {}, 'setEureka context')
+    const lineId = ideaId !== undefined ? ideaId : (projectId !== undefined ? `project:${projectId}` : null)
+    const context = eurekaContextAt(foldedNow.events, Date.now(), lineId)
     const event = await appendEvent(deps.domain, {
       actor: PANEL_ACTOR,
       action: EUREKA_ACTION,
       refs: ideaId !== undefined ? { ideaId } : { projectId: projectId as string },
       payload: { title },
     })
-    return success({ event })
+    return success({ event, context })
   } catch (error) {
     console.warn('[mimir]', 'the eureka declaration could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the eureka declaration could not be written' })
@@ -1105,6 +1118,146 @@ export async function pinMomentRemote(
   } catch (error) {
     console.warn('[mimir]', 'the moment pin could not be written', error)
     return rejected({ code: 'operation-failed', message: 'the moment pin could not be written' })
+  }
+}
+
+/**
+ * Read the unified moment timeline (S9b): the five deterministic candidate
+ * sources folded over the window, unified with the researcher's pins and
+ * declines. Pull-only — there is no push, no notification, no ranking, and
+ * every row is refusable; canonical status belongs to the declarations
+ * (`cbe.moment.pin` / `cbe.eureka.set`), never to this read.
+ *
+ * Window discipline: the fold receives the window events PLUS a lookback
+ * prefix (`since − (CBE_MOMENT_RETURN_GAP_DAYS + 1) days`) so dormancy
+ * returns and lane-openings can judge line history; prefix events never
+ * anchor. Truncation registers as a silence, not as a smaller truth.
+ * @param deps - open wiki domain.
+ * @param request - optional ISO-8601 window bounds (defaults: 30 days to now).
+ * @returns the moment index view.
+ */
+export async function getMomentIndexRemote(
+  deps: LedgerDeps,
+  request: {
+    since?: string | undefined
+    until?: string | undefined
+  } = {},
+): Promise<ResearchGetMomentIndexResult> {
+  for (const bound of [request.since, request.until]) {
+    if (bound !== undefined && Number.isNaN(Date.parse(bound))) {
+      return rejected({ code: 'invalid-input', message: `since/until must be ISO-8601, got '${bound}'` })
+    }
+  }
+  const window = resolveWindow(request.since, request.until, DEFAULT_SPAN_DAYS)
+  try {
+    const folded = await loadLedgerWindow(deps.domain, {
+      since: window.since,
+      until: window.until,
+    }, 'moment index')
+    // Lookback prefix: line-history judgements (dormancy, lane-opening) read
+    // before the window; the prefix never anchors a candidate.
+    const prefixSince = new Date(
+      Date.parse(window.since) - (CBE_MOMENT_RETURN_GAP_DAYS + 1) * MS_PER_DAY,
+    ).toISOString()
+    const prefixFolded = await loadLedgerWindow(deps.domain, {
+      since: prefixSince,
+      until: window.until,
+    }, 'moment index lookback')
+    // Merge window + prefix (dedupe by id) — the fold sorts canonically.
+    const seen = new Set(folded.events.map(event => event.id))
+    const merged = [...folded.events, ...prefixFolded.events.filter(event => !seen.has(event.id))]
+
+    const wiki = wikiSnapshot(deps.domain)
+    const labels = new Map<string, string>([
+      ...wiki.ideas.map(idea => [idea.id, idea.title] as const),
+      ...wiki.projects.map(project => [`project:${project.id}`, project.title] as const),
+    ])
+
+    const curated = deriveCuratedMoments(merged, window.since, window.until)
+    const speaks = eurekaProfileOf(eurekaModelAt(merged), Date.now()).speaks
+    const moments: readonly ResearchMomentView[] = curated.map(moment => Object.freeze({
+      id: moment.id,
+      at: moment.at,
+      lineId: moment.lineId,
+      lineLabel: moment.lineId === null ? null : labels.get(moment.lineId) ?? moment.lineId,
+      kind: moment.kind,
+      sources: moment.sources,
+      action: moment.action,
+      note: moment.note,
+      pinned: moment.pinned,
+      declined: moment.declined,
+      canonical: moment.pinned || moment.kind === 'eureka',
+      eventCount: moment.eventCount,
+      stats: moment.stats,
+      closeness: moment.closeness,
+      evidence: moment.evidence,
+    }))
+    const view: ResearchMomentIndexView = Object.freeze({
+      derivedAt: new Date().toISOString(),
+      window: Object.freeze({ since: window.since, until: window.until }),
+      retrieval: Object.freeze({
+        eventsHit: folded.events.length,
+        eventsTotal: folded.total,
+        truncated: folded.truncated,
+        silences: Object.freeze(folded.truncated
+          ? [`events truncated: window matched ${folded.total}, fold cap ${LIST_EVENTS_MAX_LIMIT}, folded newest ${folded.events.length}`]
+          : []),
+      }),
+      speaks,
+      moments: Object.freeze(moments),
+    })
+    return success(view)
+  } catch (error) {
+    console.warn('[mimir]', 'the moment index could not be derived', error)
+    return rejected({ code: 'operation-failed', message: 'the moment index could not be derived' })
+  }
+}
+
+/**
+ * Read the retrospective eureka view (S8c): every declared milestone with its
+ * lead-in and control window features (the shared fold), plus the profile —
+ * whose lift rows stay null below the declaration floor (I2). Descriptive
+ * only: nothing here predicts or scores; the UI renders it with the same
+ * "description, not prediction" note the digest carries.
+ * @param deps - open wiki domain.
+ * @returns the eureka view.
+ */
+export async function getEurekaViewRemote(
+  deps: LedgerDeps,
+): Promise<ResearchGetEurekaViewResult> {
+  try {
+    // Eureka lead-ins reach 2 × CBE_EUREKA_WINDOW_DAYS before each
+    // declaration; open the whole ledger window so controls stay observable.
+    const folded = await loadLedgerWindow(deps.domain, {}, 'eureka view')
+    const wiki = wikiSnapshot(deps.domain)
+    const labels = new Map<string, string>([
+      ...wiki.ideas.map(idea => [idea.id, idea.title] as const),
+      ...wiki.projects.map(project => [`project:${project.id}`, project.title] as const),
+    ])
+    const model = eurekaModelAt(folded.events)
+    const profile = eurekaProfileOf(model, Date.now())
+    const declarations = model.declarations.map((declaration, index) => {
+      const lead = model.leads[index]
+      const control = model.controls[index] ?? null
+      return Object.freeze({
+        id: declaration.id,
+        at: declaration.at,
+        title: declaration.title,
+        lineId: declaration.lineId,
+        lineLabel: declaration.lineId === null ? null : labels.get(declaration.lineId) ?? declaration.lineId,
+        lead: lead as CbeWindowFeatures,
+        control,
+      })
+    })
+    const view: ResearchEurekaView = Object.freeze({
+      derivedAt: new Date().toISOString(),
+      declarations: Object.freeze(declarations),
+      profile,
+    })
+    return success(view)
+  } catch (error) {
+    console.warn('[mimir]', 'the eureka view could not be derived', error)
+    return rejected({ code: 'operation-failed', message: 'the eureka view could not be derived' })
   }
 }
 
