@@ -48,6 +48,8 @@ dsh web                                          # 然后打开 http://127.0.0.1
 
 装到了旧版本（比如 0.11.x/0.12.x）？dsh 的插件商店走 pnpm，默认会延迟加载刚发布的新版本。改用精确版本号：`dsh plugin --profile web remove dsh-mimir && dsh plugin --profile web add dsh-mimir@0.14.1`
 
+版本兼容：**0.17.0 需要 dsh ≥ 0.1.2-alpha.4**（上游有破坏性改动）。旧版 dsh 请钉住上一个版本：`dsh plugin --profile web add dsh-mimir@0.16.0`。
+
 点击侧栏底部的 **Mimir**。wiki 存在 `~/.dsh/storages/research_wiki.json`，工件落盘 `./.research`。
 
 可选能力：
@@ -81,6 +83,7 @@ dsh web                                          # 然后打开 http://127.0.0.1
 
 ## 更新日志
 
+- **0.17.0**——适配 **dsh 0.1.2-alpha.4**（上游删除 `dsh-client-runtime`，注入改走 `dsh-api-session-controller` + `dsh-client-ui-renderer`；对齐破坏性 API——修复新版 dsh 下 client 类型污染与面板加载失败）。**需要 dsh ≥ 0.1.2-alpha.4；旧版 dsh 请留在 0.16.0。** 同时带来瞬间时间线与 eureka 视图，[@EriXPsy](https://github.com/EriXPsy) 贡献（[#127](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/127)）：五源瞬间候选（爆发 / 休眠后回归 / 跨线汇聚 / 长期搁置 / 里程碑）、canonical-候选-已谢绝时间线、只读 remote
 - **0.16.0**——人本化记录视图，[@EriXPsy](https://github.com/EriXPsy) 贡献（[#125](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/125)）：CBE 认知图谱、brief 视图、想法演化 worktree（自动收录）、六视角摘要胶囊；`research-paper-deai` 中英双语去 AI 味技能，[@hkwuks](https://github.com/hkwuks) 贡献（[#126](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/126)，融合 MIT 协议的 aigc-humanizer-zh 与 blader/humanizer，LaTeX 安全且改写后强制编译复核）
 - **0.15.1**——取消 `web_search` 时终止 sxng 子进程（不再泄漏僵尸进程），[@hxhy](https://github.com/huixiaheyu) 贡献（[#124](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/124)）
 - **0.15.0**——SearXNG Web 搜索增强，[@hkwuks](https://github.com/hkwuks) 贡献（[#122](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/122)）：sxng-cli 配置面板（SxngConfig）、Agent 搜索经 sxng skill 引导；本地 LaTeX 项目导入，[@1692775560](https://github.com/1692775560) 贡献；自然语言项目参数 + PDF 全屏弹窗，[@Nick](https://github.com/Nick) 贡献（[#120](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/120)）

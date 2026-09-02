@@ -48,6 +48,8 @@ dsh web                                          # then open http://127.0.0.1:30
 
 Got an old version (e.g. 0.11.x/0.12.x)? dsh's plugin store uses pnpm, which holds back freshly published releases by default. Pin the exact version instead: `dsh plugin --profile web remove dsh-mimir && dsh plugin --profile web add dsh-mimir@0.14.1`
 
+Version compatibility: **0.17.0 requires dsh ≥ 0.1.2-alpha.4** (upstream breaking changes). On an older dsh, pin the previous release: `dsh plugin --profile web add dsh-mimir@0.16.0`.
+
 Click **Mimir** in the sidebar footer. The wiki persists at `~/.dsh/storages/research_wiki.json`; artifacts land under `./.research`.
 
 Optional capabilities:
@@ -81,6 +83,7 @@ All keys are optional; set them in the profile's `cordis.patch.yml` (full commen
 
 ## Changelog
 
+- **0.17.0** — adapts to **dsh 0.1.2-alpha.4** (upstream removed `dsh-client-runtime`; injection now goes through `dsh-api-session-controller` + `dsh-client-ui-renderer`; breaking API alignment — fixes client type pollution and panel load failures on the new dsh). **Requires dsh ≥ 0.1.2-alpha.4; on older dsh stay on 0.16.0.** Also ships the moment timeline & eureka view by [@EriXPsy](https://github.com/EriXPsy) ([#127](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/127)): five-source moment candidates (burst / return-after-dormancy / cross-line convergence / long-sitting / milestone), canonical-candidate-declined timeline, read-only remotes
 - **0.16.0** — Humanized ledger by [@EriXPsy](https://github.com/EriXPsy) ([#125](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/125)): CBE cognitive map, brief view, idea-evolution worktree with ambient auto-capture, six-perspective digest capsules; `research-paper-deai` bilingual de-AI polish skill by [@hkwuks](https://github.com/hkwuks) ([#126](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/126), synthesized from MIT-licensed aigc-humanizer-zh + blader/humanizer, LaTeX-safe with compile re-check)
 - **0.15.1** — cancelling `web_search` now terminates the sxng child process (no more zombie processes) by [@hxhy](https://github.com/huixiaheyu) ([#124](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/124))
 - **0.15.0** — SearXNG web search by [@hkwuks](https://github.com/hkwuks) ([#122](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/122)): sxng-cli config panel (SxngConfig) in the Library web tab, agent search routed through the sxng skill; local LaTeX project import by [@1692775560](https://github.com/1692775560); tolerant project args + PDF fullscreen portal by [@Nick](https://github.com/Nick) ([#120](https://github.com/1692775560/dsh-Mimir-Academic-research/pull/120))
