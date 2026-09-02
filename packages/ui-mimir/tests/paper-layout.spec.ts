@@ -53,7 +53,7 @@ describe('editorShareFromDrag', () => {
   })
 
   it('lets the editor minimum win when the container cannot fit both', () => {
-    // 400px available cannot hold 320 + 280: the editor clamps to 320.
+    // 400px available cannot hold 360 + 280: the editor clamps to 360.
     expect(editorShareFromDrag(390, 400)).toBeCloseTo(EDITOR_MIN_WIDTH / 400)
   })
 

@@ -26,7 +26,7 @@ export const RAIL_MAX_WIDTH = 320
 /** A rail dragged below this width snaps to 0 (collapsed) instead of a sliver. */
 export const RAIL_COLLAPSE_BELOW = 60
 /** The editor never shrinks below this (px). */
-export const EDITOR_MIN_WIDTH = 320
+export const EDITOR_MIN_WIDTH = 360
 /** The preview never shrinks below this (px). */
 export const PREVIEW_MIN_WIDTH = 280
 
