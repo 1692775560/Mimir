@@ -790,7 +790,14 @@ export class ResearchController implements HostObservable<ResearchView> {
   private zoteroGeneration = 0
   private serversPromise: Promise<void> | null = null
   private jobsPromise: Promise<void> | null = null
+  /** Cancels stale outline replies after project changes or outline refreshes. */
   private outlineGeneration = 0
+  /** Cancels stale source replies independently of the outline lifecycle. */
+  private sourceGeneration = 0
+  /** Cancels stale experiment replies independently of paper reads. */
+  private experimentsGeneration = 0
+  /** Cancels stale compile-status replies after project changes. */
+  private compileGeneration = 0
   private artifactGeneration = 0
   private figuresGeneration = 0
   private arxivGeneration = 0
@@ -810,15 +817,18 @@ export class ResearchController implements HostObservable<ResearchView> {
   /** In-flight foraging load guard (the ensure/refresh contract). */
   private foragingPromise: Promise<void> | null = null
   private figuresInFlight = false
+  private figuresRefreshPending: { readonly projectId: string; readonly quiet: boolean } | null = null
   private meetingsGeneration = 0
   private meetingsInFlight = false
+  private meetingsRefreshProject: string | null = null
   private imageGenInFlight = false
   private sxngConfigInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
   private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
-  private compileQueued: string | null = null
+  private compileProject: string | null = null
+  private compileQueued = new Set<string>
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private compileTimer: ReturnType<typeof setTimeout> | null = null
   private saveInFlight = false
@@ -1702,7 +1712,12 @@ export class ResearchController implements HostObservable<ResearchView> {
    */
   loadFigures(projectId: string, force = false, quiet = false): void {
     const current = this.view.figures
-    if (this.figuresInFlight) return
+    if (this.figuresInFlight) {
+      if (force) {
+        this.figuresRefreshPending = { projectId, quiet }
+      }
+      return
+    }
     if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
     this.figuresGeneration += 1
     const generation = this.figuresGeneration
@@ -1733,6 +1748,9 @@ export class ResearchController implements HostObservable<ResearchView> {
         publishFigures({ projectId, status: 'error', list: [], failure: transportFailure(error) })
       } finally {
         this.figuresInFlight = false
+        const pending = this.figuresRefreshPending
+        this.figuresRefreshPending = null
+        if (pending !== null && !this.disposed) this.loadFigures(pending.projectId, true, pending.quiet)
       }
     })()
   }
@@ -1754,7 +1772,6 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
-      this.figuresInFlight = false
       this.loadFigures(projectId, true)
       if (result.value.references > 0 && this.view.source?.saveState === 'clean') this.refreshPaper(projectId)
       this.notify(
@@ -1783,7 +1800,6 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
-      this.figuresInFlight = false
       this.loadFigures(projectId, true, true)
       return null
     } catch (error) {
@@ -1805,7 +1821,6 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
-      this.figuresInFlight = false
       this.loadFigures(projectId, true)
       this.notify('success', 'toast.deleted')
       return null
@@ -1822,7 +1837,10 @@ export class ResearchController implements HostObservable<ResearchView> {
    */
   loadMeetings(projectId: string, force = false): void {
     const current = this.view.meetings
-    if (this.meetingsInFlight) return
+    if (this.meetingsInFlight) {
+      if (force) this.meetingsRefreshProject = projectId
+      return
+    }
     if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
     this.meetingsGeneration += 1
     const generation = this.meetingsGeneration
@@ -1851,6 +1869,9 @@ export class ResearchController implements HostObservable<ResearchView> {
         publishMeetings({ projectId, status: 'error', list: [], failure: transportFailure(error) })
       } finally {
         this.meetingsInFlight = false
+        const pendingProject = this.meetingsRefreshProject
+        this.meetingsRefreshProject = null
+        if (pendingProject !== null && !this.disposed) this.loadMeetings(pendingProject, true)
       }
     })()
   }
@@ -1880,7 +1901,6 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
-      this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'meetings.generated', String(result.value.slides))
       if (result.value.illustrations > 0) {
@@ -1904,7 +1924,6 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
-      this.meetingsInFlight = false
       this.loadMeetings(projectId, true)
       this.notify('success', 'toast.deleted')
       return null
@@ -2296,7 +2315,6 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (convertedName !== null) {
       // A conversion wrote a new product file into the paper directory; the
       // figures view's cached scan does not know about it yet.
-      this.figuresInFlight = false
       this.loadFigures(projectId, true)
     }
     return inserted.line
@@ -2374,13 +2392,13 @@ export class ResearchController implements HostObservable<ResearchView> {
   private async ensureSourceReady(projectId: string): Promise<ResearchSourceView | null> {
     const current = this.view.source
     if (current !== null && current.projectId === projectId && current.status === 'ready') return current
-    this.outlineGeneration += 1
-    const generation = this.outlineGeneration
+    this.sourceGeneration += 1
+    const generation = this.sourceGeneration
     this.publish({
       source: Object.freeze({ projectId, status: 'loading', content: '', mtimeMs: null, saveState: 'clean', failure: null }),
     })
     const fail = (failure: ResearchFailureView): null => {
-      if (this.disposed || generation !== this.outlineGeneration) return null
+      if (this.disposed || generation !== this.sourceGeneration) return null
       this.publish({
         source: Object.freeze({ projectId, status: 'error', content: '', mtimeMs: null, saveState: 'clean', failure }),
       })
@@ -2389,7 +2407,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
     try {
       const carried = await this.remote.getPaperSource({ projectId, dir: this.dirOf(projectId) })
-      if (this.disposed || generation !== this.outlineGeneration) return null
+      if (this.disposed || generation !== this.sourceGeneration) return null
       if (!carried.ok) return fail(failureOf(carried.error.code, carried.error.message))
       const result = carried.value
       if (!result.ok) return fail(businessFailure(result.error))
@@ -3378,7 +3396,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     }
     const experiments = this.view.experiments
     if (linkedSettled && experiments !== null && experiments.status === 'ready') {
-      void this.loadExperiments(experiments.projectId, this.outlineGeneration)
+      void this.loadExperiments(experiments.projectId, this.experimentsGeneration)
     }
   }
 
@@ -3391,7 +3409,12 @@ export class ResearchController implements HostObservable<ResearchView> {
    */
   select(projectId: string): void {
     this.outlineGeneration += 1
-    const generation = this.outlineGeneration
+    const outlineGeneration = this.outlineGeneration
+    this.sourceGeneration += 1
+    const sourceGeneration = this.sourceGeneration
+    this.experimentsGeneration += 1
+    const experimentsGeneration = this.experimentsGeneration
+    this.compileGeneration += 1
     this.snapshotsGeneration += 1
     this.snapshotDetailGeneration += 1
     this.clearTimers()
@@ -3403,13 +3426,14 @@ export class ResearchController implements HostObservable<ResearchView> {
         projectId, status: 'loading', content: '', mtimeMs: null, saveState: 'clean', failure: null,
       }),
       experiments: Object.freeze({ projectId, status: 'loading', list: Object.freeze([]), failure: null }),
+      compile: Object.freeze({ projectId, state: 'idle', issues: Object.freeze([]), engine: null, pdfUpdatedAt: null }),
       snapshots: null,
       snapshotDetail: null,
     })
-    void this.loadOutline(projectId, generation)
+    void this.loadOutline(projectId, outlineGeneration)
     void this.loadCompileStatus(projectId)
-    void this.loadSource(projectId, generation)
-    void this.loadExperiments(projectId, generation)
+    void this.loadSource(projectId, sourceGeneration)
+    void this.loadExperiments(projectId, experimentsGeneration)
   }
 
   /**
@@ -3436,8 +3460,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   reloadSource(): void {
     const source = this.view.source
     if (source === null) return
-    this.outlineGeneration += 1
-    const generation = this.outlineGeneration
+    this.sourceGeneration += 1
+    const generation = this.sourceGeneration
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer)
       this.saveTimer = null
@@ -3458,19 +3482,22 @@ export class ResearchController implements HostObservable<ResearchView> {
    */
   async compile(projectId: string): Promise<void> {
     if (this.disposed) return
-    if (this.view.compile.state === 'running') {
-      this.compileQueued = projectId
+    const current = this.compileProject
+    if (current !== null) {
+      this.compileQueued.add(projectId)
       return
     }
+    const generation = this.compileGeneration
     const abort = new AbortController()
     this.compileAbort = abort
+    this.compileProject = projectId
     this.publish({
-      compile: Object.freeze({ ...this.view.compile, projectId, state: 'running' }),
+      compile: Object.freeze({ projectId, state: 'running', issues: Object.freeze([]), engine: null, pdfUpdatedAt: null }),
     })
     try {
       const carried = await this.remote.compile({ projectId, dir: this.dirOf(projectId) }, abort.signal)
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run during the await.
-      if (this.disposed) return
+      if (this.disposed || generation !== this.compileGeneration || this.compileProject !== projectId) return
       if (!carried.ok) {
         this.publishCompileError(projectId, failureOf(carried.error.code, carried.error.message))
         return
@@ -3491,16 +3518,17 @@ export class ResearchController implements HostObservable<ResearchView> {
       }
     } catch (error) {
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run during the await.
-      if (this.disposed || abort.signal.aborted) return
+      if (this.disposed || abort.signal.aborted || generation !== this.compileGeneration || this.compileProject !== projectId) return
       this.publishCompileError(projectId, transportFailure(error))
     } finally {
       if (this.compileAbort === abort) this.compileAbort = null
+      if (this.compileProject === projectId) this.compileProject = null
       // A save landed (or a click arrived) while this run was in flight:
       // compile the newest content now, without another debounce window.
-      const queued = this.compileQueued
-      this.compileQueued = null
+      const queued = this.compileQueued.values().next().value as string | undefined
+      if (queued !== undefined) this.compileQueued.delete(queued)
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run during the await.
-      if (queued !== null && !this.disposed) void this.compile(queued)
+      if (queued !== undefined && !this.disposed) void this.compile(queued)
     }
   }
 
@@ -3583,7 +3611,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   /** Fetch one project's experiment runs; a superseded generation never publishes. */
   private async loadExperiments(projectId: string, generation: number): Promise<void> {
     const publishExperiments = (view: ResearchProjectSlice<readonly ExperimentRecord[]>): void => {
-      if (this.disposed || generation !== this.outlineGeneration) return
+      if (this.disposed || generation !== this.experimentsGeneration) return
       this.publish({ experiments: Object.freeze(view) })
     }
     try {
@@ -3614,9 +3642,11 @@ export class ResearchController implements HostObservable<ResearchView> {
    */
   private refreshPaper(projectId: string): void {
     this.outlineGeneration += 1
-    const generation = this.outlineGeneration
-    void this.loadOutline(projectId, generation)
-    void this.loadSource(projectId, generation)
+    const outlineGeneration = this.outlineGeneration
+    this.sourceGeneration += 1
+    const sourceGeneration = this.sourceGeneration
+    void this.loadOutline(projectId, outlineGeneration)
+    void this.loadSource(projectId, sourceGeneration)
   }
 
   /** Fetch one project's outline; a superseded generation never publishes. */
@@ -3644,11 +3674,12 @@ export class ResearchController implements HostObservable<ResearchView> {
 
   /** Fetch one project's last compile status without touching an in-flight run. */
   private async loadCompileStatus(projectId: string): Promise<void> {
+    const generation = this.compileGeneration
     try {
       const carried = await this.remote.getCompileStatus({ projectId })
       // A compile started meanwhile owns the compile view; do not overwrite it
       // with a pre-run snapshot.
-      if (this.disposed || this.view.compile.state === 'running') return
+      if (this.disposed || generation !== this.compileGeneration || this.compileProject !== null || this.view.compile.projectId !== projectId) return
       if (!carried.ok || !carried.value.ok) return
       this.publish({
         compile: Object.freeze({ ...carried.value.value, projectId }),
@@ -3662,7 +3693,7 @@ export class ResearchController implements HostObservable<ResearchView> {
   /** Fetch one project's `main.tex`; a superseded generation never publishes. */
   private async loadSource(projectId: string, generation: number): Promise<void> {
     const publishSource = (view: ResearchSourceView): void => {
-      if (this.disposed || generation !== this.outlineGeneration) return
+      if (this.disposed || generation !== this.sourceGeneration) return
       this.publish({ source: Object.freeze(view) })
     }
     try {
@@ -3708,7 +3739,7 @@ export class ResearchController implements HostObservable<ResearchView> {
     if (source === null || source.status !== 'ready' || source.mtimeMs === null) return
     if (source.saveState !== 'dirty') return
     const { projectId, content, mtimeMs } = source
-    const generation = this.outlineGeneration
+    const generation = this.sourceGeneration
     this.saveInFlight = true
     this.publish({ source: Object.freeze({ ...source, saveState: 'saving' }) })
     try {
@@ -3716,7 +3747,7 @@ export class ResearchController implements HostObservable<ResearchView> {
         projectId, content, baseMtimeMs: mtimeMs, dir: this.dirOf(projectId),
       })
       // A reselection or reload superseded this draft; its reply is stale.
-      if (this.disposed || generation !== this.outlineGeneration) return
+      if (this.disposed || generation !== this.sourceGeneration) return
       const current = this.view.source
       if (current === null || current.projectId !== projectId || current.status !== 'ready') return
       if (!carried.ok) {
@@ -3748,7 +3779,7 @@ export class ResearchController implements HostObservable<ResearchView> {
         this.publish({ source: Object.freeze({ ...settled, saveState: 'dirty' }) })
       }
     } catch (error) {
-      if (this.disposed || generation !== this.outlineGeneration) return
+      if (this.disposed || generation !== this.sourceGeneration) return
       const current = this.view.source
       if (current === null || current.projectId !== projectId) return
       this.publish({
