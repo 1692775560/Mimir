@@ -5630,6 +5630,7 @@ li.dropIndicator {
   color: var(--clay-ink, #5b4a3f);
   font-size: 13px;
   box-shadow: inset 0 2px 4px rgba(92, 72, 58, 0.1);
+}
 
 /* Import-existing-project dialog: portaled to document.body, so the z-index
    is relative to the root stacking context — it must clear the workbench
@@ -5698,4 +5699,159 @@ li.dropIndicator {
 }
 
 .importWarnings li {   margin: 2px 0;
+}
+
+
+/* Venues view: the ccfddl conference card grid + the CCF-A journal directory. */
+.venues {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.venues .input[type='search'] {
+  width: 220px;
+}
+
+.venues select.input {
+  width: auto;
+}
+
+.venuesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.venueCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 17px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: var(--mimir-card-shadow);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.venueCard:hover {
+  border-color: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
+  box-shadow: 0 14px 32px rgb(33 30 25 / 12%);
+  transform: translateY(-1px);
+}
+
+.venueCard[data-watched] {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.venueCardHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.venueCardTitle {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venueRank {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
+.venueRank[data-rank='A'] {
+  background: rgb(217 48 38 / 10%);
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.venueRank[data-rank='B'] {
+  background: rgb(255 153 0 / 12%);
+  color: var(--dsw-alias-state-warning-primary, #b25000);
+}
+
+.venueRank[data-rank='C'] {
+  background: rgb(65 118 230 / 10%);
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+}
+
+.venueWatch {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.venueWatch:hover:not(:disabled) {
+  color: var(--dsw-alias-state-warning-primary, #b25000);
+}
+
+.venueWatch[data-on] {
+  color: var(--dsw-alias-state-warning-primary, #b25000);
+}
+
+.venueWatch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.venueCardDesc {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary, #3c4557);
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venueCardDeadline {
+  margin: 0;
+  color: var(--dsw-alias-label-primary, #17233d);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.venueCardDeadline[data-soon] {
+  color: var(--dsw-alias-state-error-primary, #d93026);
+}
+
+.venueCardMeta {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.venueCardLink {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.venueCardLink:hover {
+  text-decoration: underline;
 }

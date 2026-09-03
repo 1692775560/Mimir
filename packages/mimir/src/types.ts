@@ -363,6 +363,81 @@ export type ResearchApplyVenueResult = ResearchResult<{ readonly venue: VenueVie
 /** `clearVenueTemplate` result: the project whose venue was cleared. */
 export type ResearchClearVenueResult = ResearchResult<{ readonly projectId: string }>
 
+/* ── venue deadlines (会议/CCF DDL 追踪) ─────────────────────────────── */
+
+/** Durable shape of one venue-watch row (the `venue_watches` wiki table). */
+export interface VenueWatchRecord {
+  /** Composite key: `<projectId>:<seriesKey>`. */
+  readonly id: string
+  readonly projectId: string
+  /** ccfddl series key (lowercased title). */
+  readonly series: string
+  readonly createdAt: string
+}
+
+/** One submission round of one conference edition, deadlines as ISO instants. */
+export interface VenueTimelineView {
+  readonly abstractDeadline: string | null
+  readonly deadline: string | null
+  readonly comment: string | null
+}
+
+/** One conference edition as the panel shows it. */
+export interface VenueConfView {
+  readonly year: number
+  readonly id: string
+  readonly link: string
+  /** Human date range from the source (`June 10-17, 2026`). */
+  readonly date: string
+  readonly place: string
+  readonly timeline: readonly VenueTimelineView[]
+}
+
+/** One conference series with its current edition resolved. */
+export interface VenueDeadlineView {
+  /** ccfddl series key (lowercased title, e.g. `cvpr`). */
+  readonly key: string
+  readonly title: string
+  readonly description: string
+  /** ccfddl field code (`AI`, `DB`, …). */
+  readonly sub: string
+  readonly ccfRank: 'A' | 'B' | 'C' | 'N'
+  readonly dblp: string | null
+  readonly conf: VenueConfView
+  /** ISO instant of the next pending deadline, or null when fully past. */
+  readonly nextDeadlineAt: string | null
+  readonly nextDeadlineKind: 'abstract' | 'paper' | null
+}
+
+/** One static CCF-A journal directory entry (no deadlines — reference only). */
+export interface VenueJournalView {
+  readonly title: string
+  readonly fullName: string
+  readonly sub: string
+  readonly publisher: string
+}
+
+/** `listVenueDeadlines` result: the cached catalog plus the project's watch list. */
+export type ResearchVenueDeadlinesResult = ResearchResult<{
+  readonly venues: readonly VenueDeadlineView[]
+  readonly journals: readonly VenueJournalView[]
+  /** Series keys the addressed project watches. */
+  readonly watched: readonly string[]
+  /** When the cache was last refreshed; null when no fetch has ever succeeded. */
+  readonly fetchedAt: string | null
+}>
+
+/** `setVenueWatch` result: the settled watch state. */
+export type ResearchSetVenueWatchResult = ResearchResult<{
+  readonly projectId: string
+  readonly series: string
+  readonly watched: boolean
+}>
+
+/** `refreshVenueDeadlines` result: the fresh fetch timestamp. */
+export type ResearchRefreshVenueDeadlinesResult = ResearchResult<{ readonly fetchedAt: string }>
+
+
 /** `getPaperOutline` result: the section tree of `<workspace>/paper/main.tex`. */
 export type ResearchOutlineResult = ResearchResult<{
   readonly projectId: string
