@@ -38,6 +38,8 @@ import { registerResearchSkills } from './skills.ts'
 import { registerSxngSkill } from './sxng-skill.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
+import { startVenueDeadlineLoop } from './services/venue-deadlines.ts'
+import { createVenueSearchTool } from './tools/venue.ts'
 
 export type { Verdict, PaperRecord, PaperRelevance, IdeaRecord, ClaimRecord, ProjectRecord, ReviewIssue, ReviewRound, ProjectStage, ExperimentRecord, ExperimentStatus, ExperimentInput, FigureRecord, JobRecord, JobStatus, EventRecord, LedgerActor, LedgerActorKind, EventRefs, LedgerJsonValue, ResearchEventFilter, ResearchListEventsResult, ResearchProgressReportOptions, ResearchProgressReportResult } from './types.ts'
 export type {
@@ -1077,6 +1079,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.tools.register(createFigureOrganizeTool(deps.workspaceDir, domain))
   ctx.tools.register(createMeetingDeckTool(deps.workspaceDir, domain))
   ctx.tools.register(createLatexCompileTool(resolved.latex))
+  ctx.tools.register(createVenueSearchTool(deps.workspaceDir))
 
   // Web search is optional: `auto` registers the tool when the sxng CLI
   // resolves on PATH (probed once) or as the bundled optional dependency; an
@@ -1144,6 +1147,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       'mimir.arxivSubscriptions',
     )
   }
+  // CCF venue-deadline refresh (same timer pattern as the wiki backup):
+  // first pass two seconds after start, then every six hours; a failed pass
+  // keeps the previous cache, and reads always hit the cache, never the
+  // network — the panel and the venue_search tool work offline.
+  ctx.effect(
+    () => startVenueDeadlineLoop({
+      workspaceDir: deps.workspaceDir,
+      onError: (error) => { console.warn('[mimir] venue deadline refresh failed:', error) },
+    }),
+    'mimir.venueDeadlines',
+  )
   ctx.effect(
     () => ctx.webServer.register({
       kind: 'prefix',
