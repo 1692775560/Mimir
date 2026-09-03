@@ -110,6 +110,7 @@
 
 .sideHead {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   padding: 20px 16px 18px;
@@ -224,8 +225,13 @@
   color: var(--dsw-alias-label-secondary, #3c4557);
 }
 
+/* The nav scrolls internally when the window is too short for every tab —
+   it must never eat the project picker's floor below. */
 .nav {
   display: flex;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   flex-direction: column;
   gap: 5px;
   padding: 4px 12px 16px;
@@ -497,7 +503,9 @@
 
 .sideProjects {
   flex: 1;
-  min-height: 0;
+  /* The floor keeps the toggle plus a row and a half visible at any window
+     height (the nav above absorbs the squeeze with its own scroll). */
+  min-height: 108px;
   overflow-y: auto;
   padding: 12px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
@@ -506,12 +514,86 @@
 
 /* The rail's bottom line: the keyboard-shortcut hint. */
 .sideFoot {
+  flex: 0 0 auto;
   margin: 0;
   padding: 10px 16px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
   color: var(--dsw-alias-label-tertiary, #5b6474);
   font-size: 11px;
   line-height: 1.5;
+}
+
+/* The rail fold toggle: a quiet row under the nav, chevrons pointing at the
+   fold direction (rotated 180° while folded). */
+.sideFold {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0 12px 10px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #5b6474);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sideFold:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-secondary, #3c4557);
+}
+
+.sideFold:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+  outline-offset: -2px;
+}
+
+.sideFold svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+/* The folded narrow rail: icons only, tooltip carries the view name. All of
+   it is inert in top-bar mode (≤700px), where the fold button hides. */
+@media (min-width: 701px) {
+  .side[data-folded] {
+    flex-basis: 60px;
+  }
+
+  .side[data-folded] .brandCopy,
+  .side[data-folded] .headActions,
+  .side[data-folded] .navLabel,
+  .side[data-folded] .navCount,
+  .side[data-folded] .sideProjects,
+  .side[data-folded] .sideFoot {
+    display: none;
+  }
+
+  .side[data-folded] .sideHead {
+    justify-content: center;
+    padding: 20px 8px 18px;
+  }
+
+  .side[data-folded] .nav {
+    padding: 4px 8px 16px;
+  }
+
+  .side[data-folded] .navItem {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .side[data-folded] .sideFold {
+    justify-content: center;
+    margin: 0 8px 10px;
+  }
+
+  .side[data-folded] .sideFold svg {
+    transform: rotate(180deg);
+  }
 }
 
 .sectionTitle {
@@ -3393,6 +3475,15 @@ li.dropIndicator {
 
   .sideFoot {
     display: none;
+  }
+
+  /* Top-bar mode: the fold control would fight the horizontal nav. */
+  .sideFold {
+    display: none;
+  }
+
+  .sideProjects {
+    min-height: 0;
   }
 
   .content {
