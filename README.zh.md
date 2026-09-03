@@ -106,9 +106,14 @@ dsh web                                          # 然后打开 http://127.0.0.1
 
 ## 交流群
 
-有问题、想法或想围观开发进度，欢迎扫码进微信群（二维码过期后会更新）：
+有问题、想法或想围观开发进度，欢迎扫码进微信群。群二维码 7 天过期一次，如果过期了，加 Nick 拉你进群：
 
-<img src="docs/wechat-group.jpg" alt="Mimir 交流群" width="200">
+<p>
+  <img src="docs/wechat-group.jpg" alt="Mimir 交流群" width="180">
+  &nbsp;&nbsp;
+  <img src="docs/wechat-contact.jpg" alt="Nick（维护者）微信" width="180">
+</p>
+<p><sub>左：交流群 · 右：Nick（维护者）——群码过期时的兜底入口</sub></p>
 
 ## 致谢
 

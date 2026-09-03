@@ -106,9 +106,14 @@ Contributors so far: [@EriXPsy](https://github.com/EriXPsy) (Ledger view, humani
 
 ## Community
 
-Questions, ideas, or show-and-tell — join the WeChat group (QR updated when it expires):
+Questions, ideas, or show-and-tell — join the WeChat group. The group QR refreshes every 7 days; if it has expired, add Nick and he'll pull you in:
 
-<img src="docs/wechat-group.jpg" alt="Mimir WeChat group" width="200">
+<p>
+  <img src="docs/wechat-group.jpg" alt="Mimir WeChat group" width="180">
+  &nbsp;&nbsp;
+  <img src="docs/wechat-contact.jpg" alt="Nick (maintainer) WeChat" width="180">
+</p>
+<p><sub>Left: group chat · Right: Nick (maintainer) — fallback when the group QR expires</sub></p>
 
 ## Acknowledgments
 

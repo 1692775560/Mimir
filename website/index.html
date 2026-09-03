@@ -421,10 +421,13 @@ section { padding: var(--s8) 0; }
 }
 
 /* ---------- community ---------- */
-.comm-grid { display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: center; }
-@media (max-width: 700px) { .comm-grid { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+.comm-grid { display: grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center; }
+@media (max-width: 700px) { .comm-grid { grid-template-columns: 1fr; justify-items: center; text-align: center; } .qr-row { justify-content: center; } }
+.qr-row { display: flex; gap: 20px; flex-wrap: wrap; }
+.qr-row figure { margin: 0; text-align: center; }
+.qr-row figcaption { margin-top: 6px; font-size: var(--fs-12); color: var(--muted); }
 .comm-grid img {
-  width: 220px; border-radius: 14px; border: 1px solid var(--line);
+  width: 200px; border-radius: 14px; border: 1px solid var(--line);
   box-shadow: 0 8px 22px rgb(40 42 60 / 10%);
   transition: transform .2s ease, box-shadow .2s ease;
 }
@@ -655,9 +658,18 @@ footer a { color: var(--muted); }
       <p>有问题、想法或想一起共建，随时来聊</p>
     </div>
     <div class="comm-grid reveal">
-      <img src="assets/wechat-group.jpg" alt="Mimir 微信交流群二维码" width="220" height="337">
+      <div class="qr-row">
+        <figure>
+          <img src="assets/wechat-group.jpg" alt="Mimir 微信交流群二维码" width="200" height="306">
+          <figcaption>微信交流群（7 天有效，过期更新）</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/wechat-contact.jpg" alt="Mimir 维护者微信二维码" width="200" height="255">
+          <figcaption>群二维码过期？加 Nick 拉你进群</figcaption>
+        </figure>
+      </div>
       <ul class="comm-list">
-        <li><b>微信交流群</b><br><span class="desc">扫码进群，二维码过期后会更新</span></li>
+        <li><b>微信交流群</b><br><span class="desc">扫码进群；二维码过期的话，加右侧维护者微信拉你进去</span></li>
         <li><a href="https://github.com/1692775560/dsh-Mimir-Academic-research" target="_blank" rel="noopener">GitHub 仓库</a><br><span class="desc">提 issue、交 PR，共创者持续招募中</span></li>
         <li><a href="https://github.com/Dominic789654/awesome-deepseek-harness" target="_blank" rel="noopener">Awesome DeepSeek Harness</a><br><span class="desc">已被社区精选列表收录</span></li>
         <li><a href="https://github.com/deepseek-ai/deepseek-harness/discussions/4392" target="_blank" rel="noopener">官方插件展示帖</a><br><span class="desc">DeepSeek Harness 官方 Discussions 收录</span></li>
