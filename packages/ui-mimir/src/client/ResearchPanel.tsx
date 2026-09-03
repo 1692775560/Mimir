@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ResearchTab } from './store.ts'
 import type { ResearchKey } from './locales.ts'
 import { arrowTab, trapFocusIndex } from './focus.ts'
+import { readSidebarFolded, SIDEBAR_FOLD_STORAGE_KEY, sidebarFoldStorageValue } from './sidebar-fold.ts'
 import { shortcutFor, TABS } from './shortcuts.ts'
 import { countUpcomingDeadlines } from './venues-view.ts'
 import type { ResearchPanelProps } from './slots.ts'
@@ -122,6 +123,14 @@ const PROJECTS_COLLAPSED_STORAGE_KEY = 'mimir.sideProjects.collapsed'
 const CHEVRON_ICON = (
   <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2.5 3.5 5 6l2.5-2.5" />
+  </svg>
+)
+
+/** 16×16 double chevron pointing at the rail fold direction (rotated while folded). */
+const FOLD_ICON = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 3.5 6 8l3.5 4.5" />
+    <path d="M12.5 3.5 9 8l3.5 4.5" />
   </svg>
 )
 
@@ -239,6 +248,19 @@ export function ResearchPanel({
       // A full/blocked localStorage drops persistence; the fold still works.
     }
   }, [projectsCollapsed])
+
+  // The rail fold (narrow icons-only rail); persists across panel opens. The
+  // fold control hides in top-bar mode (≤700px) — see sidebar-fold.ts.
+  const [sidebarFolded, setSidebarFolded] = useState(
+    () => readSidebarFolded(key => localStorage.getItem(key)),
+  )
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_FOLD_STORAGE_KEY, sidebarFoldStorageValue(sidebarFolded))
+    } catch {
+      // A full/blocked localStorage drops persistence; the fold still works.
+    }
+  }, [sidebarFolded])
 
   // Every read is deferred to the first open rather than fired on mount: the
   // toggle mounts with the sidebar whether or not the panel is ever used.
@@ -375,7 +397,7 @@ export function ResearchPanel({
       {/* Fixed full-viewport dimmer; painted behind the window's own content
           (negative z-index inside the workbench stacking context). */}
       <div className={css.backdrop} aria-hidden />
-      <aside className={css.side}>
+      <aside className={css.side} data-folded={sidebarFolded || undefined}>
         <div className={css.sideHead}>
           <div className={css.brand}>
             <span className={css.brandMark} aria-hidden>M</span>
@@ -432,6 +454,7 @@ export function ResearchPanel({
               className={css.navItem}
               data-active={tab === activeTab || undefined}
               aria-selected={tab === activeTab}
+              title={t(TAB_KEYS[tab])}
               onClick={() => { actions.setTab(tab) }}
             >
               <span className={css.navIcon} aria-hidden>{TAB_ICONS[tab]}</span>
@@ -444,6 +467,18 @@ export function ResearchPanel({
             </button>
           ))}
         </nav>
+        {/* The rail fold toggle (narrow icons-only rail); hides in top-bar
+            mode via CSS. The 1–9 shortcuts work in both states. */}
+        <button
+          type="button"
+          className={css.sideFold}
+          aria-expanded={!sidebarFolded}
+          aria-label={t(sidebarFolded ? 'sidebar.expand' : 'sidebar.fold')}
+          title={t(sidebarFolded ? 'sidebar.expand' : 'sidebar.fold')}
+          onClick={() => { setSidebarFolded(prev => !prev) }}
+        >
+          {FOLD_ICON}
+        </button>
         <div className={css.sideProjects} data-collapsed={projectsCollapsed || undefined}>
           <button
             type="button"
