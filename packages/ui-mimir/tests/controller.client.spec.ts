@@ -207,6 +207,23 @@ describe('ResearchController', () => {
     expect(controller.getSnapshot().outline?.projectId).toBe('p2')
   })
 
+  it('keeps an in-flight outline reply when source is loaded on demand', async () => {
+    const outline = deferred<RemoteResult<ResearchOutlineResult>>()
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: () => outline.promise,
+      getPaperSource: () => Promise.resolve(carried({ ok: true, value: { content: '\\begin{document}\\n\\end{document}', mtimeMs: 1 } })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+    }))
+    controller.select('p1')
+    await controller.insertFigureIntoPaper('p1', {
+      name: 'figure.png', relPath: 'figures/figure.png', sizeBytes: 1, mtimeMs: 1, caption: '',
+    })
+    outline.resolve(carried({ ok: true, value: { projectId: 'p1', nodes: [] } }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(controller.getSnapshot().outline?.status).toBe('ready')
+  })
+
   it('runs a compile to its settled ok state with the pdf timestamp', async () => {
     const controller = new ResearchController(stubRemote({
       compile: () => Promise.resolve(carried<ResearchCompileResult>({
@@ -253,6 +270,42 @@ describe('ResearchController', () => {
     const view = controller.getSnapshot().compile
     expect(view.state).toBe('error')
     expect(view.issues[0]?.message).toContain('latexmk')
+  })
+
+  it('queues a compile for another project while one is running', async () => {
+    const firstRun = deferred<RemoteResult<ResearchCompileResult>>()
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      compile: () => {
+        calls += 1
+        return calls === 1
+          ? firstRun.promise
+          : Promise.resolve(carried<ResearchCompileResult>({ ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 2 } }))
+      },
+    }))
+    const first = controller.compile('p1')
+    await controller.compile('p2')
+    expect(calls).toBe(1)
+    firstRun.resolve(carried({ ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 1 } }))
+    await first
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(calls).toBe(2)
+    expect(controller.getSnapshot().compile).toMatchObject({ projectId: 'p2', state: 'ok', pdfUpdatedAt: 2 })
+  })
+
+  it('does not keep another project compile view when status loading fails', async () => {
+    const controller = new ResearchController(stubRemote({
+      compile: () => Promise.resolve(carried<ResearchCompileResult>({
+        ok: true, value: { state: 'error', issues: [{ severity: 'error', message: 'project one error' }], engine: null, pdfUpdatedAt: 1 },
+      })),
+      getCompileStatus: () => Promise.reject(new Error('host unavailable')),
+    }))
+    await controller.compile('p1')
+    controller.select('p2')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(controller.getSnapshot().compile).toMatchObject({ projectId: 'p2', state: 'idle', issues: [] })
   })
 })
 
@@ -641,26 +694,21 @@ describe('ResearchController workbench views', () => {
     expect(calls).toBe(2)
   })
 
-  it('skips a fresh figures view and rescans on force', async () => {
+  it('queues a forced figures refresh that arrives during a scan', async () => {
+    const first = deferred<RemoteResult<ResearchFiguresResult>>()
     let calls = 0
     const controller = new ResearchController(stubRemote({
       listFigures: () => {
         calls += 1
-        return Promise.resolve(carried<ResearchFiguresResult>({
-          ok: true,
-          value: {
-            figures: [{ name: 'f1.png', relPath: 'f1.png', sizeBytes: 100, mtimeMs: 1 }],
-          },
-        }))
+        return calls === 1
+          ? first.promise
+          : Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } }))
       },
     }))
     controller.loadFigures('p1')
-    await settle()
-    expect(controller.getSnapshot().figures).toMatchObject({ projectId: 'p1', status: 'ready' })
-    expect(controller.getSnapshot().figures?.list).toHaveLength(1)
-    controller.loadFigures('p1')
-    expect(calls).toBe(1)
     controller.loadFigures('p1', true)
+    expect(calls).toBe(1)
+    first.resolve(carried({ ok: true, value: { figures: [] } }))
     await settle()
     expect(calls).toBe(2)
   })
