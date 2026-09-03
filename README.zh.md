@@ -115,6 +115,12 @@ dsh web                                          # 然后打开 http://127.0.0.1
 </p>
 <p><sub>左：交流群 · 右：Nick（维护者）——群码过期时的兜底入口</sub></p>
 
+## 赞赏
+
+如果 Mimir 帮到了你，可以请开发者喝杯咖啡——每一分都会变成这个项目的维护时间：
+
+<img src="docs/sponsor-wechat.jpg" alt="微信支付赞赏" width="180">
+
 ## 致谢
 
 - 工作流灵感：[ARIS / Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)

@@ -115,6 +115,12 @@ Questions, ideas, or show-and-tell — join the WeChat group. The group QR refre
 </p>
 <p><sub>Left: group chat · Right: Nick (maintainer) — fallback when the group QR expires</sub></p>
 
+## Support
+
+If Mimir saved you time, buy the devs a coffee — every bit goes into keeping the project alive:
+
+<img src="docs/sponsor-wechat.jpg" alt="Sponsor via WeChat Pay" width="180">
+
 ## Acknowledgments
 
 - Workflow inspiration: [ARIS / Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)
