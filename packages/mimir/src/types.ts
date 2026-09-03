@@ -178,7 +178,7 @@ export interface ExperimentRecord {
 }
 
 /** Lifecycle of one remote job submitted over ssh. */
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'
 
 /** One remote command submitted to a remembered server over ssh. */
 export interface JobRecord {

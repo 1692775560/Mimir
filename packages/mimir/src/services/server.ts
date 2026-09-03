@@ -323,6 +323,32 @@ export async function checkServer(
 }
 
 /**
+ * Settle every job left active by a host restart. The SSH child belongs to the
+ * old process, so its remote outcome is unknowable and must never be guessed.
+ * @param deps - open wiki domain plus workspace root.
+ */
+export async function recoverInterruptedJobs(deps: ServerDeps): Promise<void> {
+  const jobs = deps.domain.table('jobs')
+  const experiments = deps.domain.table('experiments')
+  const now = new Date().toISOString()
+  for (const [, job] of jobs.entries()) {
+    if (job.status !== 'queued' && job.status !== 'running') continue
+    const recovered: JobRecord = {
+      ...job,
+      status: 'interrupted',
+      stderrTail: 'host restarted before the job outcome was known',
+      finishedAt: now,
+    }
+    await jobs.put(job.id, recovered)
+    if (job.experimentId === undefined || hasNewerLinkedJob(deps, job)) continue
+    const experiment = experiments.get(job.experimentId)
+    if (experiment?.status === 'running') {
+      await experiments.put(experiment.id, { ...experiment, status: 'failed', updatedAt: now })
+    }
+  }
+}
+
+/**
  * Submit one remote command to a remembered server. The record lands
  * `queued` and the run starts in the background: this call returns once
  * the record is durable, and the panel polls `listJobs` for the status

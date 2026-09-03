@@ -34,6 +34,7 @@ import { isFigureFile } from './artifacts.ts'
 import { TEMPLATE_DIR_NAME } from './services/venue.ts'
 import { meetingDeckPath } from './services/meeting.ts'
 import { ResearchService } from './service.ts'
+import { recoverInterruptedJobs } from './services/server.ts'
 import { registerResearchSkills } from './skills.ts'
 import { registerSxngSkill } from './sxng-skill.ts'
 import { startWikiBackupLoop } from './backup.ts'
@@ -1057,6 +1058,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const resolved = resolveConfig(config)
   const domain = await ctx.storageDomain.open(researchWikiDomainSpec)
   ctx.effect(() => () => domain.close(), 'mimir.domainClose')
+  await recoverInterruptedJobs({ workspaceDir: resolve(process.cwd(), resolved.workspaceDir), domain })
 
   const deps: ResearchCommandDeps = {
     workspaceDir: resolve(process.cwd(), resolved.workspaceDir),
