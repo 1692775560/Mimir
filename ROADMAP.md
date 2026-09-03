@@ -23,12 +23,20 @@ Harness.** It manages the whole research cycle in one place:
 - **Local-first, open ecosystem.** Everything runs on the user's machine;
   the plugin ships through npm and the dsh-plugin community.
 
-What Mimir is **not**:
+Scope — Mimir **absorbs** the research toolchain instead of deferring to it:
 
-- Not a reference manager — Zotero does that; Mimir integrates with it.
-- Not a generic LaTeX editor — editing exists to close the agent loop
-  (write → compile → review), not to replace Overleaf.
-- Not a hosted service — no accounts, no cloud, no telemetry.
+- **Reference manager**: search, import, tagging, notes, dedup, BibTeX —
+  first-class, not an afterthought. Zotero sync exists as a bridge for
+  existing libraries, not as a boundary.
+- **LaTeX editor**: source editing with syntax highlighting, one-click
+  compile, error click-through, conference templates — aimed at being the
+  place papers actually get written, with the agent inside the loop.
+- **Literature reader**: full-screen PDF reading, annotations, AI relevance
+  scoring and summaries grounded in the user's own direction.
+
+What Mimir is **not**: a hosted service — no accounts, no cloud, no
+telemetry. And not an agent-less editor: every surface exists to close the
+write → compile → review loop.
 
 **Target users**: graduate students and researchers who already run coding
 agents and want the same leverage for research.
@@ -114,7 +122,15 @@ test counts, and screenshots go stale fast — refresh them on every release.
 
 ### Now (0.18.x)
 
-- PDF reading: fullscreen reader, AI relevance scoring surfaced on cards.
+- **Reference manager core**: collections/folders, reading notes per paper,
+  dedup on import, one-click BibTeX export — the literature view graduates
+  from "search results list" to a real library.
+- **Literature reader**: fullscreen PDF reader, highlight/annotation layer,
+  AI relevance scoring and one-paragraph summaries surfaced on cards,
+  grounded in the project's stated direction.
+- **LaTeX editor depth**: command/environment completion, section-aware
+  folding, math preview on hover — plus the existing compile/error
+  click-through loop.
 - Figure intelligence: agent auto-naming/grouping on upload, user rename —
   kill the "mystery duplicate figures" confusion.
 - Conference templates: built-in gallery (CVPR/NeurIPS/ICLR/ACL…) plus
@@ -126,10 +142,14 @@ test counts, and screenshots go stale fast — refresh them on every release.
 
 ### Next (0.19–0.20)
 
-- Zotero two-way sync (not just import).
+- Zotero two-way sync (import libraries, push Mimir-curated collections
+  back) — interop, even though the manager itself lives here.
+- Reader → writer pipeline: annotations and AI summaries flow into citation
+  cards, and from there into related-work drafts with real citations.
+- LaTeX: live typeset preview synced to cursor, bibliography autocomplete
+  from the project library.
 - Experiment auto-ingest: watch remote training jobs on managed servers,
   parse metrics into experiment records and comparison charts.
-- Related-work drafting grounded in the project library with real citations.
 - Reliability pass on the bundled skills (`/research-plan`, `/write`, …).
 
 ### Later / vision
