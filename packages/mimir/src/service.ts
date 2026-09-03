@@ -88,6 +88,9 @@ import type {
   ResearchVenueTemplatesResult,
   ResearchApplyVenueResult,
   ResearchClearVenueResult,
+  ResearchVenueDeadlinesResult,
+  ResearchSetVenueWatchResult,
+  ResearchRefreshVenueDeadlinesResult,
   ResearchDeleteMeetingDeckResult,
   ResearchGenerateMeetingResult,
   ResearchGetImageGenConfigResult,
@@ -117,6 +120,7 @@ import * as server from './services/server.ts'
 import * as wikiAdmin from './services/wiki-admin.ts'
 import * as importProject from './services/import-project.ts'
 import * as venue from './services/venue.ts'
+import * as venueDeadlines from './services/venue-deadlines.ts'
 import * as meeting from './services/meeting.ts'
 import * as ledger from './services/ledger.ts'
 import type { MeetingDeps } from './services/meeting.ts'
@@ -502,9 +506,7 @@ export class ResearchService extends TypertRemoteService {
   @Remote('listVenueTemplates')
   listVenueTemplates(): Promise<ResearchVenueTemplatesResult> {
     return venue.listVenueTemplates()
-  }
-
-  @Remote('applyVenueTemplate')
+  }  @Remote('applyVenueTemplate')
   applyVenueTemplate(request: {
     projectId: string
     dir?: string | undefined
@@ -517,6 +519,28 @@ export class ResearchService extends TypertRemoteService {
   @Remote('clearVenueTemplate')
   clearVenueTemplate(request: { projectId: string }): Promise<ResearchClearVenueResult> {
     return venue.clearVenueTemplate(this.deps, request)
+  }
+
+  // venue-deadline domain: the ccfddl catalog read + per-project watch list.
+  // Reads come from the local cache only — the network lives in the refresh
+  // loop, so the panel opens offline on the last good snapshot.
+  @Remote('listVenueDeadlines')
+  listVenueDeadlines(request: { projectId?: string | undefined }): Promise<ResearchVenueDeadlinesResult> {
+    return venueDeadlines.listVenueDeadlines(this.deps, request)
+  }
+
+  @Remote('setVenueWatch')
+  setVenueWatch(request: {
+    projectId: string
+    series: string
+    watched: boolean
+  }): Promise<ResearchSetVenueWatchResult> {
+    return venueDeadlines.setVenueWatch(this.deps, request)
+  }
+
+  @Remote('refreshVenueDeadlines')
+  refreshVenueDeadlines(): Promise<ResearchRefreshVenueDeadlinesResult> {
+    return venueDeadlines.refreshVenueDeadlines(this.deps)
   }
 
   // meeting domain: group-meeting pptx decks

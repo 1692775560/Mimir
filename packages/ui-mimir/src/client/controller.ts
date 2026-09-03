@@ -122,7 +122,12 @@ import type {
   ResearchUpdateExperimentResult,
   ResearchUpdateFigureResult,
   ResearchUpdatePaperResult,
+  ResearchRefreshVenueDeadlinesResult,
+  ResearchSetVenueWatchResult,
+  ResearchVenueDeadlinesResult,
   ResearchWikiSnapshot,
+  VenueDeadlineView,
+  VenueJournalView,
   ResearchZoteroCollectionsResult,
   ResearchZoteroExportResult,
   ResearchZoteroImportResult,
@@ -235,6 +240,13 @@ export interface ResearchRemote {
     customName?: string | undefined
   }) => Promise<RemoteResult<ResearchApplyVenueResult>>
   clearVenueTemplate: (request: { projectId: string }) => Promise<RemoteResult<ResearchClearVenueResult>>
+  listVenueDeadlines: (request: { projectId?: string | undefined }) => Promise<RemoteResult<ResearchVenueDeadlinesResult>>
+  setVenueWatch: (request: {
+    projectId: string
+    series: string
+    watched: boolean
+  }) => Promise<RemoteResult<ResearchSetVenueWatchResult>>
+  refreshVenueDeadlines: () => Promise<RemoteResult<ResearchRefreshVenueDeadlinesResult>>
   generateMeetingDeck: (request: {
     projectId: string
     title?: string | undefined
@@ -559,6 +571,23 @@ export interface ResearchServersView {
   readonly failure: ResearchFailureView | null
 }
 
+/**
+ * The venues view: the cached ccfddl conference catalog (every series with
+ * its current edition resolved), the static CCF-A journal directory, and the
+ * watch list of the project the list was loaded for (`watchedProjectId`, null
+ * = no project addressed). `fetchedAt` is the upstream snapshot's age; null
+ * means the cache has never been fetched (first-ever start, offline).
+ */
+export interface ResearchVenuesView {
+  readonly status: ResearchLoadStatus
+  readonly list: readonly VenueDeadlineView[]
+  readonly journals: readonly VenueJournalView[]
+  readonly watched: readonly string[]
+  readonly watchedProjectId: string | null
+  readonly fetchedAt: string | null
+  readonly failure: ResearchFailureView | null
+}
+
 /** The remote-jobs view: every submitted job, most recently submitted first. */
 export interface ResearchJobsView {
   readonly status: ResearchLoadStatus
@@ -715,6 +744,8 @@ export interface ResearchView {
   readonly snapshots: ResearchProjectSlice<readonly PaperSnapshotView[]> | null
   /** The venue picker's built-in template registry; loads once, lazily. */
   readonly venueTemplates: ResearchVenueTemplatesView
+  /** The venues view's ccfddl catalog + the selected project's watch list; cold until first opened. */
+  readonly venues: ResearchVenuesView
   /** The snapshot the snapshots panel expanded for diffing; null when closed. */
   readonly snapshotDetail: ResearchSnapshotDetailView | null
   /** The ledger (growth record) view's events for its selected window. */
@@ -777,6 +808,10 @@ const INITIAL_VIEW: ResearchView = Object.freeze({
   snapshots: null,
   snapshotDetail: null,
   venueTemplates: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
+  venues: Object.freeze({
+    status: 'cold', list: Object.freeze([]), journals: Object.freeze([]),
+    watched: Object.freeze([]), watchedProjectId: null, fetchedAt: null, failure: null,
+  }),
   ledger: Object.freeze({ status: 'cold', list: Object.freeze([]), failure: null }),
   report: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, failure: null }),
   brief: Object.freeze({ status: 'idle', markdown: '', generatedAt: null, eventCount: null, derivationVersion: null, recalibrated: false, questions: Object.freeze([]), failure: null }),
@@ -858,6 +893,8 @@ export class ResearchController implements HostObservable<ResearchView> {
   private sxngConfigInFlight = false
   /** A venue-registry load already in flight is left alone. */
   private venueTemplatesInFlight = false
+  /** A venue-catalog load already in flight is left alone. */
+  private venuesInFlight = false
   private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
   private compileProject: string | null = null
@@ -2261,6 +2298,111 @@ export class ResearchController implements HostObservable<ResearchView> {
       return null
     } catch (error) {
       return transportFailure(error)
+    }
+  }
+
+  /**
+   * Load the venue catalog once and lazily: a ready catalog is left alone,
+   * but a watch list loaded for a DIFFERENT project refetches (the watched
+   * flags ride the catalog read).
+   * @param projectId - the project whose watch list rides along, or null.
+   */
+  ensureVenues(projectId: string | null): void {
+    if (this.venuesInFlight) return
+    const current = this.view.venues
+    if (current.status === 'ready' && current.watchedProjectId === projectId) return
+    void this.loadVenueDeadlines(projectId, false)
+  }
+
+  /**
+   * Re-fetch the catalog read (the view's retry); no loading flash when a
+   * previous list is on screen.
+   * @param projectId - the project whose watch list rides along, or null.
+   */
+  refreshVenues(projectId: string | null): void {
+    if (this.venuesInFlight) return
+    void this.loadVenueDeadlines(projectId, true)
+  }
+
+  /**
+   * Ask the host to fetch the upstream catalog NOW, then reload the view. A
+   * failure toasts and keeps the last good snapshot (the host never drops it).
+   * @param projectId - the project whose watch list rides the reload, or null.
+   */
+  async refreshVenueCatalog(projectId: string | null): Promise<void> {
+    try {
+      const carried = await this.remote.refreshVenueDeadlines()
+      if (this.disposed) return
+      if (!carried.ok) { this.notify('error', 'toast.venueRefreshFailed'); return }
+      const result = carried.value
+      if (!result.ok) { this.notify('error', 'toast.venueRefreshFailed'); return }
+      this.notify('success', 'toast.venueRefreshed')
+      await this.loadVenueDeadlines(projectId, true)
+    } catch {
+      if (!this.disposed) this.notify('error', 'toast.venueRefreshFailed')
+    }
+  }
+
+  /** Fetch the catalog plus one project's watch list and publish the slice. */
+  private async loadVenueDeadlines(projectId: string | null, quiet: boolean): Promise<void> {
+    this.venuesInFlight = true
+    if (!quiet || this.view.venues.status !== 'ready') {
+      this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'loading', failure: null }) })
+    }
+    try {
+      const carried = await this.remote.listVenueDeadlines(projectId === null ? {} : { projectId })
+      if (this.disposed) return
+      if (!carried.ok) {
+        this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
+        return
+      }
+      const result = carried.value
+      if (!result.ok) {
+        this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'error', failure: businessFailure(result.error) }) })
+        return
+      }
+      this.publish({
+        venues: Object.freeze({
+          status: 'ready',
+          list: result.value.venues,
+          journals: result.value.journals,
+          watched: result.value.watched,
+          watchedProjectId: projectId,
+          fetchedAt: result.value.fetchedAt,
+          failure: null,
+        }),
+      })
+    } catch (error) {
+      if (this.disposed) return
+      this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'error', failure: transportFailure(error) }) })
+    } finally {
+      this.venuesInFlight = false
+    }
+  }
+
+  /**
+   * Flip one series in the selected project's watch list. Optimistic: the
+   * star toggles immediately; a settled failure rolls the flag back and
+   * toasts.
+   * @param seriesKey - the ccfddl series key (lowercased title).
+   */
+  async toggleVenueWatch(seriesKey: string): Promise<void> {
+    const projectId = this.view.venues.watchedProjectId
+    if (projectId === null) return
+    const before = this.view.venues.watched
+    const watched = before.includes(seriesKey)
+    const optimistic = watched
+      ? before.filter(key => key !== seriesKey)
+      : [...before, seriesKey]
+    this.publish({ venues: Object.freeze({ ...this.view.venues, watched: Object.freeze(optimistic) }) })
+    try {
+      const carried = await this.remote.setVenueWatch({ projectId, series: seriesKey, watched: !watched })
+      if (this.disposed) return
+      if (!carried.ok || !carried.value.ok) throw new Error('watch rejected')
+    } catch {
+      if (this.disposed) return
+      this.publish({ venues: Object.freeze({ ...this.view.venues, watched: before }) })
+      this.notify('error', 'toast.venueWatchFailed')
     }
   }
 

@@ -239,6 +239,11 @@ function panelApply(ctx: ClientContext): void {
       ensureVenueTemplates: () => { controller.ensureVenueTemplates() },
       applyVenueTemplate: (projectId, options) => controller.applyVenueTemplate(projectId, options),
       clearVenueTemplate: projectId => controller.clearVenueTemplate(projectId),
+      // The venues view (ccfddl catalog + the selected project's watch list).
+      ensureVenues: projectId => { controller.ensureVenues(projectId) },
+      refreshVenues: projectId => { controller.refreshVenues(projectId) },
+      refreshVenueCatalog: projectId => controller.refreshVenueCatalog(projectId),
+      toggleVenueWatch: seriesKey => controller.toggleVenueWatch(seriesKey),
       uploadTemplateFiles: async (projectId, dir, files) => {
         let done = 0
         for (const file of files) {

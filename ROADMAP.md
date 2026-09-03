@@ -135,6 +135,10 @@ test counts, and screenshots go stale fast — refresh them on every release.
   kill the "mystery duplicate figures" confusion.
 - Conference templates: built-in gallery (CVPR/NeurIPS/ICLR/ACL…) plus
   upload-your-own, agent re-formats to the target venue.
+- **Venue & deadline tracker**: conference/journal info query (CCF rank,
+  category, deadlines with countdown, reminders for upcoming DDLs),
+  per-project watchlist, and an agent tool so "这个会什么时候截稿" is a
+  first-class question.
 - Group meeting PPT: mix original project figures with images from a
   user-configured image-gen API; no re-render churn between iterations.
 - Literature view UX: collapsible subscriptions, collapsible projects,
