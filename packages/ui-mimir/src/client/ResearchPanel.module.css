@@ -1274,7 +1274,12 @@
 
 
 .outlineRail {
-  flex: 0 0 200px;
+  /* The basis comes from the inline style (the persisted width squeezed by
+     the container clamp); flex-shrink stays 0 so only that clamp yields.
+     border-box makes the basis the pane's whole footprint, matching the
+     clamp math. */
+  flex: 0 0 auto;
+  box-sizing: border-box;
   min-height: 0;
   overflow-y: auto;
   padding: 14px 12px;
@@ -1297,16 +1302,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 26px;
+  width: 26px;
   height: 26px;
-  padding: 0 8px;
+  padding: 0;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-tertiary, #5b6474);
-  font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s ease;
+}
+
+.railToggle svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.outlineRail[data-collapsed] .railToggle svg {
+  transform: rotate(180deg);
 }
 
 .railToggle:hover {
