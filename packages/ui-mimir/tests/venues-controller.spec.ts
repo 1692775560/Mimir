@@ -44,7 +44,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     },
   })
   Object.assign(stub, overrides)
-  return stub as ResearchRemote
+  return stub as unknown as ResearchRemote
 }
 
 /** Flush the microtask queue so fire-and-forget loads settle. */
