@@ -24,6 +24,7 @@ import type {
 } from '../types.ts'
 import { resolvePaperDir } from '../paper-source.ts'
 import { listPaperFigures, type FigureFile } from '../artifacts.ts'
+import { isValidArxivId } from '../arxiv-id.ts'
 import { extractPaperFigures, resolvePaperPdf } from './paper-figures.ts'
 import { fetchPaperPdf } from './library.ts'
 import {
@@ -108,6 +109,16 @@ export type DeckSlide =
 /** Format an ISO date (or raw string) as YYYY-MM-DD for the deck. */
 function dateOnly(iso: string): string {
   return iso.slice(0, 10)
+}
+
+/**
+ * Today as YYYY-MM-DD in the host's LOCAL timezone — the deck's default date
+ * line. `new Date().toISOString()` would report the UTC date, which is
+ * already tomorrow for evening hosts east of Greenwich.
+ */
+export function localToday(now: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
 /** One-line metric summary of an experiment record. */
@@ -417,6 +428,8 @@ export async function loadPaperFigures(
   workspaceDir: string,
   arxivId: string,
 ): Promise<readonly PaperFigureAsset[]> {
+  // An unsafe id never reaches a path join; the read fails open.
+  if (!isValidArxivId(arxivId)) return []
   const dir = join(workspaceDir, MEETINGS_DIR_NAME, PAPER_FIGURES_DIR_NAME, arxivId)
   let raw: string
   try {
@@ -520,7 +533,7 @@ export async function generateMeetingDeck(
     }
   }
 
-  const date = request.date?.trim() || dateOnly(new Date().toISOString())
+  const date = request.date?.trim() || localToday(new Date())
   const title = request.title?.trim() || `${project.title} · 组会汇报`
 
   // 逐图 assets of the selected papers: reuse an existing manifest, else

@@ -21,6 +21,13 @@ function carried<T>(value: T): RemoteResult<T> {
   return { ok: true, value }
 }
 
+/** One deferred promise for driving in-flight Remote calls. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => { resolve = res })
+  return { promise, resolve }
+}
+
 /**
  * Build a remote stub; unspecified calls reject, which no test path reaches.
  * A Proxy keeps the stub total over ResearchRemote without enumerating every
@@ -37,7 +44,7 @@ function stubRemote(overrides: Partial<ResearchRemote>): ResearchRemote {
     },
   })
   Object.assign(stub, overrides)
-  return stub as ResearchRemote
+  return stub as unknown as ResearchRemote
 }
 
 /** Flush the microtask queue so fire-and-forget loads settle. */
@@ -131,6 +138,29 @@ describe('ensureVenues / refreshVenues', () => {
     expect(controller.getSnapshot().venues.status).toBe('ready')
     expect(calls).toBe(2)
   })
+
+  it('queues a load requested mid-flight and discards the stale reply', async () => {
+    const first = deferred<RemoteResult<ResearchVenueDeadlinesResult>>()
+    const seen: (string | undefined)[] = []
+    const controller = new ResearchController(stubRemote({
+      listVenueDeadlines: ({ projectId }) => {
+        seen.push(projectId)
+        return seen.length === 1
+          ? first.promise
+          : Promise.resolve(carried(catalogAnswer(['sosp'])))
+      },
+    }))
+    controller.ensureVenues('p1')
+    // A project switch mid-flight must queue a reload: publishing p1's reply
+    // would flash p1's watch list under p2.
+    controller.ensureVenues('p2')
+    first.resolve(carried(catalogAnswer(['cvpr'])))
+    await settle()
+    expect(seen).toEqual(['p1', 'p2'])
+    const venues = controller.getSnapshot().venues
+    expect(venues.watchedProjectId).toBe('p2')
+    expect(venues.watched).toEqual(['sosp'])
+  })
 })
 
 describe('refreshVenueCatalog', () => {
@@ -203,6 +233,29 @@ describe('toggleVenueWatch', () => {
     await controller.toggleVenueWatch('cvpr')
     expect(controller.getSnapshot().venues.watched).toEqual(['cvpr'])
     expect(controller.getSnapshot().toasts.some(toast => toast.kind === 'error')).toBe(true)
+  })
+
+  it('rolls back only the failed flip when another toggle settled mid-flight', async () => {
+    const slowWrite = deferred<RemoteResult<ResearchSetVenueWatchResult>>()
+    const controller = new ResearchController(stubRemote({
+      listVenueDeadlines: () => Promise.resolve(carried(catalogAnswer(['cvpr']))),
+      setVenueWatch: ({ series, watched }) => series === 'cvpr'
+        ? slowWrite.promise
+        : Promise.resolve(carried<ResearchSetVenueWatchResult>(
+          { ok: true, value: { projectId: 'p1', series, watched } },
+        )),
+    }))
+    controller.ensureVenues('p1')
+    await settle()
+    const failing = controller.toggleVenueWatch('cvpr') // optimistic: []
+    await controller.toggleVenueWatch('sosp') // optimistic: ['sosp'], settles
+    expect(controller.getSnapshot().venues.watched).toEqual(['sosp'])
+    slowWrite.resolve(carried<ResearchSetVenueWatchResult>(
+      { ok: false, error: { code: 'operation-failed', message: 'disk full' } },
+    ))
+    await failing
+    // cvpr is restored; the settled sosp toggle survives the rollback.
+    expect(controller.getSnapshot().venues.watched).toEqual(['sosp', 'cvpr'])
   })
 
   it('is a no-op without a project-scoped watch list', async () => {
