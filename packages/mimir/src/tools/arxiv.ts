@@ -153,6 +153,8 @@ export function paperPdfFileName(arxivId: string): string {
   return `${encodeURIComponent(arxivId)}.pdf`
 }
 
+export { isValidArxivId } from '../arxiv-id.ts'
+
 /** JSON-schema properties of one {@link ArxivEntry} in tool output. */
 const ENTRY_PROPERTIES = {
   id: { type: 'string', required: true },

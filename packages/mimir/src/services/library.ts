@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fetchArxivPdf, fetchArxivSearch, paperPdfFileName } from '../tools/arxiv.ts'
+import { fetchArxivPdf, fetchArxivSearch, isValidArxivId, paperPdfFileName } from '../tools/arxiv.ts'
 import { fetchWebSearch } from '../tools/web-search.ts'
 import type { WebSearchRunner } from '../tools/web-search.ts'
 import { emitEvent, PANEL_ACTOR } from '../ledger.ts'
@@ -179,6 +179,11 @@ export async function importPaper(
   if (arxivId === '' || entry.title.trim() === '') {
     return rejected({ code: 'invalid-input', message: 'entry id and title must be non-empty' })
   }
+  // The id joins filesystem paths (cached PDF, figure crops) downstream —
+  // reject anything that could escape a directory join.
+  if (!isValidArxivId(arxivId)) {
+    return rejected({ code: 'invalid-input', message: `unsafe arXiv id: ${arxivId}` })
+  }
   if (request.projectId !== undefined
     && deps.domain.table('projects').get(request.projectId) === undefined) {
     return rejected({ code: 'project-not-found', projectId: request.projectId })
@@ -324,6 +329,11 @@ export async function fetchPaperPdf(
   request: { arxivId: string },
 ): Promise<ResearchFetchPaperPdfResult> {
   const table = deps.domain.table('papers')
+  // encodeURIComponent leaves dots untouched, so `..` would escape papers/ —
+  // the id must pass the path-safety predicate before any join (or lookup).
+  if (!isValidArxivId(request.arxivId)) {
+    return rejected({ code: 'invalid-input', message: `unsafe arXiv id: ${request.arxivId}` })
+  }
   const existing = table.get(request.arxivId)
   if (existing === undefined) return rejected({ code: 'paper-not-found' })
   let bytes: Uint8Array
