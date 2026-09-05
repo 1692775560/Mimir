@@ -204,6 +204,33 @@ describe('runArxivSubscriptionCheck', () => {
     expect(persisted[1]?.seenIds).toEqual(['y', 'x'])
   })
 
+  it('keeps subscriptions added mid-check and honors mid-check deletions', async () => {
+    const dir = await workspace()
+    await saveArxivSubscriptions(dir, [record('s1', 'mesh', ['a']), record('s2', 'splatting', ['x'])])
+    const added = record('s3', 'diffusion', ['d'])
+    const outcomes = await runArxivSubscriptionCheck(dir, {
+      gapMs: 0,
+      now: new Date('2026-08-23T00:00:00.000Z'),
+      fetchSearch: async (query) => {
+        if (query === 'mesh') {
+          // A subscription added while the check is in flight must survive the save.
+          await saveArxivSubscriptions(dir, [record('s1', 'mesh', ['a']), record('s2', 'splatting', ['x']), added])
+        }
+        if (query === 'splatting') {
+          // A deletion mid-window must be honored, not resurrected by the merge.
+          await saveArxivSubscriptions(dir, [record('s1', 'mesh', ['a']), added])
+        }
+        return query === 'mesh' ? [entry('b')] : [entry('x')]
+      },
+    })
+    expect(outcomes).toHaveLength(2)
+    const persisted = await loadArxivSubscriptions(dir)
+    expect(persisted.map(item => item.id)).toEqual(['s1', 's3'])
+    // The check-updated state landed on the surviving record; the addition is untouched.
+    expect(persisted[0]?.newEntryIds).toEqual(['b'])
+    expect(persisted[1]).toEqual(added)
+  })
+
   it('returns undefined for an unknown id and skips the fetch entirely', async () => {
     const dir = await workspace()
     await saveArxivSubscriptions(dir, [record('s1', 'mesh')])

@@ -235,7 +235,12 @@ export async function runArxivSubscriptionCheck(
     }
   }
   if (outcomes.some(outcome => outcome.error === null)) {
-    await saveArxivSubscriptions(workspaceDir, subscriptions.map(record => byId.get(record.id) ?? record))
+    // The check window is long (serial polite fetches): subscriptions added
+    // or deleted mid-window must survive. Re-read and merge by id instead of
+    // persisting the stale snapshot — check-updated state lands on records
+    // that still exist, additions are kept, deletions are honored.
+    const fresh = await loadArxivSubscriptions(workspaceDir)
+    await saveArxivSubscriptions(workspaceDir, fresh.map(record => byId.get(record.id) ?? record))
   }
   return Object.freeze(outcomes)
 }

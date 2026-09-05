@@ -8,11 +8,14 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
+import { isValidArxivId } from './arxiv-id.ts'
 import type { ClaimRecord, EventRecord, ExperimentRecord, FigureRecord, IdeaRecord, JobRecord, PaperRecord, ProjectRecord, ServerRecord, VenueWatchRecord } from './types.ts'
 
 /** Durable shape of one remembered paper. */
 export const paperRecord = z.object({
-  arxivId: z.string(),
+  // The id joins filesystem paths downstream; the refine keeps traversal
+  // sequences out of the durable store (see arxiv-id.ts).
+  arxivId: z.string().refine(isValidArxivId, { message: 'unsafe arXiv id' }),
   title: z.string(),
   authors: z.array(z.string()),
   summary: z.string(),

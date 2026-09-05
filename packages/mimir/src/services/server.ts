@@ -117,6 +117,9 @@ async function probeGpus(record: ServerRecord): Promise<GpuProbeOutcome> {
       '-o', 'BatchMode=yes',
       '-o', `ConnectTimeout=${String(GPU_PROBE_SSH_CONNECT_TIMEOUT_S)}`,
       '-p', String(record.port),
+      // `--` ends option parsing: a stored record predating input validation
+      // can never turn the login target into an ssh flag.
+      '--',
       `${record.username}@${record.host}`,
       NVIDIA_SMI_QUERY,
     ], { timeout: GPU_PROBE_TIMEOUT_MS })
@@ -150,10 +153,25 @@ async function probeGpus(record: ServerRecord): Promise<GpuProbeOutcome> {
   }
 }
 
+/**
+ * Character whitelist for the ssh login user / host: anything else
+ * (whitespace, shell punctuation) is rejected, and a leading dash would make
+ * the `user@host` argument look like an ssh option even under execFile.
+ */
+const SSH_TOKEN_RE = /^[a-zA-Z0-9._:-]+$/
+const SSH_USERNAME_RE = /^[a-zA-Z0-9._-]+$/
+
 /** First invalid-input message for one server upsert payload, or null when valid. */
 function validateServerInput(input: ServerInput): string | null {
   if (input.name.trim().length === 0) return 'name must be non-empty'
   if (input.host.trim().length === 0) return 'host must be non-empty'
+  if (input.host.startsWith('-') || !SSH_TOKEN_RE.test(input.host)) {
+    return 'host must be a plain hostname or IP (letters, digits, dots, dashes, colons)'
+  }
+  if (input.username !== undefined && input.username.trim() !== ''
+    && (input.username.startsWith('-') || !SSH_USERNAME_RE.test(input.username))) {
+    return 'username must be a plain ssh login user (letters, digits, dots, dashes, underscores)'
+  }
   if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
     return 'port must be an integer between 1 and 65535'
   }
@@ -473,6 +491,7 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
       '-o', 'BatchMode=yes',
       '-o', `ConnectTimeout=${String(GPU_PROBE_SSH_CONNECT_TIMEOUT_S)}`,
       '-p', String(server.port),
+      '--',
       `${server.username}@${server.host}`,
       running.command,
     ], { timeout: SSH_JOB_TIMEOUT_MS, maxBuffer: SSH_JOB_MAX_BUFFER_BYTES })
