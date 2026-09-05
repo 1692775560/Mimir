@@ -134,8 +134,8 @@ describe('LedgerView render smoke (S2 branch flow + S4 rhythm)', () => {
         digest={coldDigest}
         selectedProjectId={null}
         loadLedger={() => {}}
-        generateReport={() => {}}
-        generateBrief={() => {}}
+        generateReport={async () => null}
+        generateBrief={async () => null}
         addJournal={async () => null}
         ensureWorktree={() => {}}
         refreshWorktree={() => {}}
