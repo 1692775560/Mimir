@@ -1495,3 +1495,19 @@ export interface ResearchEurekaView {
   readonly profile: CbeEurekaProfile
 }
 
+
+/**
+ * One wiki change notification pushed to open panels over the
+ * `/research/events` SSE stream: the domain table and record key that
+ * changed, or a file-side pseudo-table (`paper-source`, `bibliography`)
+ * keyed by project id. The payload stays location-only — a panel re-reads
+ * the slices it actually shows, so the frame never carries record bodies.
+ */
+export interface ResearchWikiChangeEvent {
+  /** Domain table name, or a pseudo-table for file-side writes. */
+  readonly table: string
+  /** Record key; the project id for the file-side pseudo-tables. */
+  readonly key: string
+  /** Write discriminant; file-side writes always report `put`. */
+  readonly operation: 'put' | 'deleted'
+}

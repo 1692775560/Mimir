@@ -169,6 +169,22 @@ function panelApply(ctx: ClientContext): void {
   ctx.on('connection/reset', () => { controller.resync() })
   ctx.effect(() => () => { controller.dispose() }, 'ui-mimir: controller')
 
+  // Live refresh: the host pushes every wiki write over /research/events and
+  // the controller re-reads the dirtied slices through the usual guarded
+  // loaders — no more F5 after the agent edits the wiki. A hidden tab lets
+  // the debounce accumulate; coming back to the foreground flushes at once.
+  controller.connectWikiEvents()
+  if (typeof document !== 'undefined') {
+    const onVisible = (): void => {
+      if (!document.hidden) controller.flushWikiChanges()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    ctx.effect(
+      () => () => document.removeEventListener('visibilitychange', onVisible),
+      'ui-mimir: visibility flush',
+    )
+  }
+
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'research',

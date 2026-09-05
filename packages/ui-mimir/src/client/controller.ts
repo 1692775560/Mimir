@@ -141,7 +141,13 @@ import type {
   WebSearchEntry,
   ZoteroCollectionView,
   ZoteroItemView,
+  ResearchWikiChangeEvent,
 } from 'dsh-mimir/types'
+import {
+  createWikiChangeAggregator,
+  type LiveSlice,
+  type WikiChangeAggregator,
+} from './live-refresh.ts'
 
 // Re-exported so view components (DigestView) can import these model types
 // from the controller module rather than reaching into the package directly.
@@ -403,6 +409,38 @@ export interface ResearchRemote {
 export const AUTOSAVE_DEBOUNCE_MS = 800
 /** Quiet period after a successful save before the auto-compile fires. */
 export const COMPILE_DEBOUNCE_MS = 1500
+/** Quiet window that collapses an agent's burst of wiki writes into one refresh. */
+export const LIVE_REFRESH_DEBOUNCE_MS = 400
+
+/** One open `/research/events` stream handle (EventSource or a test double). */
+export interface WikiEventStream {
+  close(): void
+}
+
+/**
+ * Opener for the wiki events stream; the default uses the page's EventSource.
+ * @param url - the events route.
+ * @param onEvent - parsed change-frame consumer.
+ * @returns the stream handle, or null where EventSource is unavailable.
+ */
+export type WikiEventStreamFactory = (
+  url: string,
+  onEvent: (event: ResearchWikiChangeEvent) => void,
+) => WikiEventStream | null
+
+/** The browser default: one EventSource with silent auto-reconnect. */
+const defaultWikiEventStream: WikiEventStreamFactory = (url, onEvent) => {
+  if (typeof globalThis.EventSource !== 'function') return null
+  const source = new EventSource(url)
+  source.onmessage = (message) => {
+    try {
+      onEvent(JSON.parse(String(message.data)) as ResearchWikiChangeEvent)
+    } catch {
+      // A malformed frame is dropped; the stream stays open.
+    }
+  }
+  return source
+}
 
 /** Load lifecycle of one fetched view. */
 export type ResearchLoadStatus = 'cold' | 'loading' | 'ready' | 'error'
@@ -907,6 +945,15 @@ export class ResearchController implements HostObservable<ResearchView> {
   private compileTimer: ReturnType<typeof setTimeout> | null = null
   private saveInFlight = false
   private saveAgain = false
+  /** Live-refresh: the open `/research/events` stream, or null. */
+  private eventStream: WikiEventStream | null = null
+  /** Live-refresh: the trailing-debounce aggregator behind pushed changes. */
+  private readonly liveAggregator: WikiChangeAggregator = createWikiChangeAggregator(
+    slices => this.applyLiveSlices(slices),
+    LIVE_REFRESH_DEBOUNCE_MS,
+  )
+  /** The filter of the last ledger load, replayed by the live refresh. */
+  private ledgerFilter: ResearchEventFilter | null = null
   private disposed = false
   private toastSeq = 0
   private paperJumpSeq = 0
@@ -1054,6 +1101,7 @@ export class ResearchController implements HostObservable<ResearchView> {
    * @param filter - the window/scope/order/limit filter the view assembled.
    */
   loadLedger(filter: ResearchEventFilter): void {
+    this.ledgerFilter = filter
     this.ledgerGeneration += 1
     const generation = this.ledgerGeneration
     const publishLedger = (view: ResearchLedgerView): void => {
@@ -3862,7 +3910,109 @@ export class ResearchController implements HostObservable<ResearchView> {
     this.disposed = true
     this.compileAbort?.abort()
     this.clearTimers()
+    this.disconnectWikiEvents()
     this.listeners.clear()
+  }
+
+  /**
+   * Open the wiki events stream (the panel's live refresh). Idempotent; the
+   * stream auto-reconnects, and every frame rides the debounced aggregation
+   * into {@link applyLiveSlices}.
+   * @param factory - stream opener override (tests); defaults to EventSource.
+   */
+  connectWikiEvents(factory: WikiEventStreamFactory = defaultWikiEventStream): void {
+    if (this.disposed || this.eventStream !== null) return
+    this.eventStream = factory('/research/events', event => this.enqueueWikiChange(event))
+  }
+
+  /** Close the events stream and drop any pending live refresh. */
+  disconnectWikiEvents(): void {
+    this.eventStream?.close()
+    this.eventStream = null
+    this.liveAggregator.cancel()
+  }
+
+  /** Fold one pushed wiki change into the debounced refresh. */
+  enqueueWikiChange(event: ResearchWikiChangeEvent): void {
+    if (this.disposed) return
+    this.liveAggregator.push(event)
+  }
+
+  /** Flush pending live-refresh slices immediately (the visible-again catch-up). */
+  flushWikiChanges(): void {
+    this.liveAggregator.flushNow()
+  }
+
+  /**
+   * Re-read exactly the slices one settled change burst dirtied. Every reload
+   * goes through the slice's own loader, so the generation/pending guards of
+   * the refresh paths apply unchanged; a cold slice (its view never opened)
+   * is skipped. The paper slice never disturbs a draft: the outline re-read
+   * is always safe, the source re-read only runs for a settled draft and
+   * only publishes when the file on disk actually moved.
+   */
+  private applyLiveSlices(slices: ReadonlySet<LiveSlice>): void {
+    if (this.disposed || slices.size === 0) return
+    if (slices.has('projects') && this.view.projectsStatus !== 'cold') {
+      this.loadPromise ??= this.loadProjects().finally(() => { this.loadPromise = null })
+    }
+    if (slices.has('papers') && this.view.papers.status !== 'cold') this.refreshPapers()
+    const experiments = this.view.experiments
+    if (slices.has('experiments') && experiments !== null) {
+      this.experimentsGeneration += 1
+      void this.loadExperiments(experiments.projectId, this.experimentsGeneration)
+    }
+    const figures = this.view.figures
+    if (slices.has('figures') && figures !== null) this.loadFigures(figures.projectId, true, true)
+    if (slices.has('servers') && this.view.servers.status !== 'cold') {
+      this.serversPromise ??= this.loadServers().finally(() => { this.serversPromise = null })
+    }
+    if (slices.has('jobs') && this.view.jobs.status !== 'cold') this.refreshJobs()
+    if (slices.has('venues') && this.view.venues.status !== 'cold') {
+      this.refreshVenues(this.view.venues.watchedProjectId)
+    }
+    if (slices.has('ledger') && this.view.ledger.status !== 'cold' && this.ledgerFilter !== null) {
+      this.loadLedger(this.ledgerFilter)
+    }
+    if (slices.has('bibliography') && this.view.bib !== null && this.view.bib.saveState === 'clean') {
+      // A dirty bib edit is the user's draft: skip the reload, the next save
+      // takes the conflict path if the file moved meanwhile.
+      this.reloadBibliography()
+    }
+    const source = this.view.source
+    if (slices.has('paper') && source !== null) {
+      this.outlineGeneration += 1
+      void this.loadOutline(source.projectId, this.outlineGeneration)
+      if (source.status === 'ready' && (source.saveState === 'clean' || source.saveState === 'saved')) {
+        void this.reloadSourceIfChanged(source.projectId)
+      }
+    }
+  }
+
+  /**
+   * Re-read one project's `main.tex` for the live refresh and publish ONLY
+   * when the file moved: a same-content same-mtime reply (the echo of the
+   * panel's own save) keeps the current view untouched. No generation bump —
+   * the publish re-checks the view identity so a draft started mid-flight is
+   * never overwritten.
+   */
+  private async reloadSourceIfChanged(projectId: string): Promise<void> {
+    try {
+      const carried = await this.remote.getPaperSource({ projectId, dir: this.dirOf(projectId) })
+      if (this.disposed || !carried.ok || !carried.value.ok) return
+      const current = this.view.source
+      if (current === null || current.projectId !== projectId || current.status !== 'ready') return
+      if (current.saveState !== 'clean' && current.saveState !== 'saved') return
+      const { content, mtimeMs } = carried.value.value
+      if (content === current.content && mtimeMs === current.mtimeMs) return
+      this.publish({
+        source: Object.freeze({
+          projectId, status: 'ready', content, mtimeMs, saveState: 'clean', failure: null,
+        }),
+      })
+    } catch {
+      // Live refresh is best-effort: the next change (or a manual reload) retries.
+    }
   }
 
   /** Publish a compile failure as an error state carrying the message as one synthetic issue. */

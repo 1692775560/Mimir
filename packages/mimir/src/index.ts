@@ -41,6 +41,7 @@ import { registerResearchSkills } from './skills.ts'
 import { registerSxngSkill } from './sxng-skill.ts'
 import { startWikiBackupLoop } from './backup.ts'
 import { startArxivSubscriptionLoop } from './arxiv-subscriptions.ts'
+import { createWikiChangeHub, createWikiEventsHandler } from './wiki-events.ts'
 import { startVenueDeadlineLoop } from './services/venue-deadlines.ts'
 import { createVenueSearchTool } from './tools/venue.ts'
 
@@ -1146,6 +1147,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ctx.tools.register(createServerSubmitJobTool(getResearch))
     ctx.tools.register(createServerListJobsTool(getResearch))
   }
+  // Live wiki change push hub: the domain bridge and the events route are
+  // wired further down; the service config below already carries the notify
+  // hook for file-side writes.
+  const wikiChangeHub = createWikiChangeHub()
+
   const serviceConfig: ResearchServiceConfig = {
     workspaceDir: deps.workspaceDir,
     domain,
@@ -1153,6 +1159,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     backup: { ...resolved.backup, dir: backupDir },
     ...(searchConfig === undefined ? {} : { search: searchConfig }),
     zotero: resolved.zotero,
+    notifyWikiChange: event => wikiChangeHub.publish(event),
   }
 
   registerIdeaCommand(ctx, deps)
@@ -1205,6 +1212,25 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       onError: (error) => { console.warn('[mimir] venue deadline refresh failed:', error) },
     }),
     'mimir.venueDeadlines',
+  )
+  // Live wiki change push: every durable domain write (agent tools, slash
+  // commands, panel edits alike funnel through the domain) is bridged onto
+  // the SSE hub the open panels subscribe to; file-side writes (main.tex,
+  // bibliography.bib) reach the same hub through the service's notify hook.
+  ctx.effect(
+    () => ctx.on('domain/changed', (change) => {
+      if (change.domain !== researchWikiDomainSpec.name) return
+      wikiChangeHub.publish({ table: change.table, key: change.key, operation: change.operation })
+    }),
+    'mimir.wikiChangeBridge',
+  )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'prefix',
+      path: '/research/events',
+      handler: createWikiEventsHandler(wikiChangeHub),
+    }),
+    'mimir.wikiEventsRoute',
   )
   ctx.effect(
     () => ctx.webServer.register({
