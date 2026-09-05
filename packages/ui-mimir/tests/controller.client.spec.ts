@@ -48,10 +48,13 @@ import type {
   ResearchListProjectsResult,
   ResearchListServersResult,
   ResearchOutlineResult,
+  ResearchPaperSnapshotsResult,
   ResearchPaperSourceResult,
   ResearchPapersResult,
   ResearchProgressReportResult,
   ResearchRemovePaperResult,
+  ResearchRenameFigureResult,
+  ResearchRevertPaperSnapshotResult,
   ResearchSaveBibliographyResult,
   ResearchSaveExperimentResult,
   ResearchSaveFigureResult,
@@ -307,6 +310,29 @@ describe('ResearchController', () => {
     await Promise.resolve()
     expect(controller.getSnapshot().compile).toMatchObject({ projectId: 'p2', state: 'idle', issues: [] })
   })
+
+  it('drops a compile queued for the project being left on select', async () => {
+    const run = deferred<RemoteResult<ResearchCompileResult>>()
+    let calls = 0
+    const controller = new ResearchController(stubRemote({
+      compile: () => { calls += 1; return run.promise },
+      getPaperOutline: ({ projectId }) => Promise.resolve(carried<ResearchOutlineResult>({
+        ok: true, value: { projectId, nodes: [] },
+      })),
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+    }))
+    const first = controller.compile('p1')
+    await controller.compile('p1')
+    expect(calls).toBe(1)
+    // Switching away must not let the stale queue entry hijack the new
+    // project's compile lane when the in-flight run settles.
+    controller.select('p2')
+    run.resolve(carried({ ok: true, value: { state: 'ok', issues: [], engine: null, pdfUpdatedAt: 1 } }))
+    await first
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(calls).toBe(1)
+  })
 })
 
 describe('ResearchController source editing', () => {
@@ -475,6 +501,28 @@ describe('ResearchController source editing', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(compiles).toBe(2)
     expect(controller.getSnapshot().compile.state).toBe('ok')
+  })
+
+  it('flushes a dirty draft of the project being left on select', async () => {
+    const saved: Array<{ projectId: string; content: string; baseMtimeMs: number }> = []
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: ({ projectId }: { projectId: string }) =>
+        Promise.resolve(carried(sourceOk(`${projectId} v1`, 1000))),
+      savePaperSource: (request) => {
+        saved.push(request)
+        return Promise.resolve(carried<ResearchSavePaperSourceResult>({ ok: true, value: { mtimeMs: 2000 } }))
+      },
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    controller.edit('p1 draft')
+    // Switch away before the autosave debounce fires: the draft must ride out
+    // with the switch instead of dying with the cleared timer.
+    controller.select('p2')
+    expect(saved).toEqual([{ projectId: 'p1', content: 'p1 draft', baseMtimeMs: 1000 }])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.getSnapshot().source?.projectId).toBe('p2')
   })
 })
 
@@ -711,6 +759,28 @@ describe('ResearchController workbench views', () => {
     first.resolve(carried({ ok: true, value: { figures: [] } }))
     await settle()
     expect(calls).toBe(2)
+  })
+
+  it('queues a plain figures load that arrives during a scan instead of dropping it', async () => {
+    const first = deferred<RemoteResult<ResearchFiguresResult>>()
+    const seen: string[] = []
+    const controller = new ResearchController(stubRemote({
+      listFigures: ({ projectId }) => {
+        seen.push(projectId)
+        return seen.length === 1
+          ? first.promise
+          : Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } }))
+      },
+    }))
+    controller.loadFigures('p1')
+    // A non-forced load for another project mid-scan must queue, not vanish —
+    // otherwise the view stays on p1 forever after the scan settles.
+    controller.loadFigures('p2')
+    expect(seen).toEqual(['p1'])
+    first.resolve(carried({ ok: true, value: { figures: [] } }))
+    await settle()
+    expect(seen).toEqual(['p1', 'p2'])
+    expect(controller.getSnapshot().figures?.projectId).toBe('p2')
   })
 })
 
@@ -1570,6 +1640,82 @@ describe('ResearchController figure insert', () => {
     expect(view.source?.content).toContain('\\label{fig:plot}')
     expect(view.paperJump).toMatchObject({ projectId: 'p1', line: 6 })
     expect(view.toasts.at(-1)).toMatchObject({ kind: 'success', copy: 'toast.figureConvertedSvg', detail: 'plot.svg → plot.pdf' })
+  })
+
+  it('aborts the insert when the project switched during the SVG conversion', async () => {
+    const conversion = deferred<RemoteResult<ResearchConvertFigureResult>>()
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: ({ projectId }: { projectId: string }) =>
+        Promise.resolve(carried(sourceOk(`${projectId} tex`, 1000))),
+      convertFigure: () => conversion.promise,
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const pending = controller.insertFigureIntoPaper('p1', { ...FIGURE, name: 'plot.svg', relPath: 'figures/plot.svg' })
+    // Switch away while the host converts.
+    controller.select('p2')
+    conversion.resolve(carried({ ok: true, value: { relPath: 'figures/plot.pdf', converter: 'rsvg-convert' } }))
+    const line = await pending
+    expect(line).toBeNull()
+    await vi.advanceTimersByTimeAsync(0)
+    // p2's draft must not carry p1's figure block.
+    const view = controller.getSnapshot()
+    expect(view.source?.projectId).toBe('p2')
+    expect(view.source?.content).toBe('p2 tex')
+  })
+
+  it('does not re-read the paper when the project switched during a figure rename', async () => {
+    const rename = deferred<RemoteResult<ResearchRenameFigureResult>>()
+    const sourceReads: string[] = []
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: ({ projectId }: { projectId: string }) => {
+        sourceReads.push(projectId)
+        return Promise.resolve(carried(sourceOk(`${projectId} tex`, 1000)))
+      },
+      renameFigure: () => rename.promise,
+      listFigures: () => Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const pending = controller.renameFigure('p1', 'figures/a.png', 'b.png')
+    rename.resolve(carried({ ok: true, value: { relPath: 'figures/b.png', references: 2 } }))
+    // The user switched projects before the rename reply landed.
+    controller.select('p2')
+    expect(await pending).toBeNull()
+    await vi.advanceTimersByTimeAsync(0)
+    // No stale re-read of p1's paper over p2's view.
+    expect(sourceReads.filter(id => id === 'p1')).toHaveLength(1)
+    expect(controller.getSnapshot().source?.projectId).toBe('p2')
+    expect(controller.getSnapshot().source?.content).toBe('p2 tex')
+  })
+
+  it('does not re-read the paper when the project switched during a snapshot revert', async () => {
+    const revert = deferred<RemoteResult<ResearchRevertPaperSnapshotResult>>()
+    const sourceReads: string[] = []
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: ({ projectId }: { projectId: string }) => {
+        sourceReads.push(projectId)
+        return Promise.resolve(carried(sourceOk(`${projectId} tex`, 1000)))
+      },
+      revertPaperSnapshot: () => revert.promise,
+      listPaperSnapshots: () => Promise.resolve(carried<ResearchPaperSnapshotsResult>({
+        ok: true, value: { snapshots: [] },
+      })),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const pending = controller.revertSnapshot('p1', 'snap-1')
+    revert.resolve(carried({ ok: true, value: { mtimeMs: 3000 } }))
+    // The user switched projects before the revert reply landed.
+    controller.select('p2')
+    expect(await pending).toBeNull()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sourceReads.filter(id => id === 'p1')).toHaveLength(1)
+    expect(controller.getSnapshot().source?.projectId).toBe('p2')
+    expect(controller.getSnapshot().source?.content).toBe('p2 tex')
   })
 
   it('treats an already-referenced converted product as inserted, never converting again', async () => {

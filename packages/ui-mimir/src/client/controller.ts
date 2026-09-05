@@ -895,6 +895,10 @@ export class ResearchController implements HostObservable<ResearchView> {
   private venueTemplatesInFlight = false
   /** A venue-catalog load already in flight is left alone. */
   private venuesInFlight = false
+  /** Cancels a stale venue-catalog reply when a newer request queued behind it. */
+  private venuesGeneration = 0
+  /** The newest venue load requested while another was in flight. */
+  private venuesPending: { readonly projectId: string | null; readonly quiet: boolean } | null = null
   private snapshotsInFlight = false
   private compileAbort: AbortController | null = null
   private compileProject: string | null = null
@@ -1884,9 +1888,10 @@ export class ResearchController implements HostObservable<ResearchView> {
   loadFigures(projectId: string, force = false, quiet = false): void {
     const current = this.view.figures
     if (this.figuresInFlight) {
-      if (force) {
-        this.figuresRefreshPending = { projectId, quiet }
-      }
+      // Queue the newest request — forced or not — behind the in-flight one:
+      // dropping a plain load here would leave the target project's slice
+      // stuck on the previous project (or on nothing at all).
+      this.figuresRefreshPending = { projectId, quiet }
       return
     }
     if (!force && current !== null && current.projectId === projectId && current.status === 'ready') return
@@ -1944,7 +1949,10 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) return businessFailure(result.error)
       this.loadFigures(projectId, true)
-      if (result.value.references > 0 && this.view.source?.saveState === 'clean') this.refreshPaper(projectId)
+      // A project switch during the rename makes the re-read stale: it would
+      // load the old project's paper over the new one's view.
+      if (result.value.references > 0 && this.view.source?.projectId === projectId
+        && this.view.source?.saveState === 'clean') this.refreshPaper(projectId)
       this.notify(
         'success',
         'toast.figureRenamed',
@@ -2308,7 +2316,13 @@ export class ResearchController implements HostObservable<ResearchView> {
    * @param projectId - the project whose watch list rides along, or null.
    */
   ensureVenues(projectId: string | null): void {
-    if (this.venuesInFlight) return
+    if (this.venuesInFlight) {
+      // Queue the newest request behind the in-flight one and stale-mark that
+      // one's reply: publishing it would flash another project's watch list.
+      this.venuesGeneration += 1
+      this.venuesPending = { projectId, quiet: false }
+      return
+    }
     const current = this.view.venues
     if (current.status === 'ready' && current.watchedProjectId === projectId) return
     void this.loadVenueDeadlines(projectId, false)
@@ -2320,7 +2334,11 @@ export class ResearchController implements HostObservable<ResearchView> {
    * @param projectId - the project whose watch list rides along, or null.
    */
   refreshVenues(projectId: string | null): void {
-    if (this.venuesInFlight) return
+    if (this.venuesInFlight) {
+      this.venuesGeneration += 1
+      this.venuesPending = { projectId, quiet: true }
+      return
+    }
     void this.loadVenueDeadlines(projectId, true)
   }
 
@@ -2337,7 +2355,7 @@ export class ResearchController implements HostObservable<ResearchView> {
       const result = carried.value
       if (!result.ok) { this.notify('error', 'toast.venueRefreshFailed'); return }
       this.notify('success', 'toast.venueRefreshed')
-      await this.loadVenueDeadlines(projectId, true)
+      this.refreshVenues(projectId)
     } catch {
       if (!this.disposed) this.notify('error', 'toast.venueRefreshFailed')
     }
@@ -2345,13 +2363,15 @@ export class ResearchController implements HostObservable<ResearchView> {
 
   /** Fetch the catalog plus one project's watch list and publish the slice. */
   private async loadVenueDeadlines(projectId: string | null, quiet: boolean): Promise<void> {
+    this.venuesGeneration += 1
+    const generation = this.venuesGeneration
     this.venuesInFlight = true
     if (!quiet || this.view.venues.status !== 'ready') {
       this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'loading', failure: null }) })
     }
     try {
       const carried = await this.remote.listVenueDeadlines(projectId === null ? {} : { projectId })
-      if (this.disposed) return
+      if (this.disposed || generation !== this.venuesGeneration) return
       if (!carried.ok) {
         this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'error', failure: failureOf(carried.error.code, carried.error.message) }) })
         return
@@ -2373,10 +2393,13 @@ export class ResearchController implements HostObservable<ResearchView> {
         }),
       })
     } catch (error) {
-      if (this.disposed) return
+      if (this.disposed || generation !== this.venuesGeneration) return
       this.publish({ venues: Object.freeze({ ...this.view.venues, status: 'error', failure: transportFailure(error) }) })
     } finally {
       this.venuesInFlight = false
+      const pending = this.venuesPending
+      this.venuesPending = null
+      if (pending !== null && !this.disposed) void this.loadVenueDeadlines(pending.projectId, pending.quiet)
     }
   }
 
@@ -2401,7 +2424,18 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok || !carried.value.ok) throw new Error('watch rejected')
     } catch {
       if (this.disposed) return
-      this.publish({ venues: Object.freeze({ ...this.view.venues, watched: before }) })
+      // Roll back only this flip, by key, against the CURRENT list: a blanket
+      // restore of `before` would undo other toggles settled during the
+      // flight, and a project switch makes any rollback meaningless.
+      if (this.view.venues.watchedProjectId !== projectId) {
+        this.notify('error', 'toast.venueWatchFailed')
+        return
+      }
+      const current = this.view.venues.watched
+      const rolled = watched
+        ? (current.includes(seriesKey) ? current : Object.freeze([...current, seriesKey]))
+        : Object.freeze(current.filter(key => key !== seriesKey))
+      this.publish({ venues: Object.freeze({ ...this.view.venues, watched: rolled }) })
       this.notify('error', 'toast.venueWatchFailed')
     }
   }
@@ -2513,10 +2547,11 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) {
-        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        // A project switch during the revert makes the re-read stale.
+        if (result.error.code === 'conflict' && this.view.source?.projectId === projectId) this.refreshPaper(projectId)
         return businessFailure(result.error)
       }
-      this.refreshPaper(projectId)
+      if (this.view.source?.projectId === projectId) this.refreshPaper(projectId)
       this.snapshotsInFlight = false
       this.loadSnapshots(projectId, true)
       this.notify('success', 'toast.snapshotReverted')
@@ -2581,7 +2616,10 @@ export class ResearchController implements HostObservable<ResearchView> {
         this.notify('error', 'toast.figureSvgConvertFailed', transportFailure(error).message)
         return null
       }
-      if (this.disposed) return null
+      // The conversion round-trip is long: a project switch in between means
+      // the editor below would write this project's block into ANOTHER
+      // project's draft.
+      if (this.disposed || this.view.source?.projectId !== projectId) return null
     }
     const block = figureBlockOf(relPath, entry.caption ?? '')
     const inserted = insertFigureBlock(source.content, block)
@@ -2721,10 +2759,11 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) {
-        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        // A project switch during the reorder makes the re-read stale.
+        if (result.error.code === 'conflict' && this.view.source?.projectId === projectId) this.refreshPaper(projectId)
         return businessFailure(result.error)
       }
-      this.refreshPaper(projectId)
+      if (this.view.source?.projectId === projectId) this.refreshPaper(projectId)
       return null
     } catch (error) {
       return transportFailure(error)
@@ -2757,10 +2796,11 @@ export class ResearchController implements HostObservable<ResearchView> {
       if (!carried.ok) return failureOf(carried.error.code, carried.error.message)
       const result = carried.value
       if (!result.ok) {
-        if (result.error.code === 'conflict') this.refreshPaper(projectId)
+        // A project switch during the reorder makes the re-read stale.
+        if (result.error.code === 'conflict' && this.view.source?.projectId === projectId) this.refreshPaper(projectId)
         return businessFailure(result.error)
       }
-      this.refreshPaper(projectId)
+      if (this.view.source?.projectId === projectId) this.refreshPaper(projectId)
       return null
     } catch (error) {
       return transportFailure(error)
@@ -3684,6 +3724,12 @@ export class ResearchController implements HostObservable<ResearchView> {
    * @param projectId - wiki project id.
    */
   select(projectId: string): void {
+    // Flush a dirty draft of the project being left BEFORE the sweep below:
+    // the generation bump stale-marks any later save reply and clearTimers()
+    // kills the debounce, so a draft not flushed now is lost for good. The
+    // flush's synchronous prefix captures the draft and starts the request
+    // before the loading slice replaces the view.
+    if (this.view.source?.saveState === 'dirty') void this.flushSave()
     this.outlineGeneration += 1
     const outlineGeneration = this.outlineGeneration
     this.sourceGeneration += 1
@@ -3693,6 +3739,9 @@ export class ResearchController implements HostObservable<ResearchView> {
     this.compileGeneration += 1
     this.snapshotsGeneration += 1
     this.snapshotDetailGeneration += 1
+    // Compiles queued for the project being left must not hijack the newly
+    // selected project's compile lane when the in-flight run settles.
+    this.compileQueued.clear()
     this.clearTimers()
     this.saveInFlight = false
     this.saveAgain = false
