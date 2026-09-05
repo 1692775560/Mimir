@@ -341,6 +341,32 @@ export async function checkServer(
 }
 
 /**
+ * Settle every job left active by a host restart. The SSH child belongs to the
+ * old process, so its remote outcome is unknowable and must never be guessed.
+ * @param deps - open wiki domain plus workspace root.
+ */
+export async function recoverInterruptedJobs(deps: ServerDeps): Promise<void> {
+  const jobs = deps.domain.table('jobs')
+  const experiments = deps.domain.table('experiments')
+  const now = new Date().toISOString()
+  for (const [, job] of jobs.entries()) {
+    if (job.status !== 'queued' && job.status !== 'running') continue
+    const recovered: JobRecord = {
+      ...job,
+      status: 'interrupted',
+      stderrTail: 'host restarted before the job outcome was known',
+      finishedAt: now,
+    }
+    await jobs.put(job.id, recovered)
+    if (job.experimentId === undefined || hasNewerLinkedJob(deps, job)) continue
+    const experiment = experiments.get(job.experimentId)
+    if (experiment?.status === 'running') {
+      await experiments.put(experiment.id, { ...experiment, status: 'failed', updatedAt: now })
+    }
+  }
+}
+
+/**
  * Submit one remote command to a remembered server. The record lands
  * `queued` and the run starts in the background: this call returns once
  * the record is durable, and the panel polls `listJobs` for the status
@@ -411,9 +437,10 @@ export async function submitJob(
     },
     payload: { command: command.slice(0, 200) },
   })
-  // Fire-and-forget: runJob never rejects; the panel follows the
-  // transitions through listJobs.
-  void runJob(deps, job.id)
+  // Register ownership before yielding so deletion can cancel the queued race.
+  const abort = new AbortController()
+  state.jobAborts.set(job.id, abort)
+  void runJob(deps, state, job.id, abort.signal)
   return success({ job })
 }
 
@@ -441,20 +468,28 @@ export function listJobs(
 }
 
 /**
- * Delete one job record; an unknown id is `job-not-found`. Deleting a
- * queued/running job removes only the record: the remote command still
- * finishes, but its outcome is written nowhere.
+ * Delete one terminal job record. Deleting an active job instead aborts the
+ * locally-owned SSH client and retains a `cancelled` record because the remote
+ * process outcome cannot be proven from a disconnected session.
  * @param deps - open wiki domain.
+ * @param state - owning service state and SSH abort handles.
  * @param request - the record id.
- * @returns the deleted id.
+ * @returns the affected id.
  */
 export async function deleteJob(
   deps: ServerDeps,
+  state: ServiceState,
   request: { id: string },
 ): Promise<ResearchDeleteJobResult> {
   const table = deps.domain.table('jobs')
-  if (table.get(request.id) === undefined) {
+  const existing = table.get(request.id)
+  if (existing === undefined) {
     return rejected({ code: 'job-not-found', id: request.id })
+  }
+  const abort = state.jobAborts.get(request.id)
+  if (abort !== undefined && (existing.status === 'queued' || existing.status === 'running')) {
+    abort.abort()
+    return success({ id: request.id })
   }
   await table.delete(request.id)
   return success({ id: request.id })
@@ -463,16 +498,31 @@ export async function deleteJob(
 /**
  * Drive one queued job to its terminal state over a batch-mode ssh call:
  * flip the record `running`, wait on the remote command (killed after
- * {@link SSH_JOB_TIMEOUT_MS}), then settle `succeeded` (exit 0) or
- * `failed` with the output tails. Never rejects — the record is the
+ * {@link SSH_JOB_TIMEOUT_MS} or when the caller aborts), then settle
+ * `succeeded` (exit 0), `failed` with the output tails, or `cancelled`
+ * when the local session was aborted. Never rejects — the record is the
  * panel's only channel.
  * @param deps - open wiki domain.
+ * @param state - owning service state and SSH abort handles.
  * @param id - the job record id.
+ * @param signal - abort handle whose abort cancels the SSH child.
  */
-async function runJob(deps: ServerDeps, id: string): Promise<void> {
+async function runJob(
+  deps: ServerDeps,
+  state: ServiceState,
+  id: string,
+  signal: AbortSignal,
+): Promise<void> {
   const table = deps.domain.table('jobs')
   const queued = table.get(id)
-  if (queued === undefined) return
+  if (queued === undefined) {
+    state.jobAborts.delete(id)
+    return
+  }
+  if (signal.aborted) {
+    await settleCancelledJob(deps, state, queued)
+    return
+  }
   const server = deps.domain.table('servers').get(queued.serverId)
   if (server === undefined) {
     await table.put(id, {
@@ -485,6 +535,10 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
   }
   const running: JobRecord = { ...queued, status: 'running', startedAt: new Date().toISOString() }
   await table.put(id, running)
+  if (signal.aborted) {
+    await settleCancelledJob(deps, state, running)
+    return
+  }
   let settled: JobRecord
   try {
     const { stdout, stderr } = await execFileAsync('ssh', [
@@ -494,13 +548,21 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
       '--',
       `${server.username}@${server.host}`,
       running.command,
-    ], { timeout: SSH_JOB_TIMEOUT_MS, maxBuffer: SSH_JOB_MAX_BUFFER_BYTES })
+    ], {
+      timeout: SSH_JOB_TIMEOUT_MS,
+      maxBuffer: SSH_JOB_MAX_BUFFER_BYTES,
+      signal,
+    })
     settled = {
       ...running, status: 'succeeded', exitCode: 0,
       stdoutTail: tailOf(stdout), stderrTail: tailOf(stderr),
       finishedAt: new Date().toISOString(),
     }
   } catch (error) {
+    if (signal.aborted) {
+      await settleCancelledJob(deps, state, running, error)
+      return
+    }
     // execFile failures carry the child's exit code and captured output;
     // the ssh client propagates the remote command's exit code as its
     // own, so a numeric code IS the remote exit code. A non-numeric code
@@ -522,6 +584,7 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
   // command still finished, but nothing is written back.
   if (table.get(id) === undefined) return
   await table.put(id, settled)
+  state.jobAborts.delete(id)
   const startedMs = settled.startedAt === undefined ? null : Date.parse(settled.startedAt)
   const finishedMs = settled.finishedAt === undefined ? null : Date.parse(settled.finishedAt)
   await emitEvent(deps.domain, {
@@ -542,6 +605,32 @@ async function runJob(deps: ServerDeps, id: string): Promise<void> {
       summary: jobSummaryOf(settled),
     },
   })
+  await writeBackExperiment(deps, settled)
+}
+
+async function settleCancelledJob(
+  deps: ServerDeps,
+  state: ServiceState,
+  job: JobRecord,
+  error?: unknown,
+): Promise<void> {
+  const table = deps.domain.table('jobs')
+  if (table.get(job.id) === undefined) return
+  const carrier = error as { stdout?: unknown; stderr?: unknown } | undefined
+  const stdout = typeof carrier?.stdout === 'string' ? carrier.stdout : ''
+  const stderr = typeof carrier?.stderr === 'string' && carrier.stderr.trim() !== ''
+    ? `${carrier.stderr}\ncancelled locally; remote process outcome is unknown`
+    : 'cancelled locally; remote process outcome is unknown'
+  const settled: JobRecord = {
+    ...job,
+    status: 'cancelled',
+    exitCode: null,
+    stdoutTail: tailOf(stdout),
+    stderrTail: tailOf(stderr),
+    finishedAt: new Date().toISOString(),
+  }
+  await table.put(job.id, settled)
+  state.jobAborts.delete(job.id)
   await writeBackExperiment(deps, settled)
 }
 
@@ -571,7 +660,7 @@ async function writeBackExperiment(deps: ServerDeps, job: JobRecord): Promise<vo
   const finishedMs = Date.parse(finishedAt)
   const outcome: ExperimentJobOutcome = {
     jobId: job.id,
-    status: job.status === 'succeeded' ? 'succeeded' : 'failed',
+    status: job.status === 'succeeded' ? 'succeeded' : job.status === 'cancelled' ? 'cancelled' : 'failed',
     exitCode: job.exitCode,
     durationMs: Number.isFinite(startedMs) && Number.isFinite(finishedMs)
       ? Math.max(0, finishedMs - startedMs)

@@ -144,7 +144,7 @@ export type ExperimentStatus = 'running' | 'success' | 'failed'
 export interface ExperimentJobOutcome {
   /** The settled job record's id. */
   readonly jobId: string
-  readonly status: 'succeeded' | 'failed'
+  readonly status: 'succeeded' | 'failed' | 'cancelled'
   /** Remote exit code; null when the ssh session itself failed. */
   readonly exitCode: number | null
   /** Wall-clock run time in ms; null when the job never reached `running`. */
@@ -178,7 +178,7 @@ export interface ExperimentRecord {
 }
 
 /** Lifecycle of one remote job submitted over ssh. */
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
 /** One remote command submitted to a remembered server over ssh. */
 export interface JobRecord {

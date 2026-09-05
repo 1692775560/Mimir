@@ -121,7 +121,7 @@ export const jobRecord = z.object({
   id: z.string(),
   serverId: z.string(),
   command: z.string(),
-  status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+  status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted']),
   experimentId: z.string().optional(),
   exitCode: z.number().int().nullable(),
   stdoutTail: z.string(),

@@ -84,6 +84,9 @@ importers:
       '@deepseek-ai/dsh-subagent':
         specifier: 0.1.2-alpha.4
         version: 0.1.2-alpha.4(ec536cb4625467f8b302e2caf382b4c9)
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: 0.1.2-alpha.4
+        version: 0.1.2-alpha.4(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.4(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.2-alpha.4(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-scope@0.1.2-alpha.4(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.4(@deepseek-ai/cordis@4.0.2)))
       '@deepseek-ai/dsh-tools':
         specifier: 0.1.2-alpha.4
         version: 0.1.2-alpha.4(6f17de9b01b7bb711bb9888e3e73adf0)

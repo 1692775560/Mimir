@@ -216,7 +216,11 @@ export class ResearchService extends TypertRemoteService {
       ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
       ...(config.meetings === undefined ? {} : { meetings: config.meetings }),
     }
-    this.state = { compileStatus: new Map(), jobSeq: 0 }
+    this.state = {
+      compileStatus: new Map(),
+      jobSeq: 0,
+      jobAborts: new Map(),
+    }
   }
 
   // wiki-admin domain
@@ -643,7 +647,7 @@ export class ResearchService extends TypertRemoteService {
 
   @Remote('deleteJob')
   deleteJob(request: { id: string }): Promise<ResearchDeleteJobResult> {
-    return server.deleteJob(this.deps, request)
+    return server.deleteJob(this.deps, this.state, request)
   }
 
   // wiki-admin domain: export / import / backups

@@ -59,6 +59,13 @@ function record(id: string, query: string, seenIds: readonly string[] = ['2608.0
   }
 }
 
+/** A manually settled promise for coordinating concurrent check calls. */
+function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(res => { resolve = res })
+  return { promise, resolve }
+}
+
 describe('arXiv subscription storage', () => {
   it('round-trips the list through the JSON file', async () => {
     const dir = await workspace()
@@ -229,6 +236,26 @@ describe('runArxivSubscriptionCheck', () => {
     // The check-updated state landed on the surviving record; the addition is untouched.
     expect(persisted[0]?.newEntryIds).toEqual(['b'])
     expect(persisted[1]).toEqual(added)
+  })
+
+  it('coalesces concurrent checks without losing the settled update', async () => {
+    const dir = await workspace()
+    await saveArxivSubscriptions(dir, [record('s1', 'mesh', ['base'])])
+    const first = deferred<ArxivEntry[]>()
+    let calls = 0
+    const fetchSearch = async (): Promise<ArxivEntry[]> => {
+      calls += 1
+      return calls === 1 ? first.promise : [entry('right'), entry('base')]
+    }
+    const left = runArxivSubscriptionCheck(dir, { gapMs: 0, fetchSearch })
+    await Promise.resolve()
+    const right = runArxivSubscriptionCheck(dir, { gapMs: 0, fetchSearch })
+    first.resolve([entry('left'), entry('base')])
+    await Promise.all([left, right])
+    expect(calls).toBe(1)
+    const [persisted] = await loadArxivSubscriptions(dir)
+    expect(persisted?.seenIds).toEqual(expect.arrayContaining(['left', 'base']))
+    expect(persisted?.newEntryIds).toEqual(expect.arrayContaining(['left']))
   })
 
   it('returns undefined for an unknown id and skips the fetch entirely', async () => {
