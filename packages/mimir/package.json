@@ -102,6 +102,7 @@
     "@deepseek-ai/dsh-storage": "0.1.2-alpha.4",
     "@deepseek-ai/dsh-storage-domain": "0.1.2-alpha.4",
     "@deepseek-ai/dsh-subagent": "0.1.2-alpha.4",
+    "@deepseek-ai/dsh-system-prompt": "0.1.2-alpha.4",
     "@deepseek-ai/dsh-tools": "0.1.2-alpha.4",
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.4",
     "@deepseek-ai/dsh-util-values": "0.1.2-alpha.4",
