@@ -23,6 +23,7 @@ import { createWikiNoteTool } from './tools/wiki.ts'
 import { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
 import { createMeetingDeckTool } from './tools/meeting.ts'
 import { createLatexCompileTool } from './tools/latex.ts'
+import { createServerCheckTool, createServerListJobsTool, createServerListTool, createServerSubmitJobTool } from './tools/server.ts'
 import { registerIdeaCommand } from './commands/idea.ts'
 import { registerPlanCommand } from './commands/plan.ts'
 import { registerReviewCommand } from './commands/review.ts'
@@ -423,6 +424,8 @@ export { createZoteroClient } from './tools/zotero.ts'
 export type { ZoteroBibRequest, ZoteroClient, ZoteroClientConfig, ZoteroCollection, ZoteroFetch, ZoteroItem } from './tools/zotero.ts'
 export { createWikiNoteTool } from './tools/wiki.ts'
 export { createFigureOrganizeTool, createFigureSaveTool } from './tools/figure.ts'
+export { createServerCheckTool, createServerListJobsTool, createServerListTool, createServerSubmitJobTool } from './tools/server.ts'
+export type { ResearchServiceResolver } from './tools/server.ts'
 export { createMeetingDeckTool } from './tools/meeting.ts'
 export { buildWikiSnapshot } from './wiki-snapshot.ts'
 export type { WikiSnapshotSource } from './wiki-snapshot.ts'
@@ -516,6 +519,18 @@ export interface Config {
      */
     dir?: string
   }
+  /**
+   * Register the model-callable `server_*` tools (list / check / submit /
+   * list jobs) that forward to the `server.*` Remote namespace (default
+   * true). These let the running agent drive remembered ssh runtimes the
+   * panel manages — a capability with real remote-execution reach, so
+   * compositions that want the panel's Servers view but no agent-driven
+   * compute can turn it off.
+   */
+  serverTools?: {
+    /** Master switch (default true); false skips registering the four server_* tools. */
+    enabled?: boolean
+  }
   /** Bundled research-skill registration knobs. */
   skills?: {
     /**
@@ -562,6 +577,9 @@ export const Config: z<Config> = z.object({
   skills: z.object({
     enabled: z.boolean().default(true),
   }).default({ enabled: true }),
+  serverTools: z.object({
+    enabled: z.boolean().default(true),
+  }).default({ enabled: true }),
 })
 
 /** Fully defaulted config view used by tools and commands. */
@@ -583,6 +601,7 @@ interface ResolvedConfig {
     readonly dir: string
   }
   readonly skills: { readonly enabled: boolean }
+  readonly serverTools: { readonly enabled: boolean }
 }
 
 /** Validate defaults even when a caller invokes apply() without Loader normalization. */
@@ -604,6 +623,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     dir: config.backup?.dir ?? 'backups',
   }
   const skills = { enabled: config.skills?.enabled ?? true }
+  const serverTools = { enabled: config.serverTools?.enabled ?? true }
   if (workspaceDir.trim().length === 0) throw new TypeError('workspaceDir must be a non-empty path')
   if (reviewer.provider.trim().length === 0) throw new TypeError('reviewer.provider must be a non-empty provider name')
   if (!Number.isSafeInteger(reviewer.maxRounds) || reviewer.maxRounds < 1) throw new TypeError('reviewer.maxRounds must be a positive safe integer')
@@ -616,7 +636,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(backup.intervalMinutes) || backup.intervalMinutes < 1) throw new TypeError('backup.intervalMinutes must be a positive safe integer')
   if (!Number.isSafeInteger(backup.keep) || backup.keep < 1) throw new TypeError('backup.keep must be a positive safe integer')
   if (backup.dir.trim().length === 0) throw new TypeError('backup.dir must be a non-empty path')
-  return { workspaceDir, reviewer, latex, arxiv, search, zotero, subscriptions, backup, skills }
+  return { workspaceDir, reviewer, latex, arxiv, search, zotero, subscriptions, backup, skills, serverTools }
 }
 
 /**
@@ -1111,6 +1131,20 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       timeoutMs: resolved.search.timeoutMs,
       maxResults: resolved.arxiv.maxResults,
     }))
+  }
+  // The panel's Servers view and the model-callable server_* tools share the
+  // same server/job state through ResearchService; the tools only forward, so
+  // registering them is a pure addition to the runtime the panel already
+  // drives. The controller tests and the ssh-jobs harness construct the
+  // service directly, so `ctx.research` may not be set in-process for the
+  // full apply() wiring — resolve it lazily at execution time instead of
+  // at registration time.
+  if (resolved.serverTools.enabled) {
+    const getResearch = () => ctx.get('research') as ResearchService | undefined
+    ctx.tools.register(createServerListTool(getResearch))
+    ctx.tools.register(createServerCheckTool(getResearch))
+    ctx.tools.register(createServerSubmitJobTool(getResearch))
+    ctx.tools.register(createServerListJobsTool(getResearch))
   }
   const serviceConfig: ResearchServiceConfig = {
     workspaceDir: deps.workspaceDir,

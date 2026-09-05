@@ -219,9 +219,10 @@ to move one claim out of \`pending\`; a run that maps to no claim is cut.
    then ablations ordered by claim coverage per GPU-hour, then robustness
    (seeds, datasets). Baselines run before or alongside, never after.
 3. **Budget**: state the compute each run needs and where it runs — check
-   the 服务器 / Servers tab for registered machines and their GPU probe
-   results before promising a schedule. Jobs can be dispatched and tracked
-   from that tab; their ids belong in the experiment records.
+   \`server_list\` for registered machines and \`server_check\` for their GPU
+   probe results before promising a schedule (the 服务器 / Servers tab is the
+   same state). Jobs can be dispatched with \`server_submit_job\` and tracked
+   with \`server_list_jobs\`; their ids belong in the experiment records.
 4. **Register** every planned run:
    \`wiki_note { action: 'add_experiment', project_id, name, metrics }\`
    with the hypothesis in the name and the target metrics explicit.
