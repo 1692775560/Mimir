@@ -357,6 +357,43 @@ describe('ResearchService.listJobs / deleteJob', () => {
       .resolves.toMatchObject({ ok: false, error: { code: 'server-not-found', id: 'srv-missing' } })
   })
 
+  it('cancels an active job instead of deleting its record while SSH continues', async () => {
+    const { service } = await harness()
+    await stubFakeSsh()
+    const created = await service.saveServer({ server: SERVER_INPUT })
+    if (!created.ok) throw new Error('create failed')
+    const submitted = await service.submitJob({
+      serverId: created.value.server.id,
+      command: 'mimir-slow python train.py --epochs 20',
+    })
+    if (!submitted.ok) throw new Error('submit rejected')
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const listed = await service.listJobs({})
+      if (listed.ok && listed.value.jobs.some(job => job.id === submitted.value.job.id && job.status === 'running')) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+
+    await expect(service.deleteJob({ id: submitted.value.job.id })).resolves.toEqual({
+      ok: true,
+      value: { id: submitted.value.job.id },
+    })
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const listed = await service.listJobs({})
+      if (listed.ok) {
+        const job = listed.value.jobs.find(record => record.id === submitted.value.job.id)
+        if (job?.status === 'cancelled') {
+          expect(job).toMatchObject({
+            exitCode: null,
+            stderrTail: expect.stringContaining('remote process outcome is unknown'),
+          })
+          return
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    throw new Error('cancelled job did not settle')
+  })
+
   it('deletes a record and reports job-not-found on a repeat', async () => {
     const { domain, service } = await harness()
     const record: JobRecord = {
