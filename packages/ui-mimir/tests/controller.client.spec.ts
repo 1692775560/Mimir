@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AUTOSAVE_DEBOUNCE_MS, COMPILE_DEBOUNCE_MS, ResearchController } from '../src/client/controller.ts'
+import { AUTOSAVE_DEBOUNCE_MS, COMPILE_DEBOUNCE_MS, LIVE_REFRESH_DEBOUNCE_MS, ResearchController } from '../src/client/controller.ts'
 import type { ResearchRemote } from '../src/client/controller.ts'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -65,6 +65,7 @@ import type {
   ResearchSubmitJobResult,
   ResearchUpdateExperimentResult,
   ResearchUpdatePaperResult,
+  ResearchVenueDeadlinesResult,
 } from 'dsh-mimir/types'
 
 /** Wrap one business result in the carrier's success branch. */
@@ -2363,5 +2364,140 @@ describe('ResearchController adoptIdea (worktree merge)', () => {
     await new Promise(resolve => { setTimeout(resolve, 0) })
     expect(worktreeLoads).toBe(2) // the merge re-derives the tree
     expect(foragingLoads).toBe(1) // a merge is not a GUT departure
+  })
+})
+
+describe('ResearchController live refresh', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  /** A settled source-read reply. */
+  const sourceOk = (content: string, mtimeMs: number): ResearchPaperSourceResult => ({
+    ok: true,
+    value: { content, mtimeMs },
+  })
+
+  /** Stubs for the reads every select() fires, so a test only wires what it asserts. */
+  const selectReads = {
+    getPaperOutline: ({ projectId }: { projectId: string }) => Promise.resolve(
+      carried<ResearchOutlineResult>({ ok: true, value: { projectId, nodes: [] } }),
+    ),
+    getCompileStatus: () => Promise.resolve(carried(IDLE)),
+  }
+
+  it('refreshes a warm papers slice once for a burst of changes and leaves cold slices alone', async () => {
+    let lists = 0
+    const controller = new ResearchController(stubRemote({
+      listPapers: () => {
+        lists += 1
+        return Promise.resolve(carried<ResearchPapersResult>({ ok: true, value: { papers: [] } }))
+      },
+    }))
+    // Cold slice: pushed changes are dropped, nothing loads.
+    controller.enqueueWikiChange({ table: 'papers', key: 'a', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(lists).toBe(0)
+    controller.ensurePapers()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(lists).toBe(1)
+    // An agent importing ten papers collapses into ONE refresh.
+    for (let index = 0; index < 10; index += 1) {
+      controller.enqueueWikiChange({ table: 'papers', key: `2608.0000${index}`, operation: 'put' })
+    }
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(lists).toBe(2)
+  })
+
+  it('quietly rescans a warm figures slice through the guarded loader', async () => {
+    const scans: string[] = []
+    const controller = new ResearchController(stubRemote({
+      listFigures: ({ projectId }) => {
+        scans.push(projectId)
+        return Promise.resolve(carried<ResearchFiguresResult>({ ok: true, value: { figures: [] } }))
+      },
+    }))
+    controller.loadFigures('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(scans).toEqual(['p1'])
+    controller.enqueueWikiChange({ table: 'figures', key: 'p1:figures/a.png', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(scans).toEqual(['p1', 'p1'])
+  })
+
+  it('reloads the outline but never the draft when a paper change lands mid-edit', async () => {
+    let outlines = 0
+    let sourceReads = 0
+    const controller = new ResearchController(stubRemote({
+      getPaperOutline: ({ projectId }) => {
+        outlines += 1
+        return Promise.resolve(carried<ResearchOutlineResult>({ ok: true, value: { projectId, nodes: [] } }))
+      },
+      getCompileStatus: () => Promise.resolve(carried(IDLE)),
+      getPaperSource: () => {
+        sourceReads += 1
+        return Promise.resolve(carried(sourceOk('v1', 1000)))
+      },
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sourceReads).toBe(1)
+    controller.edit('my draft')
+    controller.enqueueWikiChange({ table: 'paper-source', key: 'p1', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    // The outline followed the file; the dirty draft was left alone.
+    expect(outlines).toBe(2)
+    expect(sourceReads).toBe(1)
+    expect(controller.getSnapshot().source).toMatchObject({ content: 'my draft', saveState: 'dirty' })
+  })
+
+  it('re-reads a settled draft and publishes only when the file moved', async () => {
+    let content = 'v1'
+    const controller = new ResearchController(stubRemote({
+      ...selectReads,
+      getPaperSource: () => Promise.resolve(carried(sourceOk(content, content === 'v1' ? 1000 : 2000))),
+    }))
+    controller.select('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    const before = controller.getSnapshot().source
+    // The echo of the panel's own save: same content and mtime, no republish.
+    controller.enqueueWikiChange({ table: 'paper-source', key: 'p1', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(controller.getSnapshot().source).toBe(before)
+    // An agent edit moves the file: the view follows without a loading flash.
+    content = 'agent v2'
+    controller.enqueueWikiChange({ table: 'paper-source', key: 'p1', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(controller.getSnapshot().source).toMatchObject({
+      projectId: 'p1', status: 'ready', content: 'agent v2', mtimeMs: 2000, saveState: 'clean',
+    })
+  })
+
+  it('replays the ledger with its last filter and refreshes warm venues quietly', async () => {
+    let eventLists = 0
+    let venueLists = 0
+    const controller = new ResearchController(stubRemote({
+      listEvents: (request) => {
+        eventLists += 1
+        expect(request).toMatchObject({ limit: 50 })
+        return Promise.resolve(carried<ResearchListEventsResult>({ ok: true, value: { events: [] } }))
+      },
+      listVenueDeadlines: () => {
+        venueLists += 1
+        return Promise.resolve(carried<ResearchVenueDeadlinesResult>({
+          ok: true,
+          value: { venues: [], journals: [], watched: [], fetchedAt: '2026-09-01T00:00:00.000Z' },
+        }))
+      },
+    }))
+    controller.loadLedger({ limit: 50 })
+    controller.ensureVenues('p1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(eventLists).toBe(1)
+    expect(venueLists).toBe(1)
+    controller.enqueueWikiChange({ table: 'events', key: 'e1', operation: 'put' })
+    controller.enqueueWikiChange({ table: 'venue_watches', key: 'p1:cvpr', operation: 'put' })
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_DEBOUNCE_MS)
+    expect(eventLists).toBe(2)
+    expect(venueLists).toBe(2)
   })
 })

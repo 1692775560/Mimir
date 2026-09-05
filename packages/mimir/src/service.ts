@@ -109,6 +109,7 @@ import type {
   SectionOutlineTitles,
   ServerInput,
   SubsectionMove,
+  ResearchWikiChangeEvent,
 } from './types.ts'
 import * as paper from './services/paper.ts'
 import * as paperSnapshots from './services/paper-snapshots.ts'
@@ -184,6 +185,13 @@ export interface ResearchServiceConfig {
    * the real arXiv fetch applies.
    */
   readonly meetings?: MeetingDeps
+  /**
+   * Live-refresh push hook: invoked after a successful file-side wiki write
+   * (`main.tex`, `bibliography.bib`) so the plugin can broadcast it to open
+   * panels; domain-table writes reach panels through `domain/changed`
+   * instead. Absent in tests and direct constructions.
+   */
+  readonly notifyWikiChange?: ((event: ResearchWikiChangeEvent) => void) | undefined
 }
 
 /**
@@ -215,12 +223,18 @@ export class ResearchService extends TypertRemoteService {
       ...(config.svg === undefined ? {} : { svg: config.svg }),
       ...(config.zotero === undefined ? {} : { zotero: config.zotero }),
       ...(config.meetings === undefined ? {} : { meetings: config.meetings }),
+      ...(config.notifyWikiChange === undefined ? {} : { notifyWikiChange: config.notifyWikiChange }),
     }
     this.state = {
       compileStatus: new Map(),
       jobSeq: 0,
       jobAborts: new Map(),
     }
+  }
+
+  /** Broadcast a file-side wiki write to subscribed panels (a no-op unwired). */
+  private wikiFileChanged(table: 'paper-source' | 'bibliography', projectId: string): void {
+    this.deps.notifyWikiChange?.({ table, key: projectId, operation: 'put' })
   }
 
   // wiki-admin domain
@@ -380,33 +394,39 @@ export class ResearchService extends TypertRemoteService {
   }
 
   @Remote('savePaperSource')
-  savePaperSource(request: {
+  async savePaperSource(request: {
     projectId: string
     content: string
     baseMtimeMs: number
     dir?: string | undefined
   }): Promise<ResearchSavePaperSourceResult> {
-    return paper.savePaperSource(this.deps, request)
+    const result = await paper.savePaperSource(this.deps, request)
+    if (result.ok) this.wikiFileChanged('paper-source', request.projectId)
+    return result
   }
 
   @Remote('reorderPaperSections')
-  reorderPaperSections(request: {
+  async reorderPaperSections(request: {
     projectId: string
     moves: SectionMove[]
     baseOutline: string[]
     dir?: string | undefined
   }): Promise<ResearchSavePaperSourceResult> {
-    return paper.reorderPaperSections(this.deps, request)
+    const result = await paper.reorderPaperSections(this.deps, request)
+    if (result.ok) this.wikiFileChanged('paper-source', request.projectId)
+    return result
   }
 
   @Remote('reorderPaperSubsections')
-  reorderPaperSubsections(request: {
+  async reorderPaperSubsections(request: {
     projectId: string
     moves: SubsectionMove[]
     baseOutline: SectionOutlineTitles[]
     dir?: string | undefined
   }): Promise<ResearchSavePaperSourceResult> {
-    return paper.reorderPaperSubsections(this.deps, request)
+    const result = await paper.reorderPaperSubsections(this.deps, request)
+    if (result.ok) this.wikiFileChanged('paper-source', request.projectId)
+    return result
   }
 
   @Remote('getBibliography')
@@ -415,22 +435,26 @@ export class ResearchService extends TypertRemoteService {
   }
 
   @Remote('saveBibliography')
-  saveBibliography(request: {
+  async saveBibliography(request: {
     projectId: string
     entries: BibEntry[]
     baseMtimeMs: number | null
     dir?: string | undefined
   }): Promise<ResearchSaveBibliographyResult> {
-    return paper.saveBibliography(this.deps, request)
+    const result = await paper.saveBibliography(this.deps, request)
+    if (result.ok) this.wikiFileChanged('bibliography', request.projectId)
+    return result
   }
 
   @Remote('importPapersToBib')
-  importPapersToBib(request: {
+  async importPapersToBib(request: {
     projectId: string
     arxivIds: string[]
     dir?: string | undefined
   }): Promise<ResearchImportBibResult> {
-    return paper.importPapersToBib(this.deps, request)
+    const result = await paper.importPapersToBib(this.deps, request)
+    if (result.ok) this.wikiFileChanged('bibliography', request.projectId)
+    return result
   }
 
   // paper domain: compile status flows through this.state
@@ -456,13 +480,15 @@ export class ResearchService extends TypertRemoteService {
   }
 
   @Remote('revertPaperSnapshot')
-  revertPaperSnapshot(request: {
+  async revertPaperSnapshot(request: {
     projectId: string
     id: string
     baseMtimeMs: number
     dir?: string | undefined
   }): Promise<ResearchRevertPaperSnapshotResult> {
-    return paperSnapshots.revertPaperSnapshot(this.deps, request)
+    const result = await paperSnapshots.revertPaperSnapshot(this.deps, request)
+    if (result.ok) this.wikiFileChanged('paper-source', request.projectId)
+    return result
   }
 
   // experiment domain: figures
