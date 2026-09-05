@@ -1217,11 +1217,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // commands, panel edits alike funnel through the domain) is bridged onto
   // the SSE hub the open panels subscribe to; file-side writes (main.tex,
   // bibliography.bib) reach the same hub through the service's notify hook.
+  // The listener is global: `domain/changed` is emitted on the storage-domain
+  // service context, whose scope filter excludes this plugin's context, so a
+  // plain `ctx.on` here would never fire.
   ctx.effect(
     () => ctx.on('domain/changed', (change) => {
       if (change.domain !== researchWikiDomainSpec.name) return
       wikiChangeHub.publish({ table: change.table, key: change.key, operation: change.operation })
-    }),
+    }, { global: true }),
     'mimir.wikiChangeBridge',
   )
   ctx.effect(
